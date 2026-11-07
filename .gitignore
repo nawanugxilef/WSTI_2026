@@ -1,0 +1,27 @@
+# Secrets & Credentials (Never commit!)
+.env
+Neo-D LedgerCraft/.env
+Neo-D LedgerCraft/env.txt
+**/credentials.json
+**/token.json
+**/secrets/
+
+# Private Reference Screenshots & Local Data
+ref/
+finance-agents/
+
+# Virtual Environments & Cache
+.venv/
+Neo-D LedgerCraft/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.DS_Store
+
+# Live SQLite Databases & Uploaded Receipts/Statements
+Neo-D LedgerCraft/data/*.db
+Neo-D LedgerCraft/data/*.db-journal
+Neo-D LedgerCraft/data/*.db-wal
+Neo-D LedgerCraft/data/*.db-shm
+Neo-D LedgerCraft/data/receipts/
+Neo-D LedgerCraft/data/statements/

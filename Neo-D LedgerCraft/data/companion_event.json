@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-07-01T00:00:00",
+  "event": "Fictional Demo Initialized",
+  "xp_gained": 0,
+  "total_xp": 0,
+  "box_progress": 0,
+  "reward_target_xp": 100,
+  "reward_name": "2 Packs of Indomie Goreng \ud83c\udf5c",
+  "unlocked_now": false,
+  "boxes_unlocked": 0,
+  "anim": "idle",
+  "face": "( - . - )",
+  "chime": "none"
+}

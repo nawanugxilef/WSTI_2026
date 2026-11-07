@@ -1,0 +1,40 @@
+{
+  "disclaimer": "FICTIONAL DEMO DATA ONLY — All merchants, dates, and AUD amounts in this file are purely synthetic for demonstration and testing.",
+  "fy": "FY2026-27",
+  "currency": "AUD",
+  "sample_receipts": [
+    {
+      "vendor": "[FICTIONAL DEMO] Sydney 3D Maker Supplies",
+      "date": "2026-08-12",
+      "total_amount": 44.00,
+      "tax_amount": 4.00,
+      "currency": "AUD",
+      "category": "materials_3d_printing",
+      "purpose": "business",
+      "tax_label": "Cost of sales",
+      "notes": "Fictional sample 3D printing business expense (build plate & nozzle kit)"
+    },
+    {
+      "vendor": "[FICTIONAL DEMO] Centennial Park Pet Gear",
+      "date": "2026-08-14",
+      "total_amount": 22.00,
+      "tax_amount": 2.00,
+      "currency": "AUD",
+      "category": "dog_walking_supplies",
+      "purpose": "business",
+      "tax_label": "Other business expenses",
+      "notes": "Fictional sample dog walking business expense (leashes & treats)"
+    },
+    {
+      "vendor": "[FICTIONAL DEMO] Harbour Corner Cafe",
+      "date": "2026-08-15",
+      "total_amount": 6.50,
+      "tax_amount": 0.00,
+      "currency": "AUD",
+      "category": "dining_coffee",
+      "purpose": "personal",
+      "tax_label": null,
+      "notes": "Fictional sample personal coffee expense"
+    }
+  ]
+}

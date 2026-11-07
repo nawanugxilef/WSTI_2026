@@ -1,0 +1,60 @@
+# Chart of Accounts for Double-Entry Bookkeeping
+# Standard asset, liability, equity, revenue, expense layout (Strictly AUD)
+
+assets:
+  1000:
+    name: "Cash in Bank - Everyday"
+    type: "bank"
+  1010:
+    name: "Cash in Bank - Savings"
+    type: "savings"
+  1300:
+    name: "Equipment & Tools"
+    type: "fixed_asset"
+
+liabilities:
+  2000:
+    name: "Credit Card"
+    type: "credit"
+  2100:
+    name: "Accounts Payable / Pay Later"
+    type: "current_liability"
+
+equity:
+  3000:
+    name: "Owner Equity / Retained Earnings"
+    type: "equity"
+  3100:
+    name: "Owner Drawings"
+    type: "drawings"
+
+revenue:
+  4000:
+    name: "3D Printing Sales"
+    type: "business_revenue"
+  4100:
+    name: "Dog Walking Services Revenue"
+    type: "business_revenue"
+  4900:
+    name: "Interest & Other Income"
+    type: "other_income"
+
+expenses:
+  5100:
+    name: "Materials & Consumables"
+    type: "expense"
+  5200:
+    name: "Shipping & Postage"
+    type: "expense"
+  5300:
+    name: "Software & Cloud Services"
+    type: "expense"
+  5400:
+    name: "Dog Walking Supplies"
+    type: "expense"
+  5500:
+    name: "Travel & Parking"
+    type: "expense"
+  5900:
+    name: "Personal Living Expenses"
+    type: "personal_drawings"

@@ -1,0 +1,46 @@
+# Categories and Australian myTax labels mapping (Strictly AUD)
+
+business_categories:
+  office_supplies:
+    tax_label: "D5 Other work-related expenses"
+    description: "Stationery, small office consumables, desk accessories"
+  materials_3d_printing:
+    tax_label: "Cost of sales"
+    description: "3D printing parts, nozzles, build plates, and business consumables"
+  income_3d_printing:
+    tax_label: "Business income"
+    description: "3D printing custom part orders and print service revenue"
+  shipping_freight:
+    tax_label: "Cost of sales"
+    description: "Courier, postage, freight for customer orders or business supplies"
+  software_subscriptions:
+    tax_label: "D5 Other work-related expenses"
+    description: "Cloud servers, domain names, CAD tools, API keys"
+  tools_equipment:
+    tax_label: "Depreciation / Instant asset write-off"
+    description: "3D printers, tools, electronics equipment under threshold"
+  dog_walking_supplies:
+    tax_label: "Other business expenses"
+    description: "Leashes, waste bags, treats, walking accessories"
+  income_dog_walking:
+    tax_label: "Business income"
+    description: "Dog walking and pet minding client fees"
+  travel_parking:
+    tax_label: "D1 Work-related car expenses"
+    description: "Parking, tolls, business travel transit"
+
+personal_categories:
+  groceries:
+    description: "Supermarket food, household consumables"
+  dining_coffee:
+    description: "Cafes, coffee, restaurants, takeaway"
+  utilities:
+    description: "Electricity, water, gas, home internet"
+  health_medical:
+    description: "Pharmacy, doctor visits, health insurance"
+  transport_personal:
+    description: "Personal petrol, Opal card public transport"
+  entertainment:
+    description: "Movies, hobbies, non-business subscriptions"
+  transfer:
+    description: "Internal transfers between owned accounts"
