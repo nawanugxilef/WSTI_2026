@@ -279,7 +279,8 @@ class TelegramReceiptBot:
 
     def _is_authorized(self, update: Update) -> bool:
         if not self.owner_chat_id:
-            return True
+            # Fail closed: reject all messages if owner chat ID is not configured
+            return False
         chat = update.effective_chat
         return bool(chat and chat.id == self.owner_chat_id)
 
@@ -909,6 +910,9 @@ class TelegramReceiptBot:
         """Starts the Telegram bot long polling loop."""
         if not self.bot_token:
             print("ERROR: TELEGRAM_BOT_TOKEN is not set.")
+            sys.exit(1)
+        if not self.owner_chat_id:
+            print("ERROR: TELEGRAM_OWNER_CHAT_ID is not set.")
             sys.exit(1)
 
         app = Application.builder().token(self.bot_token).build()

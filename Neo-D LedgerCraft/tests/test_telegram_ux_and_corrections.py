@@ -1752,6 +1752,48 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertIn("Saved; journal pending linkage/account details", repay_summary.summary_text)
         self.assertIn("(unposted to trial balance)", repay_summary.summary_text)
 
+    def test_task_1_telegram_bot_fails_closed_when_owner_chat_id_missing(self):
+        """
+        Task 1 Security Test:
+        - When TELEGRAM_OWNER_CHAT_ID is missing (None/empty), _is_authorized must return False.
+        - Messages from any chat ID must be rejected.
+        - run() must exit with a clear error code (SystemExit).
+        """
+        bot_unauth = TelegramReceiptBot(
+            bot_token="fictional_token",
+            owner_chat_id=None,
+            db_path=self.db_path,
+            finance_agent=FinanceAgent(api_key=""),
+            load_dotenv=False,
+        )
+
+        mock_update = MagicMock()
+        mock_update.effective_chat.id = 12345
+        self.assertFalse(
+            bot_unauth._is_authorized(mock_update),
+            "Bot must fail closed (return False) when owner_chat_id is None!"
+        )
+
+        # Non-matching chat ID with valid owner configured
+        bot_auth = TelegramReceiptBot(
+            bot_token="fictional_token",
+            owner_chat_id=99999,
+            db_path=self.db_path,
+            finance_agent=FinanceAgent(api_key=""),
+            load_dotenv=False,
+        )
+        self.assertFalse(bot_auth._is_authorized(mock_update))
+
+        # Matching chat ID is authorized
+        mock_update_owner = MagicMock()
+        mock_update_owner.effective_chat.id = 99999
+        self.assertTrue(bot_auth._is_authorized(mock_update_owner))
+
+        # run() exits cleanly when owner_chat_id is missing
+        with self.assertRaises(SystemExit) as cm:
+            bot_unauth.run()
+        self.assertEqual(cm.exception.code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
