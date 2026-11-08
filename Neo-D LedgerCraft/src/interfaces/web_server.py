@@ -8,12 +8,14 @@ Strictly English and AUD ($ AUD) only.
 
 from __future__ import annotations
 
+import base64
 import csv
 import hmac
 import io
 import json
 import logging
 import os
+import tempfile
 import threading
 import time
 from collections import defaultdict
@@ -575,16 +577,42 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     return
 
                 note_text = str(data.get("text", "")).strip()
-                if not note_text:
-                    raise ValueError("Note text cannot be empty")
-                if len(note_text) > 300:
+                file_b64 = data.get("file_data")
+                filename = str(data.get("filename", "receipt.jpg")).strip()
+
+                if not note_text and not file_b64:
+                    raise ValueError("Note text or file_data must be provided")
+                if note_text and len(note_text) > 300:
                     raise ValueError("Note text exceeds maximum length of 300 characters")
 
                 conn = get_connection(db_file)
                 init_db(conn)
                 seed_accounts(conn)
                 cos = ChiefOfStaff(main_conn=conn)
-                summary = cos.process_note(note_text)
+
+                if file_b64:
+                    try:
+                        raw_bytes = base64.b64decode(file_b64)
+                    except Exception:
+                        raise ValueError("Invalid base64 encoding for file_data")
+                    if len(raw_bytes) > 5 * 1024 * 1024:
+                        raise ValueError("File exceeds maximum size of 5 MB")
+
+                    ext = os.path.splitext(filename)[1].lower()
+                    if ext not in (".jpg", ".jpeg", ".png", ".pdf", ".webp"):
+                        ext = ".jpg"
+
+                    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_f:
+                        tmp_f.write(raw_bytes)
+                        tmp_path = tmp_f.name
+
+                    try:
+                        summary = cos.process_file(tmp_path)
+                    finally:
+                        if os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+                else:
+                    summary = cos.process_note(note_text)
                 conn.close()
 
                 payload = build_dashboard_payload(db_file)

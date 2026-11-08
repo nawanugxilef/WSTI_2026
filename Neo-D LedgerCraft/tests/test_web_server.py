@@ -275,6 +275,47 @@ class TestWebServer(unittest.TestCase):
         handler.send_response.assert_called_with(429)
         handler.send_header.assert_any_call("Retry-After", "300")
 
+    def test_finding_1_web_intake_file_upload(self):
+        """Finding #1: Fast intake endpoint /api/intake processes base64 photo/PDF."""
+        import base64, io
+        from unittest.mock import patch
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.path = "/api/intake"
+
+        # Mock ChiefOfStaff.process_file
+        with patch("src.interfaces.web_server.ChiefOfStaff") as MockCOS:
+            mock_inst = MagicMock()
+            mock_inst.process_file.return_value = MagicMock(
+                receipt_id=99,
+                summary_text="Processed receipt photo",
+                status="recorded",
+                gdrive_status="uploaded",
+            )
+            MockCOS.return_value = mock_inst
+
+            sample_b64 = base64.b64encode(b"dummy image bytes").decode("utf-8")
+            handler.rfile = io.BytesIO(json.dumps({
+                "file_data": sample_b64,
+                "filename": "receipt_test.jpg"
+            }).encode("utf-8"))
+            handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+            handler.send_response = MagicMock()
+            handler.send_header = MagicMock()
+            handler.end_headers = MagicMock()
+            handler.wfile = io.BytesIO()
+
+            handler.do_POST()
+            handler.send_response.assert_called_with(200)
+            mock_inst.process_file.assert_called_once()
+
+        # Reject payload without text or file_data -> 400
+        handler.rfile = io.BytesIO(json.dumps({}).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.wfile = io.BytesIO()
+        handler.do_POST()
+        handler.send_response.assert_called_with(400)
+
 
 if __name__ == "__main__":
     unittest.main()

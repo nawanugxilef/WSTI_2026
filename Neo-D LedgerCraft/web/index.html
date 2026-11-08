@@ -115,7 +115,7 @@
       <div class="ios-card p-3 bg-gradient-to-br from-white to-blue-50/40 border border-blue-200/80 shadow-sm">
         <div class="flex items-center justify-between mb-2">
           <div class="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-            <span>⚡</span> <span>Fast Intake (Demo & Pitch Night)</span>
+            <span>⚡</span> <span>Fast Intake (Photo & Note Ingestion)</span>
           </div>
           <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">+10 XP</span>
         </div>
@@ -124,7 +124,7 @@
             <input
               type="text"
               id="intake-note-input"
-              placeholder="e.g. Bunnings $45.50 tools for 3D printer (or Harbor Cafe $6 coffee)"
+              placeholder="Type note or choose photo below..."
               class="flex-1 px-3 py-1.5 text-xs text-slate-800 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
               onkeydown="if(event.key==='Enter') submitWebIntakeNote()"
             >
@@ -136,6 +136,16 @@
               <span>Record</span> <span>↵</span>
             </button>
           </div>
+
+          <div class="flex items-center gap-2 pt-1 border-t border-slate-100 text-xs">
+            <label class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition shadow-2xs">
+              <span>📷</span>
+              <span id="intake-file-label">Upload Receipt Photo / PDF</span>
+              <input type="file" id="intake-file-input" accept="image/*,.pdf" class="hidden" onchange="handleIntakeFileChosen(this)">
+            </label>
+            <button id="intake-clear-file-btn" onclick="clearIntakeFile()" class="hidden text-[11px] text-slate-400 hover:text-rose-600">✕ Clear</button>
+          </div>
+
           <div id="intake-feedback" class="hidden text-xs p-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200"></div>
         </div>
       </div>
@@ -847,25 +857,68 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    let chosenFileBase64 = null;
+    let chosenFileName = null;
+
+    function handleIntakeFileChosen(fileInput) {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size exceeds 5 MB limit');
+        fileInput.value = '';
+        return;
+      }
+      chosenFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const result = e.target.result;
+        chosenFileBase64 = result.split(',')[1] || result;
+        const lbl = document.getElementById('intake-file-label');
+        if (lbl) lbl.textContent = `📎 ${file.name} (${Math.round(file.size / 1024)} KB)`;
+        const clearBtn = document.getElementById('intake-clear-file-btn');
+        if (clearBtn) clearBtn.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearIntakeFile() {
+      chosenFileBase64 = null;
+      chosenFileName = null;
+      const fileInput = document.getElementById('intake-file-input');
+      if (fileInput) fileInput.value = '';
+      const lbl = document.getElementById('intake-file-label');
+      if (lbl) lbl.textContent = 'Upload Receipt Photo / PDF';
+      const clearBtn = document.getElementById('intake-clear-file-btn');
+      if (clearBtn) clearBtn.classList.add('hidden');
+    }
+
     async function submitWebIntakeNote() {
       const input = document.getElementById('intake-note-input');
       const text = (input ? input.value : '').trim();
-      if (!text) return;
+      if (!text && !chosenFileBase64) return;
 
       const feedback = document.getElementById('intake-feedback');
       const btn = document.getElementById('intake-submit-btn');
       if (btn) btn.disabled = true;
 
+      const payload = {};
+      if (text) payload.text = text;
+      if (chosenFileBase64) {
+        payload.file_data = chosenFileBase64;
+        payload.filename = chosenFileName || 'receipt.jpg';
+      }
+
       try {
         const res = await fetch('/api/intake', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: text })
+          body: JSON.stringify(payload)
         });
         if (res.ok) {
           dashboardData = await res.json();
           renderAll();
           if (input) input.value = '';
+          clearIntakeFile();
           if (feedback) {
             const summary = dashboardData.intake_summary;
             let cleanSummary = summary ? summary.summary_text : 'Expense recorded successfully.';
@@ -880,7 +933,7 @@
         } else {
           const err = await res.json();
           if (feedback) {
-            feedback.textContent = `⚠️ Error: ${err.error || 'Failed to process note'}`;
+            feedback.textContent = `⚠️ Error: ${err.error || 'Failed to process intake'}`;
             feedback.className = 'text-xs p-2 rounded-lg bg-rose-50 text-rose-800 border border-rose-200';
             feedback.classList.remove('hidden');
             setTimeout(() => feedback.classList.add('hidden'), 5000);
