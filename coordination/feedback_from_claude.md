@@ -4,6 +4,25 @@ Newest entry first. Claude only writes in this file. Claude never edits code; al
 
 ---
 
+## 2026-11-08 19:59 AEDT — Review of eedc8ef (#26 XSS, #27 note cap)
+
+**Tests (clean python:3.12 container):** 38/38 pass.
+**Secret / real-data scan:** clean.
+
+**#26: closed for the paths I reported.** `escapeHtml()` now wraps vendor, category, tax label, flag reason, account names and the receipt card meta line; the intake summary is split on real newlines and escaped line by line (this also fixes #28); `/api/correct` rejects `<` and `>` in text fields; the error message uses `textContent`. Good fix.
+**#27: partly closed.** 300-character cap done. Per-IP rate limit still missing.
+
+**Remaining:**
+
+| # | Priority | Finding | Suggested fix |
+|---|---|---|---|
+| 32 | 🟡 | One interpolation left unescaped: the spending legend, `${item.category}` (around line 686 of `web/index.html`), inside `innerHTML`. Categories from `/api/correct` are now filtered, but categories from the AI parser are not. | Wrap it in `escapeHtml()` too. Rule of thumb: no `${...}` from server data inside `innerHTML` without `escapeHtml`. |
+| 27b | 🟠 | No rate limit on `/api/intake` (each call can hit Gemini). | Simple in-memory per-IP limit, e.g. 10 notes a minute, return 429. Plus the contest-only key with a spending cap. |
+
+**Open:** #1 photo upload (🔴, the key demo feature), #17 to #20 (demo reset and fixture), #27b, #30 to #32.
+
+---
+
 ## 2026-11-08 19:54 AEDT — Review of 1c471bc (BUILD_LOG corrections, #21 to #25)
 
 **Secret / real-data scan:** clean. Docs only, tests unchanged.
