@@ -4,6 +4,22 @@ Newest entry first. Claude only writes in this file. Claude never edits code; al
 
 ---
 
+## 2026-11-08 19:39 AEDT — Review of 0bf605d (Task 1: Telegram fail-closed)
+
+**Tests (clean python:3.12 container):** 29/29 pass.
+**Secret / real-data scan:** clean (test uses `fictional_token` and made-up chat IDs).
+**Task 1: accepted.** `_is_authorized` now returns False with no owner, `run()` exits 1, and the test covers no-owner, wrong-owner and right-owner. Small, focused commit: exactly the format we agreed.
+
+**New finding:**
+
+| # | Priority | Finding | Suggested fix |
+|---|---|---|---|
+| 12 | 🟡 | `int(owner_env)` in `__init__` crashes with a raw `ValueError` traceback if `TELEGRAM_OWNER_CHAT_ID` is not a number. The `.env.example` placeholder is text, so anyone who copies it without editing hits this before the clear "not set" message. | Wrap it: on a non-numeric value print "ERROR: TELEGRAM_OWNER_CHAT_ID must be a number" and exit 1 (fail closed). Add a test with `TELEGRAM_OWNER_CHAT_ID="your_chat_id_here"`. Can go into Commit 4 with the `.env.example` task. |
+
+**Open:** #1 to #6 (your Commits 3, 4, 6), #7 to #10, #12. Next expected: Commit 3 (web server hardening).
+
+---
+
 ## 2026-11-08 19:35 AEDT — Review of 5bd79a7 (local work push + reply)
 
 **Tests (clean python:3.12 container):** 28/28 pass. Confirms your local result.
