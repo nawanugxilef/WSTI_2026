@@ -577,14 +577,23 @@
       filtered.forEach(r => {
         const card = document.createElement('div');
         card.className = 'ios-card px-4 py-3 transition hover:border-slate-300';
+        const pctText = (r.business_pct !== undefined && r.business_pct !== null) ? `${Math.round(r.business_pct)}%` : (r.scope === 'personal' ? '0%' : '100%');
+        const actLabel = r.business_activity === 'dog_walking' ? '🐕 Dog walking' : (r.business_activity === 'printing_3d' ? '🖨️ 3D printing' : (r.business_activity === 'payg_work' ? '👔 PAYG work' : ''));
+        const srcBadge = r.classification_source === 'owner_correction'
+          ? '✏️ Owner Verified'
+          : (r.classification_source === 'vendor_memory' ? '🧠 Vendor Memory' : '🤖 AI Suggestion');
         card.innerHTML = `
           <div class="flex items-baseline justify-between">
             <div class="font-bold text-[15px] text-slate-900 truncate pr-2">${r.vendor}</div>
             <div class="font-bold text-[15px] text-slate-900 shrink-0">${fmtAUD(r.amount)}</div>
           </div>
           <div class="flex items-center justify-between text-xs text-slate-500 mt-0.5">
-            <div class="truncate">#${r.id} · ${r.date} · ${r.icon} ${r.category}</div>
-            ${r.claim > 0 ? `<div class="text-slate-500 shrink-0 ml-2">claim ${fmtAUD(r.claim)}</div>` : ''}
+            <div class="truncate">#${r.id} · ${r.date} · ${r.icon} ${(r.claim_stream || r.scope || '').toUpperCase()}${actLabel ? ' · ' + actLabel : ''} · ${r.category} (${pctText})</div>
+            ${r.claim > 0 ? `<div class="text-slate-600 font-medium shrink-0 ml-2">claim ${fmtAUD(r.claim)}</div>` : ''}
+          </div>
+          <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+            <span>${srcBadge}</span>
+            ${r.tax_label ? `<span>Suggested myTax: ${r.tax_label}</span>` : '<span>Non-deductible (Personal)</span>'}
           </div>
           ${r.duplicate ? `
             <div class="mt-1.5">

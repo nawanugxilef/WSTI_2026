@@ -1,6 +1,8 @@
 """
 Command Line Interface for Neo-D LedgerCraft
-Enables quick terminal intake, ledger reporting, Australian myTax summaries, and Google Drive backups.
+Enables quick terminal intake, owner corrections (Category, Business %, ABN/PAYG/Personal,
+Activity, Vendor), ledger reporting, Suggested Australian ATO myTax summaries, and Google Drive backups.
+Strictly English and AUD ($ AUD).
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import os
 import yaml
 
 from src.agents.chief_of_staff import ChiefOfStaff
+from src.storage.categories import ATO_SUGGESTION_DISCLAIMER
 from src.storage.db import get_connection, init_db
 from src.storage.gdrive import GDriveAdapter
 from src.storage.journal import JournalManager
@@ -32,8 +35,9 @@ def load_env():
                         os.environ[k] = v
 
 
-def load_config() -> dict:
-    load_env()
+def load_config(load_dotenv: bool = True) -> dict:
+    if load_dotenv:
+        load_env()
     config_path = os.path.join(os.path.dirname(__file__), "../../config/settings.yaml")
     if os.path.exists(config_path):
         with open(config_path, "r") as f:
@@ -73,15 +77,24 @@ def main():
     file_p = subparsers.add_parser("file", help="Ingest receipt image, invoice PDF, or bank statement CSV")
     file_p.add_argument("path", help="Path to receipt image, PDF, or CSV statement")
 
-    # 4. balance: show trial balance
+    # 4. correct: apply owner correction to an existing receipt
+    corr_p = subparsers.add_parser("correct", help="Correct receipt Category, Business %, Stream, Activity, or Vendor")
+    corr_p.add_argument("receipt_id", type=int, help="Numeric Receipt ID")
+    corr_p.add_argument("--category", help="New category key (e.g. materials_3d_printing, dog_walking_supplies)")
+    corr_p.add_argument("--pct", type=float, help="New Business % (0 to 100)")
+    corr_p.add_argument("--stream", choices=["abn", "payg", "personal"], help="Tax stream: abn, payg, or personal")
+    corr_p.add_argument("--activity", choices=["dog_walking", "printing_3d", "payg_work", "none"], help="Business activity")
+    corr_p.add_argument("--vendor", help="Corrected canonical vendor name")
+
+    # 5. balance: show trial balance
     subparsers.add_parser("balance", help="Show double-entry trial balance")
 
-    # 5. mytax: show tax report
-    tax_p = subparsers.add_parser("mytax", help="Show Australian myTax business expense totals")
+    # 6. mytax: show tax report
+    tax_p = subparsers.add_parser("mytax", help="Show Suggested Australian ATO myTax expense totals")
     tax_p.add_argument("--start", default="2026-07-01", help="Financial year start YYYY-MM-DD")
     tax_p.add_argument("--end", default="2027-06-30", help="Financial year end YYYY-MM-DD")
 
-    # 6. backup: backup DB to Google Drive
+    # 7. backup: backup DB to Google Drive
     subparsers.add_parser("backup", help="Snapshot SQLite database and upload to Google Drive")
 
     args = parser.parse_args()
@@ -114,6 +127,17 @@ def main():
         res = cos.process_file(args.path)
         print(res.summary_text)
 
+    elif args.command == "correct":
+        res = cos.correct_receipt(
+            receipt_id=args.receipt_id,
+            category=args.category,
+            business_pct=args.pct,
+            claim_stream=args.stream,
+            business_activity=args.activity,
+            vendor=args.vendor,
+        )
+        print(res.summary_text)
+
     elif args.command == "balance":
         jm = JournalManager(conn)
         rows = jm.get_trial_balance()
@@ -132,18 +156,20 @@ def main():
     elif args.command == "mytax":
         jm = JournalManager(conn)
         summary = jm.get_mytax_summary(args.start, args.end)
-        print(f"\n🇦🇺 AUSTRALIAN MYTAX SUMMARY ({args.start} to {args.end}):")
+        print(f"\n🇦🇺 SUGGESTED AUSTRALIAN ATO myTAX SUMMARY ({args.start} to {args.end}):")
+        print(f"Note: {ATO_SUGGESTION_DISCLAIMER}")
         if not summary:
-            print("No deductible business transactions found for this period.")
+            print("No deductible business/PAYG transactions found for this period.")
             return
-        print(f"{'myTax Label':<35} {'Count':<7} {'Net ($)':<10} {'GST ($)':<10} {'Gross ($)'}")
-        print("-" * 75)
+        print(f"{'Stream':<7} {'myTax Label':<35} {'Count':<7} {'Net ($)':<10} {'GST ($)':<10} {'Claimable ($)'}")
+        print("-" * 85)
         tot_gross = 0.0
         for s in summary:
-            print(f"{s['tax_label']:<35} {s['count']:<7} ${s['net_amount']:<9.2f} ${s['total_gst']:<9.2f} ${s['gross_amount']:<9.2f}")
+            stream_tag = str(s.get("claim_stream") or "abn").upper()
+            print(f"{stream_tag:<7} {s['tax_label']:<35} {s['count']:<7} ${s['net_amount']:<9.2f} ${s['total_gst']:<9.2f} ${s['gross_amount']:<9.2f}")
             tot_gross += s["gross_amount"]
-        print("-" * 75)
-        print(f"Total Business Deductions: ${tot_gross:.2f}\n")
+        print("-" * 85)
+        print(f"Total Suggested Claimable Deductions: ${tot_gross:.2f} AUD\n")
 
     elif args.command == "backup":
         print("⏳ Creating database snapshot and uploading to Google Drive...")
@@ -151,7 +177,8 @@ def main():
         if backup_id:
             print(f"✅ Backup successfully uploaded to Google Drive! (File ID: {backup_id})")
         else:
-            print("⚠️ Backup creation or upload skipped/failed. Check GDRIVE_BACKUPS_FOLDER_ID in .env.")
+            err = gdrive.last_error or "Check GDRIVE_BACKUPS_FOLDER_ID in .env"
+            print(f"⚠️ Google Drive Backup Failed ({err}) — snapshot was not uploaded.")
 
 
 if __name__ == "__main__":

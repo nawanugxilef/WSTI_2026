@@ -7,8 +7,11 @@ duplicate detection, currency anomalies, and feeds back issues for re-reading (m
 from __future__ import annotations
 
 import datetime
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+from src.storage.categories import load_category_catalog
 
 
 @dataclass
@@ -23,6 +26,7 @@ class QAAgent:
     def __init__(self, gst_rate: float = 0.10, max_retries: int = 2):
         self.gst_rate = gst_rate
         self.max_retries = max_retries
+        self.catalog = load_category_catalog()
 
     def inspect_receipt(
         self,
@@ -36,14 +40,29 @@ class QAAgent:
         """
         issues = []
 
-        # 1. Mandatory Fields Check
+        # 1. Mandatory Fields & Category Check
         vendor = data.get("vendor")
         if not vendor or not str(vendor).strip():
             issues.append("Vendor name is missing.")
 
-        total = data.get("total_amount")
-        if total is None or total <= 0:
+        if data.get("category") is not None:
+            cat_str = str(data.get("category")).strip().lower()
+            if not cat_str or cat_str not in self.catalog:
+                issues.append(f"Unsupported category '{data.get('category')}'.")
+
+        total_raw = data.get("total_amount")
+        total: Optional[float] = None
+        if total_raw is None or isinstance(total_raw, bool):
             issues.append("Total amount must be greater than 0.")
+        else:
+            try:
+                t_val = float(total_raw)
+                if not math.isfinite(t_val) or t_val <= 0:
+                    issues.append("Total amount must be greater than 0.")
+                else:
+                    total = t_val
+            except (TypeError, ValueError):
+                issues.append("Total amount must be greater than 0.")
 
         # 2. Date Verification
         date_str = data.get("date")
@@ -74,11 +93,31 @@ class QAAgent:
 
         # 3. Currency & Tax Checks (Strictly AUD only)
         currency = str(data.get("currency", "AUD")).upper()
-        tax = float(data.get("tax_amount", 0.0) or 0.0)
+        raw_tax_val = data.get("raw_tax_amount") if "raw_tax_amount" in data else data.get("tax_amount")
+        tax: Optional[float] = 0.0
+        if raw_tax_val is not None:
+            if isinstance(raw_tax_val, bool):
+                issues.append("GST amount must be a finite number.")
+                tax = None
+            else:
+                try:
+                    t_num = float(raw_tax_val)
+                    if not math.isfinite(t_num):
+                        issues.append("GST amount must be a finite number.")
+                        tax = None
+                    else:
+                        tax = t_num
+                except (TypeError, ValueError):
+                    issues.append("GST amount must be a finite number.")
+                    tax = None
 
         if currency != "AUD":
             issues.append(f"Unsupported currency '{currency}'. All transactions must be in AUD.")
-        else:
+        elif tax is not None:
+            if tax < 0.0:
+                issues.append(f"GST amount (${tax:.2f}) cannot be negative.")
+            if total is not None and total > 0 and tax > total:
+                issues.append(f"GST amount (${tax:.2f}) cannot exceed receipt total (${total:.2f}).")
             # Australian GST should not exceed 10% (tax <= total / 11 + margin)
             if total and total > 0:
                 max_expected_gst = round(total / 11.0 + 0.10, 2)

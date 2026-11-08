@@ -1,46 +1,137 @@
-# Categories and Australian myTax labels mapping (Strictly AUD)
+# Categories, Tax Streams (ABN / PAYG / Personal), Activities, and Australian ATO myTax Labels (Strictly AUD)
+# Note: All ATO myTax labels are AI/rule-based suggestions only and do not guarantee tax deductibility.
 
 business_categories:
-  office_supplies:
-    tax_label: "D5 Other work-related expenses"
-    description: "Stationery, small office consumables, desk accessories"
   materials_3d_printing:
     tax_label: "Cost of sales"
-    description: "3D printing parts, nozzles, build plates, and business consumables"
-  income_3d_printing:
-    tax_label: "Business income"
-    description: "3D printing custom part orders and print service revenue"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "3D printing parts, nozzles, build plates, resin/consumables for customer orders"
   shipping_freight:
     tax_label: "Cost of sales"
-    description: "Courier, postage, freight for customer orders or business supplies"
-  software_subscriptions:
-    tax_label: "D5 Other work-related expenses"
-    description: "Cloud servers, domain names, CAD tools, API keys"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Courier, postage, freight for customer 3D print orders or business supplies"
   tools_equipment:
     tax_label: "Depreciation / Instant asset write-off"
-    description: "3D printers, tools, electronics equipment under threshold"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "3D printers, hardware tools, electronics equipment under instant write-off threshold"
+  income_3d_printing:
+    tax_label: "Business income"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "3D printing custom part orders and print service revenue"
   dog_walking_supplies:
     tax_label: "Other business expenses"
-    description: "Leashes, waste bags, treats, walking accessories"
+    stream: "abn"
+    activity: "dog_walking"
+    default_business_pct: 100
+    description: "Leashes, harnesses, waste bags, treats, walking accessories"
   income_dog_walking:
     tax_label: "Business income"
+    stream: "abn"
+    activity: "dog_walking"
+    default_business_pct: 100
     description: "Dog walking and pet minding client fees"
   travel_parking:
-    tax_label: "D1 Work-related car expenses"
-    description: "Parking, tolls, business travel transit"
+    tax_label: "Motor vehicle and travel expenses"
+    stream: "abn"
+    activity: "dog_walking"
+    default_business_pct: 100
+    description: "Parking, tolls, business travel between dog walking clients"
+  car_fuel_maintenance:
+    tax_label: "Motor vehicle expenses"
+    stream: "abn"
+    activity: "dog_walking"
+    default_business_pct: 50
+    description: "Mixed-use car fuel, servicing, registration, and insurance (default 50% business estimate)"
+  software_subscriptions:
+    tax_label: "Other business expenses"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Cloud servers, domain names, CAD software, API subscriptions"
+  office_supplies:
+    tax_label: "Other business expenses"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Stationery, small office consumables, packaging labels, desk accessories"
+
+payg_categories:
+  work_car_travel:
+    tax_label: "D1 Work-related car/travel expenses"
+    stream: "payg"
+    activity: "payg_work"
+    default_business_pct: 100
+    description: "PAYG employee work-related car or travel expenses"
+  work_uniform_clothing:
+    tax_label: "D3 Work-related clothing, laundry and dry-cleaning"
+    stream: "payg"
+    activity: "payg_work"
+    default_business_pct: 100
+    description: "Occupation-specific or protective clothing and laundry"
+  self_education:
+    tax_label: "D4 Work-related self-education expenses"
+    stream: "payg"
+    activity: "payg_work"
+    default_business_pct: 100
+    description: "Courses, textbooks, and training directly related to current employment"
+  work_home_office_other:
+    tax_label: "D5 Other work-related expenses"
+    stream: "payg"
+    activity: "payg_work"
+    default_business_pct: 100
+    description: "Working from home consumables, union fees, professional tools and subscriptions"
 
 personal_categories:
   groceries:
+    stream: "personal"
+    activity: "none"
+    default_business_pct: 0
     description: "Supermarket food, household consumables"
   dining_coffee:
+    stream: "personal"
+    activity: "none"
+    default_business_pct: 0
     description: "Cafes, coffee, restaurants, takeaway"
   utilities:
+    stream: "personal"
+    activity: "none"
+    default_business_pct: 0
     description: "Electricity, water, gas, home internet"
   health_medical:
+    stream: "personal"
+    activity: "none"
+    default_business_pct: 0
     description: "Pharmacy, doctor visits, health insurance"
   transport_personal:
+    stream: "personal"
+    activity: "none"
+    default_business_pct: 0
     description: "Personal petrol, Opal card public transport"
   entertainment:
+    stream: "personal"
+    activity: "none"
+    default_business_pct: 0
     description: "Movies, hobbies, non-business subscriptions"
+  hobby_3d_printing:
+    stream: "personal"
+    activity: "none"
+    default_business_pct: 0
+    description: "Personal/hobby 3D printing projects (non-deductible)"
   transfer:
+    stream: "personal"
+    activity: "none"
+    default_business_pct: 0
     description: "Internal transfers between owned accounts"
+  general:
+    stream: "personal"
+    activity: "none"
+    default_business_pct: 0
+    description: "General unclassified personal expense"
