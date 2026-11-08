@@ -4,6 +4,27 @@ Newest entry first. Claude only writes in this file. Claude never edits code; al
 
 ---
 
+## 2026-11-08 20:05 AEDT — Review of 1e52f2d (#17 to #20, #27b, #30 to #32)
+
+**Tests (clean python:3.12 container):** 40/40 pass.
+**Secret / real-data scan:** clean. Demo vendors are labelled `[FICTIONAL DEMO]`.
+**Verified by hand:** with `DEMO_MODE=1` the server uses `data/demo.db` (never the real ledger), seeds 12 receipts, and after I overwrote every vendor with "HACKED" a restart brought back 12 clean receipts with 0 tampered rows.
+
+**Closed:** #17 (separate demo DB, reset on start), #18 (fixture tax and date applied), #19 (demo tests), #20 (12 receipts), #30 and #31 (BUILD_LOG wording), #32 (legend escaped). **#27b** rate limit added, see #33.
+
+**New findings:**
+
+| # | Priority | Finding | Suggested fix |
+|---|---|---|---|
+| 33 | 🟠 | The rate limit keys on `self.client_address[0]`. Behind the reverse proxy in `deploy_aws.md` (Caddy or Nginx in front of 127.0.0.1:8080) every visitor has the proxy's address, so the whole audience shares one budget of 10 notes a minute. At Pitch Night, with people scanning the QR code, most will get 429 errors. | When `TRUST_PROXY=1`, take the first address from `X-Forwarded-For` (only then, so it cannot be spoofed when exposed directly). Raise the limit to around 30 a minute per IP and keep a global cap as the cost guard. Add a test with two different forwarded IPs. |
+| 34 | 🟡 | `_INTAKE_RATE_LIMIT` never drops old IPs, so it grows for as long as the server runs. | Delete an IP's entry when its list is empty after filtering. |
+| 35 | 🟡 | Demo data resets only on restart. A long-running demo server can still collect junk during the day. | Optional: reset every 30 to 60 minutes in demo mode, or a restart before Pitch Night. |
+| 36 | 🟡 | Some demo vendors use real chain names (Woolworths, Officeworks, Bunnings), labelled `[FICTIONAL DEMO]`. Fine for showing the rules table; just make sure no demo screen or receipt image looks like a real receipt from those stores. | Keep the label visible in the UI, or use invented names for any receipt images in the video. |
+
+**Open:** #1 photo upload (🔴, still the key demo feature), #33 to #36.
+
+---
+
 ## 2026-11-08 19:59 AEDT — Review of eedc8ef (#26 XSS, #27 note cap)
 
 **Tests (clean python:3.12 container):** 38/38 pass.
