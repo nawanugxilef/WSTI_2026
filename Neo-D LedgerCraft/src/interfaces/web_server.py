@@ -14,6 +14,8 @@ import io
 import json
 import logging
 import os
+import time
+from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import urlparse
 
@@ -25,6 +27,11 @@ from src.storage.journal import JournalManager
 
 logger = logging.getLogger("web_server")
 
+# In-memory per-IP sliding window rate limiter for /api/intake (max 10 requests / 60 seconds)
+_INTAKE_RATE_LIMIT: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_WINDOW = 60.0
+_MAX_REQUESTS_PER_WINDOW = 10
+
 # Absolute path resolution relative to project root
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 DEFAULT_DB_PATH = os.path.join(PROJECT_ROOT, "data", "ledger.db")
@@ -32,6 +39,8 @@ DEFAULT_DB_PATH = os.path.join(PROJECT_ROOT, "data", "ledger.db")
 
 def get_default_db_path() -> str:
     """Returns the absolute path to the SQLite ledger database."""
+    if os.environ.get("DEMO_MODE", "").strip().lower() in ("1", "true", "yes"):
+        return os.environ.get("LEDGER_DB_PATH", os.path.join(PROJECT_ROOT, "data", "demo.db"))
     return os.environ.get("LEDGER_DB_PATH", DEFAULT_DB_PATH)
 
 
@@ -517,6 +526,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/intake":
             try:
+                # Per-IP rate limiting: max 10 requests / minute
+                client_ip = self.client_address[0] if hasattr(self, "client_address") and self.client_address else "127.0.0.1"
+                now = time.time()
+                recent_calls = [t for t in _INTAKE_RATE_LIMIT[client_ip] if now - t < _RATE_LIMIT_WINDOW]
+                if len(recent_calls) >= _MAX_REQUESTS_PER_WINDOW:
+                    self.send_response(429)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Retry-After", "60")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Rate limit exceeded (max 10 requests/min). Please try again shortly."}).encode("utf-8"))
+                    return
+                recent_calls.append(now)
+                _INTAKE_RATE_LIMIT[client_ip] = recent_calls
+
                 note_text = str(data.get("text", "")).strip()
                 if not note_text:
                     raise ValueError("Note text cannot be empty")
@@ -576,19 +599,27 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
 
-def init_demo_database(db_file: str) -> None:
+def init_demo_database(db_file: str, reset: bool = True) -> None:
     """
-    If DEMO_MODE is enabled ('1', 'true', 'yes'), resets or populates
-    the database with clean [FICTIONAL DEMO] records on startup.
+    If DEMO_MODE is enabled ('1', 'true', 'yes'), resets the demo database
+    (e.g. data/demo.db) and populates it with clean [FICTIONAL DEMO] records.
     """
     if os.environ.get("DEMO_MODE", "").strip().lower() not in ("1", "true", "yes"):
         return
-    logger.info("DEMO_MODE active: populating clean [FICTIONAL DEMO] database at %s", db_file)
+    logger.info("DEMO_MODE active: initializing clean [FICTIONAL DEMO] database at %s", db_file)
     demo_json_path = os.path.join(PROJECT_ROOT, "config", "demo_fictional_data.json")
     if not os.path.exists(demo_json_path):
         return
     with open(demo_json_path, "r", encoding="utf-8") as f:
         demo_data = json.load(f)
+
+    # In demo mode, if reset=True or file exists, start clean to prevent public visitor contamination
+    if reset and os.path.exists(db_file):
+        try:
+            os.remove(db_file)
+            logger.info("Demo data reset: removed %s", db_file)
+        except OSError as e:
+            logger.warning("Could not remove old demo db: %s", e)
 
     conn = get_connection(db_file)
     init_db(conn)
@@ -600,11 +631,19 @@ def init_demo_database(db_file: str) -> None:
         for item in demo_data.get("sample_receipts", []):
             vendor = item.get("vendor", "[FICTIONAL DEMO] Vendor")
             total = float(item.get("total_amount", 0.0))
-            tax = float(item.get("tax_amount", 0.0))
             cat = item.get("category", "materials_3d_printing")
             note_str = f"{vendor} ${total:.2f} {cat}"
             try:
-                cos.process_note(note_str)
+                summary = cos.process_note(note_str)
+                # Pass fixture explicit tax_amount and date if present
+                fix_tax = item.get("tax_amount")
+                fix_date = item.get("date")
+                if fix_tax is not None and summary.receipt_id:
+                    with conn:
+                        conn.execute(
+                            "UPDATE receipts SET tax_amount = ?, raw_tax_amount = ?, date = COALESCE(?, date) WHERE id = ?",
+                            (float(fix_tax), float(fix_tax), fix_date, summary.receipt_id),
+                        )
             except Exception as e:
                 logger.warning("Could not auto-seed demo receipt: %s", e)
     conn.close()

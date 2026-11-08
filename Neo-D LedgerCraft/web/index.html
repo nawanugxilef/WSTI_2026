@@ -683,11 +683,11 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5 truncate">
                 <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${color}"></span>
-                <span class="text-slate-700 truncate">${item.category}</span>
+                <span class="text-slate-700 truncate">${escapeHtml(item.category)}</span>
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <span class="font-bold text-slate-900">${fmtAUD(item.amount)}</span>
-                <span class="text-slate-400 w-7 text-right">${item.pct}%</span>
+                <span class="text-slate-400 w-7 text-right">${escapeHtml(item.pct)}%</span>
               </div>
             </div>
           `;

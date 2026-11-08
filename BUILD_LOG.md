@@ -37,11 +37,11 @@ The development roadmap completed and underway during the contest build period:
 - **Knowledge Manager & Vendor Memory:** Structured double-entry journals and automatic reuse of past vendor classifications.
 - **ADHD-Optimized Intake & Corrections:** Casual text note intake, instant 1-tap inline corrections in Telegram, and non-punitive gamification (+XP rewards without streaks or penalties).
 
-### 2.2 Security Hardening & DevOps (Nov 8, 2026)
+### 2.2 Security Hardening & Web Intake (Nov 8, 2026)
 - **Telegram Bot Authorization:** Fail-closed authorization enforcing numeric `TELEGRAM_OWNER_CHAT_ID`.
-- **Web Server Protection:** `ThreadingHTTPServer` bound to `127.0.0.1`, input validation on all mutation endpoints, timing-safe HMAC token comparison, and disposable `DEMO_MODE`.
+- **Web Server Protection & Intake:** `ThreadingHTTPServer` bound to `127.0.0.1`, input validation on mutation endpoints, timing-safe HMAC token comparison, fast zero-friction note intake (`POST /api/intake`), and isolated `DEMO_MODE` with disposable demo database (`data/demo.db`).
 - **Deployment Blueprint (`docs/deploy_aws.md`):** Complete AWS EC2 deployment guide with non-root system user, systemd service units, swapfile allocation, and billing alarms.
 
-### 2.3 Live Pitch Night Demonstration (Nov 17–20, 2026)
-- **Web Intake UI:** Zero-friction typed expense note and receipt processing directly in the web dashboard for interactive stage demos without mobile phone dependency.
+### 2.3 Pitch Night Preparation & Hardware Sync (Nov 17–20, 2026)
+- **Pitch Night Interactive Demo:** Interactive stage demo featuring live web receipt intake and ATO deduction reporting review.
 - **Physical Companion Preview:** Hardware kit card assembly guide (`docs/hardware_bom_and_kitcard_spec.md` and `docs/assembly_guide_3d.html`) and serial protocol specification for physical desk companion boxes.

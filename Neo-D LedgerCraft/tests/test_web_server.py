@@ -3,7 +3,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.interfaces.web_server import (
     DashboardHandler,
@@ -189,6 +189,57 @@ class TestWebServer(unittest.TestCase):
 
         handler.do_POST()
         handler.send_response.assert_called_with(400)
+
+    def test_finding_17_19_demo_database_initialization(self):
+        """Findings #17 & #19: init_demo_database resets and seeds fixture receipts."""
+        from src.interfaces.web_server import init_demo_database
+        demo_test_db = os.path.join(self.tmp_dir.name, "demo_test.db")
+        with patch.dict(os.environ, {"DEMO_MODE": "1", "LEDGER_DB_PATH": demo_test_db}):
+            # First init creates and seeds 12 fictional receipts
+            init_demo_database(demo_test_db, reset=True)
+            conn = get_connection(demo_test_db)
+            c = conn.execute("SELECT COUNT(*) as cnt FROM receipts").fetchone()["cnt"]
+            self.assertEqual(c, 12, "Demo database should seed exactly 12 fictional receipts")
+            conn.close()
+
+            # Second init with reset=True resets back cleanly to 12
+            init_demo_database(demo_test_db, reset=True)
+            conn = get_connection(demo_test_db)
+            c2 = conn.execute("SELECT COUNT(*) as cnt FROM receipts").fetchone()["cnt"]
+            self.assertEqual(c2, 12)
+            conn.close()
+
+    def test_finding_27b_intake_rate_limiting(self):
+        """Finding #27b: /api/intake enforces sliding window per-IP rate limit."""
+        import io
+        from src.interfaces.web_server import _INTAKE_RATE_LIMIT
+        _INTAKE_RATE_LIMIT.clear()
+
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.client_address = ("192.168.1.100", 54321)
+        handler.path = "/api/intake"
+        handler.headers = {}
+
+        # 10 successful notes
+        for i in range(10):
+            handler.rfile = io.BytesIO(json.dumps({"text": f"Coffee {i} $5.00"}).encode("utf-8"))
+            handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+            handler.send_response = MagicMock()
+            handler.send_header = MagicMock()
+            handler.end_headers = MagicMock()
+            handler.wfile = io.BytesIO()
+            handler.do_POST()
+            handler.send_response.assert_called_with(200)
+
+        # 11th note exceeds rate limit -> 429
+        handler.rfile = io.BytesIO(json.dumps({"text": "Coffee 11 $5.00"}).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+        handler.do_POST()
+        handler.send_response.assert_called_with(429)
 
 
 if __name__ == "__main__":
