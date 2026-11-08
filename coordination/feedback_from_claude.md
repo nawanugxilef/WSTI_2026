@@ -4,6 +4,39 @@ Newest entry first. Claude only writes in this file. Claude never edits code; al
 
 ---
 
+## 2026-11-08 19:54 AEDT — Review of 1c471bc (BUILD_LOG corrections, #21 to #25)
+
+**Secret / real-data scan:** clean. Docs only, tests unchanged.
+**Closed:** #21 (correct build window, submission and Pitch Night dates), #22 (repository genesis 7 Nov inside the build period; prior personal bot described as unreleased inspiration with no code reused), #23 (no false "signed" claim), #24 (audit worded as a scan), #25 (non-punitive rewards stated). This version is accurate and safe to show judges.
+
+Two small wording fixes so every line stays true:
+
+| # | Priority | Finding | Suggested fix |
+|---|---|---|---|
+| 30 | 🟡 | "disposable `DEMO_MODE`". It is not disposable yet: it seeds only an empty DB and never resets (#17). | Change the word now, or fix #17 first, then keep it. |
+| 31 | 🟡 | 2.3 dates the web intake "Nov 17–20", but it was built on 8 Nov (05bef81). | Date it by when it was built; keep 17–20 Nov for the pitch itself. |
+
+---
+
+## 2026-11-08 19:53 AEDT — Review of 05bef81 (Finding #1: web intake, typed notes)
+
+**Tests (clean python:3.12 container):** 37/37 pass.
+**Secret / real-data scan:** clean.
+**#1: partly closed.** Typed notes now work from the web page through `/api/intake` and the same Chief of Staff pipeline, behind the optional token. Photo, PDF and screenshot upload is still missing, and that is the core of the demo ("send a pile of receipts").
+
+**New findings:**
+
+| # | Priority | Finding | Suggested fix |
+|---|---|---|---|
+| 26 | 🔴 | **XSS (verified).** The intake feedback puts `summary_text` into `innerHTML`. I sent the note `<img src=x onerror=alert(1)> $5 coffee` and the summary came back with the raw `<img ... onerror=...>` tag in it, so the browser would run it. The receipt list also inserts `r.vendor`, `r.category`, `r.tax_label`, `r.flag_reason` into `innerHTML`, and `/api/correct` lets anyone set `vendor`, `category`, `tax_label` to any string. On the public demo one visitor can plant script that runs for every later visitor, including judges. | Escape every server value before it goes into HTML (one `escapeHtml()` helper used in every template), or build those nodes with `textContent`. Also strip or reject `<` and `>` in `vendor`, `category`, `tax_label` on the server. Add a test that posts a `<script>` vendor and checks the dashboard JSON or HTML output is escaped. |
+| 27 | 🟠 | `/api/intake` is open on the demo (no token in the browser) and each note can call Gemini. Anyone can run up the API bill. | Cap note length (e.g. 300 characters), add a simple per-IP rate limit (e.g. 10 notes a minute), and use a contest-only Gemini key with a spending limit (already in `.env.example`). |
+| 28 | 🟡 | `summary_text.replace(/\n/g, '<br>')`: inside the HTML file this regex matches a literal backslash-n, not a newline, so line breaks are not converted. The summary also contains Telegram markdown (`*Date*`, backticks) that shows as raw symbols on the web. | Split on real newlines and render each line as text; strip the `*` and backticks for the web view. |
+| 29 | 🟡 | The intake card shows a "+10 XP" badge. | Fine as a small celebration; keep it non-punitive (#25). |
+
+**Open:** #1 photo upload (🔴, still the most important demo feature), #17 to #29. **#26 should be fixed before the link goes public.**
+
+---
+
 ## 2026-11-08 19:50 AEDT — Review of 418d857, 7565542, c8f8b57 (#10, Task 5, Task 6)
 
 **Secret / real-data scan:** clean. The only IP addresses are `127.0.0.1` and `0.0.0.0/0` in firewall examples. No code changed, so tests are unchanged (36/36).
