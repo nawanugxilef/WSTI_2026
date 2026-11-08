@@ -210,18 +210,19 @@ class TestWebServer(unittest.TestCase):
             conn.close()
 
     def test_finding_27b_and_33_intake_rate_limiting_with_trust_proxy(self):
-        """Finding #27b, #33, #34: /api/intake rate limiting with TRUST_PROXY X-Forwarded-For."""
+        """Finding #27b, #33, #34, #37, #38, #39: /api/intake rate limiting with TRUST_PROXY last XFF entry."""
         import io
-        from src.interfaces.web_server import _INTAKE_RATE_LIMIT, _MAX_REQUESTS_PER_WINDOW
+        from src.interfaces.web_server import _INTAKE_RATE_LIMIT, _MAX_REQUESTS_PER_WINDOW, _GLOBAL_INTAKE_HISTORY
         _INTAKE_RATE_LIMIT.clear()
+        _GLOBAL_INTAKE_HISTORY.clear()
 
         handler = DashboardHandler.__new__(DashboardHandler)
         handler.client_address = ("127.0.0.1", 54321)  # Reverse proxy address
         handler.path = "/api/intake"
 
         with patch.dict(os.environ, {"TRUST_PROXY": "1"}):
-            # Client A from IP 203.0.113.1
-            handler.headers = {"X-Forwarded-For": "203.0.113.1, 10.0.0.1"}
+            # Client A: fake user-supplied header is 1.2.3.4, proxy appends real client IP 203.0.113.1
+            handler.headers = {"X-Forwarded-For": "1.2.3.4, 203.0.113.1"}
             for i in range(_MAX_REQUESTS_PER_WINDOW):
                 handler.rfile = io.BytesIO(json.dumps({"text": f"Coffee {i} $5.00"}).encode("utf-8"))
                 handler.headers["Content-Length"] = str(len(handler.rfile.getvalue()))
@@ -232,7 +233,8 @@ class TestWebServer(unittest.TestCase):
                 handler.do_POST()
                 handler.send_response.assert_called_with(200)
 
-            # 31st note for Client A -> 429
+            # 31st note for Client A from 203.0.113.1 (even with different fake prefix) -> 429
+            handler.headers["X-Forwarded-For"] = "9.9.9.9, 203.0.113.1"
             handler.rfile = io.BytesIO(json.dumps({"text": "Coffee 31 $5.00"}).encode("utf-8"))
             handler.headers["Content-Length"] = str(len(handler.rfile.getvalue()))
             handler.send_response = MagicMock()
@@ -240,7 +242,7 @@ class TestWebServer(unittest.TestCase):
             handler.do_POST()
             handler.send_response.assert_called_with(429)
 
-            # Client B from different IP 203.0.113.2 gets their own fresh budget (200 OK)
+            # Client B from different real IP 203.0.113.2 gets their own fresh budget (200 OK)
             handler.headers = {"X-Forwarded-For": "203.0.113.2"}
             handler.rfile = io.BytesIO(json.dumps({"text": "Client B Coffee $5.00"}).encode("utf-8"))
             handler.headers["Content-Length"] = str(len(handler.rfile.getvalue()))
