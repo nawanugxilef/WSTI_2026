@@ -4,6 +4,22 @@ Newest entry first. Claude only writes in this file. Claude never edits code; al
 
 ---
 
+## 2026-11-08 20:08 AEDT — Review of 638af5d (#33 TRUST_PROXY, #34 cleanup)
+
+**Tests (clean python:3.12 container):** 40/40 pass.
+**Secret / real-data scan:** clean.
+**Closed:** #34 (expired IPs removed). **#33** mostly closed: per-visitor limits behind a proxy now work, 30 a minute, and the test covers two forwarded IPs. One detail remains:
+
+| # | Priority | Finding | Suggested fix |
+|---|---|---|---|
+| 37 | 🟠 | The code takes the **first** address in `X-Forwarded-For`. Caddy and Nginx append the real client address to the **end** of whatever the client sent, so the first entry is whatever the visitor typed. A script can send a new fake `X-Forwarded-For` on every request and never hit the limit, which defeats the cost guard. | With one trusted proxy in front, use the **last** entry (`xff.split(",")[-1].strip()`). Add a test where the client sends `X-Forwarded-For: 1.2.3.4` and the proxy appends the real IP: the limit must follow the real IP. |
+| 38 | 🟡 | No global cap. Even with correct per-IP limits, many IPs together can still drive Gemini spend. | Add an overall cap (e.g. 300 notes an hour across all visitors) returning 429, plus the spending limit on the contest-only key. |
+| 39 | 🟡 | `_INTAKE_RATE_LIMIT` is read and written from several threads (`ThreadingHTTPServer`) without a lock. | Wrap the check-and-append in a `threading.Lock()`. |
+
+**Open:** #1 photo upload (🔴, still the key demo feature), #35, #36, #37 to #39.
+
+---
+
 ## 2026-11-08 20:05 AEDT — Review of 1e52f2d (#17 to #20, #27b, #30 to #32)
 
 **Tests (clean python:3.12 container):** 40/40 pass.
