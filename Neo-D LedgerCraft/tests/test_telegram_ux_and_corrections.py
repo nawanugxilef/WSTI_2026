@@ -1794,6 +1794,23 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             bot_unauth.run()
         self.assertEqual(cm.exception.code, 1)
 
+    def test_finding_12_non_numeric_owner_chat_id_fails_closed(self):
+        """
+        Finding #12 Test:
+        - When TELEGRAM_OWNER_CHAT_ID is a non-numeric string (e.g. from unedited .env.example),
+          __init__ must fail closed with SystemExit(1) instead of raising an unhandled ValueError.
+        """
+        with patch.dict(os.environ, {"TELEGRAM_OWNER_CHAT_ID": "your_chat_id_here"}):
+            with self.assertRaises(SystemExit) as cm:
+                TelegramReceiptBot(
+                    bot_token="fictional_token",
+                    owner_chat_id=None,
+                    db_path=self.db_path,
+                    finance_agent=FinanceAgent(api_key=""),
+                    load_dotenv=False,
+                )
+            self.assertEqual(cm.exception.code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

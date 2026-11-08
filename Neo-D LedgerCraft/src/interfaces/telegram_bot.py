@@ -259,7 +259,16 @@ class TelegramReceiptBot:
         self.cfg = load_config(load_dotenv=load_dotenv)
         self.bot_token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
         owner_env = os.environ.get("TELEGRAM_OWNER_CHAT_ID")
-        self.owner_chat_id = owner_chat_id or (int(owner_env) if owner_env else None)
+        if owner_chat_id is not None:
+            self.owner_chat_id = owner_chat_id
+        elif owner_env:
+            try:
+                self.owner_chat_id = int(owner_env)
+            except ValueError:
+                print("ERROR: TELEGRAM_OWNER_CHAT_ID must be a numeric ID.")
+                sys.exit(1)
+        else:
+            self.owner_chat_id = None
 
         resolved_db_path = db_path or self.cfg.get("storage", {}).get("db_path", "./data/ledger.db")
         self.db_path = resolved_db_path
