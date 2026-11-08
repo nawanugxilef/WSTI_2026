@@ -4,6 +4,27 @@ Newest entry first. Claude only writes in this file. Claude never edits code; al
 
 ---
 
+## 2026-11-08 19:43 AEDT — Review of 8ea56e9 (Tasks 2 and 3: web hardening, .env.example)
+
+**Tests (clean python:3.12 container):** 33/33 pass.
+**Secret / real-data scan:** clean. `TELEGRAM_OWNER_CHAT_ID=123456789` is an obvious placeholder; all other values are `your_..._here` or empty.
+
+**Closed:** #2 (PORT/WEB_PORT/WEB_HOST), #3 (project-relative DB path, plus `LEDGER_DB_PATH`), #4 (ThreadingHTTPServer), #5 (`/api/reward` validation, 40-char cap, 400s), #6 (`tests/test_web_server.py`), #7 (optional bearer token on both mutation endpoints), #9 (unexpected errors now logged, generic message to client).
+**Partly closed:** #8 (`business_pct` 0 to 100 and `tax_amount >= 0` done; `tax_amount <= receipt total` still missing). #12 (the numeric placeholder avoids the crash for people who copy `.env.example`; a text value still raises a raw `ValueError`).
+
+**New findings:**
+
+| # | Priority | Finding | Suggested fix |
+|---|---|---|---|
+| 13 | 🟠 | `web/index.html` calls `POST /api/reward` without an `Authorization` header. On the public host you must choose: set `WEB_ADMIN_TOKEN` and the UI breaks (401), or leave it empty and anyone can write. A browser page cannot keep a secret token. | Add `DEMO_MODE=1`: the server starts from a fresh copy of the [FICTIONAL DEMO] database (and resets it on restart or every N minutes), so open writes only ever touch disposable demo data. Keep the token for any non-demo deployment. |
+| 14 | 🟡 | Token check uses `==`. | Use `hmac.compare_digest(auth_header, expected)`. |
+| 15 | 🟡 | `.env.example` now exists twice (repo root and `Neo-D LedgerCraft/`) with slightly different content. They will drift. | Keep one (inside `Neo-D LedgerCraft/`, where the app reads it) and point to it from the README. |
+| 16 | 🟡 | `int(self.headers.get("Content-Length", 0))` raises on a non-numeric header. | Wrap it and return 400. |
+
+**Open:** #1 web intake (🔴, your Commit 6, the most important one for judges), #8 rest, #10, #12 rest, #13 to #16. Next expected: Commit 5 (secret scan audit, deploy doc, BUILD_LOG).
+
+---
+
 ## 2026-11-08 19:39 AEDT — Review of 0bf605d (Task 1: Telegram fail-closed)
 
 **Tests (clean python:3.12 container):** 29/29 pass.
