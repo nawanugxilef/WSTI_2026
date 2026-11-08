@@ -27,10 +27,10 @@ from src.storage.journal import JournalManager
 
 logger = logging.getLogger("web_server")
 
-# In-memory per-IP sliding window rate limiter for /api/intake (max 10 requests / 60 seconds)
+# In-memory per-IP sliding window rate limiter for /api/intake (30 requests / 60 seconds)
 _INTAKE_RATE_LIMIT: dict[str, list[float]] = defaultdict(list)
 _RATE_LIMIT_WINDOW = 60.0
-_MAX_REQUESTS_PER_WINDOW = 10
+_MAX_REQUESTS_PER_WINDOW = 30
 
 # Absolute path resolution relative to project root
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -526,16 +526,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/intake":
             try:
-                # Per-IP rate limiting: max 10 requests / minute
-                client_ip = self.client_address[0] if hasattr(self, "client_address") and self.client_address else "127.0.0.1"
+                # Per-IP rate limiting: when TRUST_PROXY=1, inspect X-Forwarded-For
+                if os.environ.get("TRUST_PROXY", "").strip().lower() in ("1", "true", "yes"):
+                    xff = self.headers.get("X-Forwarded-For", "").strip()
+                    client_ip = xff.split(",")[0].strip() if xff else (self.client_address[0] if hasattr(self, "client_address") and self.client_address else "127.0.0.1")
+                else:
+                    client_ip = self.client_address[0] if hasattr(self, "client_address") and self.client_address else "127.0.0.1"
+
                 now = time.time()
-                recent_calls = [t for t in _INTAKE_RATE_LIMIT[client_ip] if now - t < _RATE_LIMIT_WINDOW]
+                # Clean up expired entries to prevent memory growth (Finding #34)
+                expired_ips = [ip for ip, timestamps in _INTAKE_RATE_LIMIT.items() if not [t for t in timestamps if now - t < _RATE_LIMIT_WINDOW]]
+                for exp_ip in expired_ips:
+                    del _INTAKE_RATE_LIMIT[exp_ip]
+
+                recent_calls = [t for t in _INTAKE_RATE_LIMIT.get(client_ip, []) if now - t < _RATE_LIMIT_WINDOW]
                 if len(recent_calls) >= _MAX_REQUESTS_PER_WINDOW:
                     self.send_response(429)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Retry-After", "60")
                     self.end_headers()
-                    self.wfile.write(json.dumps({"error": "Rate limit exceeded (max 10 requests/min). Please try again shortly."}).encode("utf-8"))
+                    self.wfile.write(json.dumps({"error": f"Rate limit exceeded (max {_MAX_REQUESTS_PER_WINDOW} requests/min). Please try again shortly."}).encode("utf-8"))
                     return
                 recent_calls.append(now)
                 _INTAKE_RATE_LIMIT[client_ip] = recent_calls
