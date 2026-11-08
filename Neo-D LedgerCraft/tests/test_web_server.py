@@ -141,6 +141,29 @@ class TestWebServer(unittest.TestCase):
         handler.do_POST()
         handler.send_response.assert_called_with(400)
 
+    def test_finding_1_web_intake_note(self):
+        """Finding #1: Fast intake endpoint /api/intake processes expense note."""
+        import io
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.path = "/api/intake"
+        handler.rfile = io.BytesIO(json.dumps({"text": "Harbour Cafe $6.50 coffee"}).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+
+        handler.do_POST()
+        handler.send_response.assert_called_with(200)
+
+        # Empty note text -> 400
+        handler.rfile = io.BytesIO(json.dumps({"text": "   "}).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.wfile = io.BytesIO()
+        handler.do_POST()
+        handler.send_response.assert_called_with(400)
+
 
 if __name__ == "__main__":
     unittest.main()

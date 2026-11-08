@@ -356,7 +356,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         # Protect mutation endpoints with optional admin token
-        if path in ("/api/reward", "/api/correct"):
+        if path in ("/api/reward", "/api/correct", "/api/intake"):
             if not self._check_admin_auth():
                 self.send_response(401)
                 self.send_header("Content-Type", "application/json")
@@ -503,6 +503,48 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 logger.error("Error in /api/reward: %s", e)
                 err_body = json.dumps({"error": "Failed to update companion reward"}).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(err_body)
+                return
+
+        if path == "/api/intake":
+            try:
+                note_text = str(data.get("text", "")).strip()
+                if not note_text:
+                    raise ValueError("Note text cannot be empty")
+
+                conn = get_connection(db_file)
+                init_db(conn)
+                seed_accounts(conn)
+                cos = ChiefOfStaff(main_conn=conn)
+                summary = cos.process_note(note_text)
+                conn.close()
+
+                payload = build_dashboard_payload(db_file)
+                payload["intake_summary"] = {
+                    "receipt_id": summary.receipt_id,
+                    "summary_text": summary.summary_text,
+                    "status": summary.status,
+                    "gdrive_status": summary.gdrive_status,
+                }
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            except ValueError as e:
+                err_body = json.dumps({"error": str(e)}).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(err_body)
+                return
+            except Exception as e:
+                logger.error("Error in /api/intake: %s", e)
+                err_body = json.dumps({"error": "Failed to process expense note"}).encode("utf-8")
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
