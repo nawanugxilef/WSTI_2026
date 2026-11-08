@@ -1,3 +1,37 @@
+## QA 2026-11-09 — commit f810c7b
+
+**Reviewed:** `f810c7b` fix(web,ingest): durable local storage, strict upload validation & magic bytes, pre-read body limit, and UI retry state
+
+**Tests:** 47/47 PASS (python:3.12-slim, `python -m unittest discover tests -v`)
+
+**Secret scan:** CLEAN — no API keys, tokens, or real personal data leaked. "Bunnings" appears in one test fixture as a synthetic note string (`"Bunnings nozzles for 3D printer dog walking"`) — this is test-only invented text, not real user data. No action needed.
+
+**Changes reviewed:**
+- `chief_of_staff.py`: durable local fallback when Drive is not configured — copies receipt to local storage, only deletes staging file after verified persistence, reports retention status truthfully.
+- `finance_agent.py`: accepts `user_note` and passes it to multimodal prompt; persists in `receipts.notes`.
+- `web_server.py`: new `validate_uploaded_file()` with strict base64 decoding, 0-byte guard, extension allowlist, magic byte checks (JPEG/PNG/PDF/WebP), filename sanitisation. Pre-read 10 MB body cap (HTTP 413 before memory allocation). HTTP 422 when OCR extraction unavailable (was wrongly returning 200).
+- `index.html`: sequence token to discard stale FileReader callbacks, Clear aborts pending reads, inputs preserved on 422/error for retry.
+- `tests/test_web_server.py`: +5 regression tests covering durable retention, file validation bypass, 413 pre-read limit, 422 truthful status, user_note passthrough.
+
+**Findings update:**
+
+| # | Status | Note |
+|---|--------|------|
+| #1 Web file upload | ✅ CLOSED | Durable local fallback implemented this commit |
+| #2 File validation bypass | ✅ CLOSED | Magic bytes + strict base64 + 0-byte check added |
+| #3 Pre-read body limit | ✅ CLOSED | HTTP 413 at 10 MB before memory allocation |
+| #35 Demo reset on restart | 🟡 OPEN | Not addressed — demo data still volatile |
+| #36 Real chain names in demo | 🟡 OPEN | Not addressed — Bunnings in test fixture (synthetic, not demo data) |
+
+**No questions in coordination/ addressed to Claude.**
+
+**Next priorities for Antigravity:**
+1. 🟡 #35 — demo receipts reset on server restart; persist demo pile to file or seed on startup.
+2. 🟡 #36 — replace any real chain names in demo receipts with fictional ones.
+3. Build roadmap items: summary/myTax screen, CSV export, landing page, demo pile (12–15 fictional receipts), public hosting, 90-s pitch video. Freeze 15 Nov, submit 17 Nov 2:00 PM.
+
+---
+
 ## 2026-11-08 — Review of e48ffc8 (#1 closed)
 
 **Tests (clean python:3.12 container):** 42/42 pass.
