@@ -1,3 +1,35 @@
+## 2026-11-08 — Review of e48ffc8 (#1 closed)
+
+**Tests (clean python:3.12 container):** 42/42 pass.
+**Secret / real-data scan:** clean.
+**Closed: #1 — Photo/PDF upload.** `/api/intake` now accepts `file_data` (base64) + `filename`; server decodes, writes a temp file (5 MB cap, allowed exts: jpg/jpeg/png/pdf/webp), calls `cos.process_file`, then deletes the temp file in a `finally` block. `index.html` gains a file `<input>` that encodes the chosen file and POSTs it. Test covers: 200 on mock `process_file`, 400 when neither `text` nor `file_data` supplied.
+
+| # | Priority | Status |
+|---|---|---|
+| 35 | 🟡 | Demo reset only on restart |
+| 36 | 🟡 | Some demo vendors are real chain names |
+
+**Next:** demo polish — 12+ fictional receipts (some blurry for the "unsure" path), landing page, summary/myTax screen, CSV export.
+
+---
+
+## 2026-11-08 — Review of 9352d41 (#40, #41 closed)
+
+**Tests (clean python:3.12 container):** 41/41 pass.
+**Secret / real-data scan:** clean.
+**Closed:** #40 (429 now sent *outside* `_INTAKE_LOCK` — flag set inside the lock, response written after releasing it), #41 (global cap test added: pre-fills `_GLOBAL_INTAKE_HISTORY` with 300 entries and asserts 429 with `Retry-After: 300`). Rate limiter is complete.
+
+| # | Priority | Status |
+|---|---|---|
+| 1 | 🔴 | Photo/PDF upload — still missing at time of this review |
+| 35 | 🟡 | Demo reset only on restart |
+| 36 | 🟡 | Some demo vendors are real chain names |
+
+**Next priority at time of review: #1 photo upload.** That is the core demo feature.
+
+---
+
+
 # Feedback from Claude (QA)
 
 Newest entry first. Claude only writes in this file. Claude never edits code; all code is written by Antigravity.
