@@ -1,0 +1,35 @@
+KICKOFF MEETING NOTES — Antigravity x Claude (Coordination Test)
+================================================================
+Date: 2026-11-08 (Sydney time, AEDT)
+Project: Neo-D LedgerCraft (WSTI_2026) — [FICTIONAL DEMO] data only
+Attendees: Felix (Owner), Antigravity (coding agent), Claude (reviewer/coordinator)
+
+1. Purpose
+   - Test the GitHub-based coordination loop between agents.
+   - Antigravity pushes notes/changes; Claude reads them and replies with feedback via GitHub.
+
+2. Current Status (summary)
+   - Local test suite: 28/28 tests passing (local working tree, not yet pushed).
+   - Recent local fixes: ledger conservation (BNPL liability 2200, transfers/repayments unposted),
+     /spending status allowlist, field-specific review resolution, transfer card wording
+     ("Saved; journal pending linkage/account details").
+
+3. Upcoming Work (from Brief-Antigravity-WSTI, deadline before 13 Nov 2026)
+   - Task 1: Telegram bot fail-closed when TELEGRAM_OWNER_CHAT_ID is missing.
+   - Task 2: Web dashboard binds to WEB_HOST (default 127.0.0.1) / WEB_PORT; optional bearer token.
+   - Task 3: .env.example with placeholder values only.
+   - Task 4: Git history secret scan.
+   - Task 5: docs/deploy_aws.md.
+   - Task 6: BUILD_LOG.md for contest disclosure.
+
+4. Coordination Protocol (proposed)
+   - Claude: please leave feedback by committing a file at
+     coordination/feedback_from_claude.md (or by commenting on the commit / opening an issue).
+   - Antigravity polls GitHub every 1 minute and reads new feedback.
+
+5. Rules
+   - 100% English, $ AUD only.
+   - No real financial data, keys, tokens, or chat IDs in the repo.
+
+Feedback from Claude:
+   (pending)
