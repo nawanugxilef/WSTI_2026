@@ -164,6 +164,32 @@ class TestWebServer(unittest.TestCase):
         handler.do_POST()
         handler.send_response.assert_called_with(400)
 
+        # Length > 300 characters -> 400
+        handler.rfile = io.BytesIO(json.dumps({"text": "A" * 301}).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.wfile = io.BytesIO()
+        handler.do_POST()
+        handler.send_response.assert_called_with(400)
+
+    def test_finding_26_xss_protection_in_correct_endpoint(self):
+        """Finding #26: /api/correct rejects HTML/script tags in text fields."""
+        import io
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.path = "/api/correct"
+        handler.rfile = io.BytesIO(json.dumps({
+            "receipt_id": 1,
+            "vendor": "<script>alert(1)</script>"
+        }).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+
+        handler.do_POST()
+        handler.send_response.assert_called_with(400)
+
 
 if __name__ == "__main__":
     unittest.main()

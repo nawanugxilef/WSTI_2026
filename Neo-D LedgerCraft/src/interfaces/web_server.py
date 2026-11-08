@@ -394,6 +394,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if rec_id <= 0:
                     raise ValueError("Missing or invalid receipt_id")
 
+                # Sanitize text fields against HTML/script injection
+                for field in ("vendor", "category", "tax_label", "claim_stream", "business_activity"):
+                    val = data.get(field)
+                    if isinstance(val, str) and ("<" in val or ">" in val):
+                        raise ValueError(f"{field} contains invalid characters ('<' or '>')")
+
                 pct_raw = data.get("business_pct")
                 pct_val: float | None = None
                 if pct_raw is not None:
@@ -514,6 +520,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 note_text = str(data.get("text", "")).strip()
                 if not note_text:
                     raise ValueError("Note text cannot be empty")
+                if len(note_text) > 300:
+                    raise ValueError("Note text exceeds maximum length of 300 characters")
 
                 conn = get_connection(db_file)
                 init_db(conn)
