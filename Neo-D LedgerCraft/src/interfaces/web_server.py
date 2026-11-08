@@ -11,8 +11,9 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import os
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from src.agents.chief_of_staff import ChiefOfStaff
@@ -21,9 +22,21 @@ from src.storage.categories import ATO_SUGGESTION_DISCLAIMER
 from src.storage.db import get_connection, init_db
 from src.storage.journal import JournalManager
 
+logger = logging.getLogger("web_server")
 
-def build_dashboard_payload(db_path: str = "./data/ledger.db") -> dict:
-    conn = get_connection(db_path)
+# Absolute path resolution relative to project root
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+DEFAULT_DB_PATH = os.path.join(PROJECT_ROOT, "data", "ledger.db")
+
+
+def get_default_db_path() -> str:
+    """Returns the absolute path to the SQLite ledger database."""
+    return os.environ.get("LEDGER_DB_PATH", DEFAULT_DB_PATH)
+
+
+def build_dashboard_payload(db_path: str | None = None) -> dict:
+    target_db = db_path or get_default_db_path()
+    conn = get_connection(target_db)
     init_db(conn)
     seed_accounts(conn)
 
@@ -328,21 +341,62 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+    def _check_admin_auth(self) -> bool:
+        """Checks Authorization: Bearer <WEB_ADMIN_TOKEN> if WEB_ADMIN_TOKEN is configured."""
+        token = os.environ.get("WEB_ADMIN_TOKEN", "").strip()
+        if not token:
+            return True
+        auth_header = self.headers.get("Authorization", "").strip()
+        expected = f"Bearer {token}"
+        return auth_header == expected
+
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        # Protect mutation endpoints with optional admin token
+        if path in ("/api/reward", "/api/correct"):
+            if not self._check_admin_auth():
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Unauthorized"}).encode("utf-8"))
+                return
 
         content_len = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
         try:
             data = json.loads(raw_body)
         except Exception:
-            data = {}
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Invalid JSON body"}).encode("utf-8"))
+            return
+
+        db_file = get_default_db_path()
 
         if path == "/api/correct":
             try:
-                rec_id = int(data["receipt_id"])
-                conn = get_connection("./data/ledger.db")
+                rec_id = int(data.get("receipt_id", 0))
+                if rec_id <= 0:
+                    raise ValueError("Missing or invalid receipt_id")
+
+                pct_raw = data.get("business_pct")
+                pct_val: float | None = None
+                if pct_raw is not None:
+                    pct_val = float(pct_raw)
+                    if not (0.0 <= pct_val <= 100.0):
+                        raise ValueError("business_pct must be between 0.0 and 100.0")
+
+                tax_raw = data.get("tax_amount")
+                tax_val: float | None = None
+                if tax_raw is not None:
+                    tax_val = float(tax_raw)
+                    if tax_val < 0.0:
+                        raise ValueError("tax_amount cannot be negative")
+
+                conn = get_connection(db_file)
                 init_db(conn)
                 seed_accounts(conn)
                 cos = ChiefOfStaff(main_conn=conn)
@@ -351,21 +405,29 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     category=data.get("category"),
                     claim_stream=data.get("claim_stream"),
                     business_activity=data.get("business_activity"),
-                    business_pct=float(data["business_pct"]) if data.get("business_pct") is not None else None,
+                    business_pct=pct_val,
                     tax_label=data.get("tax_label"),
                     vendor=data.get("vendor"),
-                    tax_amount=float(data["tax_amount"]) if data.get("tax_amount") is not None else None,
+                    tax_amount=tax_val,
                 )
                 conn.close()
-                payload = build_dashboard_payload()
+                payload = build_dashboard_payload(db_file)
                 body = json.dumps(payload).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(body)
                 return
-            except Exception as e:
+            except ValueError as e:
                 err_body = json.dumps({"error": str(e)}).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(err_body)
+                return
+            except Exception as e:
+                logger.error("Error in /api/correct: %s", e)
+                err_body = json.dumps({"error": "Failed to update receipt correction"}).encode("utf-8")
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -373,38 +435,58 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
 
         if path == "/api/reward":
-            reward_name = str(data.get("reward_name", "")).strip()
-            target_xp = data.get("reward_target_xp")
+            try:
+                reward_name = str(data.get("reward_name", "")).strip()[:40]
+                target_xp_raw = data.get("reward_target_xp")
+                target_xp: int | None = None
+                if target_xp_raw is not None:
+                    try:
+                        target_xp = max(10, int(target_xp_raw))
+                    except (ValueError, TypeError):
+                        raise ValueError("reward_target_xp must be a valid integer")
 
-            conn = get_connection("./data/ledger.db")
-            init_db(conn)
-            with conn:
-                if reward_name and target_xp is not None:
-                    t_val = max(10, int(target_xp))
-                    conn.execute(
-                        "UPDATE companion_state SET reward_name = ?, reward_target_xp = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-                        (reward_name, t_val),
-                    )
-                elif reward_name:
-                    conn.execute(
-                        "UPDATE companion_state SET reward_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-                        (reward_name,),
-                    )
-                elif target_xp is not None:
-                    t_val = max(10, int(target_xp))
-                    conn.execute(
-                        "UPDATE companion_state SET reward_target_xp = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-                        (t_val,),
-                    )
-            conn.close()
+                conn = get_connection(db_file)
+                init_db(conn)
+                with conn:
+                    if reward_name and target_xp is not None:
+                        conn.execute(
+                            "UPDATE companion_state SET reward_name = ?, reward_target_xp = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+                            (reward_name, target_xp),
+                        )
+                    elif reward_name:
+                        conn.execute(
+                            "UPDATE companion_state SET reward_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+                            (reward_name,),
+                        )
+                    elif target_xp is not None:
+                        conn.execute(
+                            "UPDATE companion_state SET reward_target_xp = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+                            (target_xp,),
+                        )
+                conn.close()
 
-            payload = build_dashboard_payload()
-            body = json.dumps(payload).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(body)
-            return
+                payload = build_dashboard_payload(db_file)
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            except ValueError as e:
+                err_body = json.dumps({"error": str(e)}).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(err_body)
+                return
+            except Exception as e:
+                logger.error("Error in /api/reward: %s", e)
+                err_body = json.dumps({"error": "Failed to update companion reward"}).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(err_body)
+                return
 
         self.send_response(404)
         self.end_headers()
@@ -423,12 +505,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
 
-def run_server(port: int = 8080):
+def run_server(port: int | None = None, host: str | None = None):
     load_config()
-    server = HTTPServer(("0.0.0.0", port), DashboardHandler)
-    print(f"🌐 Neo-D LedgerCraft Live Web Dashboard running on http://localhost:{port}/web/")
+    target_host = host or os.environ.get("WEB_HOST", "127.0.0.1")
+    raw_port = port or os.environ.get("PORT") or os.environ.get("WEB_PORT", 8080)
+    try:
+        target_port = int(raw_port)
+    except (ValueError, TypeError):
+        target_port = 8080
+
+    server = ThreadingHTTPServer((target_host, target_port), DashboardHandler)
+    print(f"🌐 Neo-D LedgerCraft Live Web Dashboard running on http://{target_host}:{target_port}/web/")
     server.serve_forever()
 
 
 if __name__ == "__main__":
-    run_server(8080)
+    run_server()
