@@ -40,6 +40,64 @@ _MAX_REQUESTS_PER_WINDOW = 30
 _GLOBAL_WINDOW = 3600.0
 _MAX_GLOBAL_REQUESTS = 300
 
+# File upload security constraints & allowed extensions
+MAX_REQUEST_BODY_SIZE = 10 * 1024 * 1024  # 10 MB pre-read body limit
+MAX_DECODED_FILE_SIZE = 5 * 1024 * 1024   # 5 MB decoded file limit
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf", ".webp"}
+
+
+def validate_uploaded_file(file_b64: str, filename: str) -> tuple[bytes, str]:
+    """
+    Validates uploaded file payload:
+    - Decodes base64 strictly (validate=True).
+    - Enforces non-empty decoded bytes and maximum size limit.
+    - Validates extension against allowlist (.jpg, .jpeg, .png, .pdf, .webp).
+    - Verifies file signatures / magic bytes.
+    - Sanitizes filename to prevent path traversal or unsafe characters.
+    Returns (raw_bytes, safe_filename).
+    """
+    if not isinstance(file_b64, str) or not file_b64.strip():
+        raise ValueError("Uploaded file data cannot be empty")
+
+    try:
+        raw_bytes = base64.b64decode(file_b64.strip(), validate=True)
+    except Exception:
+        raise ValueError("Invalid base64 encoding for file_data")
+
+    if len(raw_bytes) == 0:
+        raise ValueError("Uploaded file cannot be empty (0 bytes)")
+
+    if len(raw_bytes) > MAX_DECODED_FILE_SIZE:
+        raise ValueError("File exceeds maximum size of 5 MB")
+
+    clean_name = os.path.basename(str(filename or "receipt.jpg").strip())
+    safe_name = "".join(c for c in clean_name if c.isalnum() or c in "._- ")
+    if not safe_name:
+        safe_name = "receipt.jpg"
+
+    ext = os.path.splitext(safe_name)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise ValueError(
+            f"Unsupported file type: '{ext}'. Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
+
+    # Magic byte signature verification
+    if ext in (".jpg", ".jpeg"):
+        if not raw_bytes.startswith(b"\xff\xd8\xff"):
+            raise ValueError("File content does not match JPEG signature")
+    elif ext == ".png":
+        if not raw_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("File content does not match PNG signature")
+    elif ext == ".pdf":
+        if not raw_bytes.startswith(b"%PDF-"):
+            raise ValueError("File content does not match PDF signature")
+    elif ext == ".webp":
+        if len(raw_bytes) < 12 or not (raw_bytes.startswith(b"RIFF") and raw_bytes[8:12] == b"WEBP"):
+            raise ValueError("File content does not match WebP signature")
+
+    return raw_bytes, safe_name
+
+
 # Absolute path resolution relative to project root
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 DEFAULT_DB_PATH = os.path.join(PROJECT_ROOT, "data", "ledger.db")
@@ -393,6 +451,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Invalid Content-Length header"}).encode("utf-8"))
             return
 
+        # Pre-read request body size limit: reject oversized payloads before memory allocation
+        if content_len > MAX_REQUEST_BODY_SIZE:
+            self.send_response(413)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Request entity too large (max 10 MB)"}).encode("utf-8"))
+            return
+
         raw_body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
         try:
             data = json.loads(raw_body)
@@ -590,37 +656,65 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 seed_accounts(conn)
                 cos = ChiefOfStaff(main_conn=conn)
 
+                summary = None
                 if file_b64:
-                    try:
-                        raw_bytes = base64.b64decode(file_b64)
-                    except Exception:
-                        raise ValueError("Invalid base64 encoding for file_data")
-                    if len(raw_bytes) > 5 * 1024 * 1024:
-                        raise ValueError("File exceeds maximum size of 5 MB")
-
-                    ext = os.path.splitext(filename)[1].lower()
-                    if ext not in (".jpg", ".jpeg", ".png", ".pdf", ".webp"):
-                        ext = ".jpg"
+                    raw_bytes, safe_filename = validate_uploaded_file(file_b64, filename)
+                    ext = os.path.splitext(safe_filename)[1].lower()
 
                     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_f:
                         tmp_f.write(raw_bytes)
                         tmp_path = tmp_f.name
 
                     try:
-                        summary = cos.process_file(tmp_path)
+                        summary = cos.process_file(
+                            tmp_path,
+                            user_note=note_text if note_text else None,
+                        )
                     finally:
-                        if os.path.exists(tmp_path):
-                            os.remove(tmp_path)
+                        # Clean up temporary staging file only if it is not the retained durable storage path
+                        if summary and summary.local_path and os.path.abspath(tmp_path) == os.path.abspath(summary.local_path):
+                            pass
+                        elif os.path.exists(tmp_path):
+                            try:
+                                os.remove(tmp_path)
+                            except OSError:
+                                pass
                 else:
                     summary = cos.process_note(note_text)
                 conn.close()
 
+                # Safely normalize summary fields to JSON-serializable primitives
+                rec_id = int(summary.receipt_id) if hasattr(summary, "receipt_id") and isinstance(summary.receipt_id, (int, float)) else 0
+                sum_text = str(getattr(summary, "summary_text", "") or "")
+                sum_status = str(getattr(summary, "status", "recorded") or "recorded")
+                sum_gdrive = str(getattr(summary, "gdrive_status", "not_applicable") or "not_applicable")
+                raw_local = getattr(summary, "local_path", None)
+                sum_local = str(raw_local) if isinstance(raw_local, str) and raw_local.strip() else None
+
+                # Truthful status: return HTTP 422 if OCR extraction failed/unavailable
+                if sum_status == "extraction_unavailable" or rec_id == 0:
+                    err_payload = {
+                        "error": "Extraction unavailable",
+                        "status": sum_status,
+                        "summary_text": sum_text,
+                        "receipt_id": rec_id,
+                        "local_path": sum_local,
+                        "gdrive_status": sum_gdrive,
+                    }
+                    body = json.dumps(err_payload).encode("utf-8")
+                    self.send_response(422)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+
                 payload = build_dashboard_payload(db_file)
                 payload["intake_summary"] = {
-                    "receipt_id": summary.receipt_id,
-                    "summary_text": summary.summary_text,
-                    "status": summary.status,
-                    "gdrive_status": summary.gdrive_status,
+                    "receipt_id": rec_id,
+                    "summary_text": sum_text,
+                    "status": sum_status,
+                    "gdrive_status": sum_gdrive,
+                    "local_path": sum_local,
                 }
                 body = json.dumps(payload).encode("utf-8")
                 self.send_response(200)

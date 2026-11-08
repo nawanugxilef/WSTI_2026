@@ -16,6 +16,10 @@ from src.interfaces.cli import seed_accounts
 
 class TestWebServer(unittest.TestCase):
     def setUp(self):
+        from src.interfaces.web_server import _INTAKE_RATE_LIMIT, _GLOBAL_INTAKE_HISTORY
+        _INTAKE_RATE_LIMIT.clear()
+        _GLOBAL_INTAKE_HISTORY.clear()
+
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.tmp_dir.name, "test_ledger.db")
         os.environ["LEDGER_DB_PATH"] = self.db_path
@@ -293,7 +297,7 @@ class TestWebServer(unittest.TestCase):
             )
             MockCOS.return_value = mock_inst
 
-            sample_b64 = base64.b64encode(b"dummy image bytes").decode("utf-8")
+            sample_b64 = base64.b64encode(b"\xff\xd8\xff\xe0dummy jpeg bytes").decode("utf-8")
             handler.rfile = io.BytesIO(json.dumps({
                 "file_data": sample_b64,
                 "filename": "receipt_test.jpg"
@@ -315,6 +319,189 @@ class TestWebServer(unittest.TestCase):
         handler.wfile = io.BytesIO()
         handler.do_POST()
         handler.send_response.assert_called_with(400)
+
+    def test_finding_file_upload_validation_and_zero_byte_bypass(self):
+        """
+        Finding #2: file_data=!!!! and filename=x.exe must be rejected with 400.
+        Strict base64 decoding, 0-byte check, allowed extensions, and magic byte verification.
+        """
+        import base64, io
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.path = "/api/intake"
+
+        # 1. Invalid base64 "!!!!" with executable extension "x.exe" -> 400
+        handler.rfile = io.BytesIO(json.dumps({
+            "file_data": "!!!!",
+            "filename": "x.exe"
+        }).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+        handler.do_POST()
+        handler.send_response.assert_called_with(400)
+
+        # 2. Valid base64 but 0 bytes -> 400
+        empty_b64 = base64.b64encode(b"").decode("utf-8")
+        handler.rfile = io.BytesIO(json.dumps({
+            "file_data": empty_b64,
+            "filename": "receipt.jpg"
+        }).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.wfile = io.BytesIO()
+        handler.do_POST()
+        handler.send_response.assert_called_with(400)
+
+        # 3. Disallowed extension (.exe) with valid bytes -> 400
+        valid_bytes = base64.b64encode(b"\xff\xd8\xff\xe0fake_jpeg").decode("utf-8")
+        handler.rfile = io.BytesIO(json.dumps({
+            "file_data": valid_bytes,
+            "filename": "invoice.exe"
+        }).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.wfile = io.BytesIO()
+        handler.do_POST()
+        handler.send_response.assert_called_with(400)
+
+        # 4. Extension is .jpg but signature mismatch (plain text bytes) -> 400
+        text_b64 = base64.b64encode(b"This is just plain text, not a JPEG").decode("utf-8")
+        handler.rfile = io.BytesIO(json.dumps({
+            "file_data": text_b64,
+            "filename": "receipt.jpg"
+        }).encode("utf-8"))
+        handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+        handler.send_response = MagicMock()
+        handler.wfile = io.BytesIO()
+        handler.do_POST()
+        handler.send_response.assert_called_with(400)
+
+    def test_finding_request_body_pre_read_size_bound_413(self):
+        """Finding #3: Pre-read size limit rejects requests exceeding 10 MB with HTTP 413."""
+        import io
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.path = "/api/intake"
+        # Content-Length exceeds 10 MB limit (10 * 1024 * 1024 + 100 bytes)
+        handler.headers = {"Content-Length": str(10 * 1024 * 1024 + 100)}
+        handler.rfile = MagicMock()  # If read is called, it would fail or consume memory
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+
+        handler.do_POST()
+        handler.send_response.assert_called_with(413)
+        handler.rfile.read.assert_not_called()  # Verifies pre-read check prevented allocation
+
+    def test_finding_durable_local_retention_when_drive_unconfigured(self):
+        """
+        Finding #1: When Google Drive upload fails or is unconfigured,
+        the receipt file is safely copied into durable authorized local storage (data/receipts/YYYY/MM/...)
+        and persisted local_path points to an existing file on disk.
+        """
+        from src.agents.chief_of_staff import ChiefOfStaff
+        conn = get_connection(self.db_path)
+        init_db(conn)
+        seed_accounts(conn)
+        cos = ChiefOfStaff(main_conn=conn)
+
+        # Create temporary mock receipt file
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_f:
+            tmp_f.write(b"\xff\xd8\xff\xe0test_receipt_bytes")
+            tmp_path = tmp_f.name
+
+        try:
+            # Multi-modal OCR offline will raise ExtractionUnavailableError,
+            # which must still persist the file into durable local storage
+            summary = cos.process_file(tmp_path)
+            self.assertEqual(summary.status, "extraction_unavailable")
+            self.assertIsNotNone(summary.local_path)
+            self.assertTrue(os.path.exists(summary.local_path), f"Persisted local_path must exist: {summary.local_path}")
+            self.assertIn("receipts", summary.local_path)
+            self.assertIn("retained in local storage", summary.summary_text)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            conn.close()
+
+    def test_finding_accompanying_note_preserved_and_passed_with_file(self):
+        """
+        UI Issue A: Accompanying text for image is passed to parse_document and persisted in receipts.notes.
+        """
+        import base64, io
+        from unittest.mock import patch
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.path = "/api/intake"
+
+        with patch("src.interfaces.web_server.ChiefOfStaff") as MockCOS:
+            mock_inst = MagicMock()
+            mock_inst.process_file.return_value = MagicMock(
+                receipt_id=101,
+                summary_text="Processed with note",
+                status="recorded",
+                gdrive_status="uploaded",
+                local_path=None,
+            )
+            MockCOS.return_value = mock_inst
+
+            valid_jpg = base64.b64encode(b"\xff\xd8\xff\xe0image_data").decode("utf-8")
+            handler.rfile = io.BytesIO(json.dumps({
+                "file_data": valid_jpg,
+                "filename": "tools.jpg",
+                "text": "Bunnings nozzles for 3D printer dog walking"
+            }).encode("utf-8"))
+            handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+            handler.send_response = MagicMock()
+            handler.send_header = MagicMock()
+            handler.end_headers = MagicMock()
+            handler.wfile = io.BytesIO()
+
+            handler.do_POST()
+            handler.send_response.assert_called_with(200)
+            mock_inst.process_file.assert_called_once()
+            _, kwargs = mock_inst.process_file.call_args
+            self.assertEqual(kwargs.get("user_note"), "Bunnings nozzles for 3D printer dog walking")
+
+    def test_finding_extraction_unavailable_returns_422(self):
+        """
+        UI Issue C / Truthful Status: When OCR extraction is unavailable,
+        /api/intake returns HTTP 422 (Unprocessable Entity) instead of HTTP 200.
+        """
+        import base64, io
+        from unittest.mock import patch
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.path = "/api/intake"
+
+        with patch("src.interfaces.web_server.ChiefOfStaff") as MockCOS:
+            mock_inst = MagicMock()
+            mock_inst.process_file.return_value = MagicMock(
+                receipt_id=0,
+                summary_text="⚠️ Receipt OCR Extraction Unavailable",
+                status="extraction_unavailable",
+                gdrive_status="not_configured",
+                local_path="/path/to/retained.jpg",
+            )
+            MockCOS.return_value = mock_inst
+
+            valid_jpg = base64.b64encode(b"\xff\xd8\xff\xe0raw_image").decode("utf-8")
+            handler.rfile = io.BytesIO(json.dumps({
+                "file_data": valid_jpg,
+                "filename": "blurry_receipt.jpg"
+            }).encode("utf-8"))
+            handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
+            handler.send_response = MagicMock()
+            handler.send_header = MagicMock()
+            handler.end_headers = MagicMock()
+            handler.wfile = io.BytesIO()
+
+            handler.do_POST()
+            handler.send_response.assert_called_with(422)
+            resp = json.loads(handler.wfile.getvalue().decode("utf-8"))
+            self.assertEqual(resp.get("status"), "extraction_unavailable")
+            self.assertEqual(resp.get("receipt_id"), 0)
+            self.assertIn("local_path", resp)
 
 
 if __name__ == "__main__":

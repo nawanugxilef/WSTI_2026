@@ -60,6 +60,7 @@ class IntakeSummary:
     uncertainty_note: Optional[str] = None
     gdrive_status: str = "not_applicable"
     gdrive_error: Optional[str] = None
+    local_path: Optional[str] = None
 
 
 class ChiefOfStaff:
@@ -238,12 +239,19 @@ class ChiefOfStaff:
         if is_transfer_or_repayment:
             lines.append("• ℹ️ *Journal Status*: Saved; journal pending linkage/account details (unposted to trial balance)")
 
-        # Honest Google Drive status reporting
+        if rec.get("notes"):
+            lines.append(f"• 📝 *Accompanying Note*: `{rec['notes']}`")
+
+        # Honest Google Drive and Local retention status reporting
         if gdrive_status == "uploaded" and gdrive_id:
             lines.append(f"• ☁️ *Google Drive*: Backed up (`ID: {gdrive_id}`)")
         elif gdrive_status in ("failed", "not_configured"):
             reason = gdrive_error or self.gdrive.last_error or "Google Drive upload unavailable"
-            lines.append(f"• ⚠️ *Google Drive Backup Failed*: `{reason}` — stored locally only")
+            local_fname = os.path.basename(rec.get("local_path") or "")
+            if local_fname:
+                lines.append(f"• ⚠️ *Google Drive Backup Failed*: `{reason}` — retained in local storage (`{local_fname}`)")
+            else:
+                lines.append(f"• ⚠️ *Google Drive Backup Failed*: `{reason}` — stored locally only")
         else:
             lines.append("• 📝 *Storage*: Saved in local SQLite ledger (typed note — no file attachment)")
 
@@ -274,6 +282,7 @@ class ChiefOfStaff:
             gdrive_file_id=gdrive_id,
             gdrive_status=gdrive_status,
             gdrive_error=gdrive_error,
+            local_path=rec.get("local_path"),
             summary_text="\n".join(lines),
         )
 
@@ -315,11 +324,13 @@ class ChiefOfStaff:
             gdrive_error=None,
         )
 
-    def process_file(self, file_path: str) -> IntakeSummary:
+    def process_file(self, file_path: str, user_note: Optional[str] = None) -> IntakeSummary:
         """
         Processes an image or PDF receipt document.
         Never invents amounts if multimodal OCR is offline or fails; instead reports
         extraction unavailable and requests manual details without posting to the books.
+        Retains original receipt safely in durable authorized local storage when Google Drive
+        upload fails or is unavailable; cleans up temporary staging files only after verified persistence.
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -343,6 +354,27 @@ class ChiefOfStaff:
             gdrive_status = "failed"
             gdrive_error = str(e)
 
+        # Durable local storage retention when Drive upload fails or is unavailable
+        today = datetime.date.today()
+        persisted_local_path = file_path
+        if gdrive_status != "uploaded" or not gdrive_id:
+            try:
+                cur = self.main_conn.execute("PRAGMA database_list")
+                row = cur.fetchone()
+                db_loc = row[2] if row and row[2] else "./data/ledger.db"
+            except Exception:
+                db_loc = "./data/ledger.db"
+            base_dir = os.path.dirname(os.path.abspath(db_loc))
+            durable_dir = os.path.join(base_dir, "receipts", f"{today.year}", f"{today.month:02d}")
+            os.makedirs(durable_dir, exist_ok=True)
+
+            clean_base = os.path.basename(file_path)
+            durable_path = os.path.join(durable_dir, f"{file_hash[:16]}_{clean_base}")
+            if os.path.abspath(file_path) != os.path.abspath(durable_path):
+                import shutil
+                shutil.copy2(file_path, durable_path)
+            persisted_local_path = durable_path
+
         cursor = self.main_conn.execute("SELECT id, file_hash, vendor, total_amount, date FROM receipts")
         existing_receipts = [dict(r) for r in cursor.fetchall()]
 
@@ -355,7 +387,7 @@ class ChiefOfStaff:
 
         try:
             while retry_count <= self.qa.max_retries:
-                parsed = self.finance.parse_document(file_path, qa_notes=qa_notes, vendor_examples=examples)
+                parsed = self.finance.parse_document(file_path, user_note=user_note, qa_notes=qa_notes, vendor_examples=examples)
                 parsed = self._apply_vendor_memory_if_known(parsed)
                 parsed_dict = parsed.model_dump()
                 parsed_dict["file_hash"] = file_hash
@@ -371,20 +403,24 @@ class ChiefOfStaff:
                 qa_notes = qa_res.issues
                 retry_count += 1
         except ExtractionUnavailableError as err:
+            local_name = os.path.basename(persisted_local_path)
             drive_line = (
                 f"• ☁️ *Google Drive*: Backed up (`ID: {gdrive_id}`)"
                 if (gdrive_status == "uploaded" and gdrive_id)
-                else f"• ⚠️ *Google Drive Backup Failed*: `{gdrive_error or 'Unavailable'}` — stored locally only"
+                else f"• ⚠️ *Google Drive Backup Failed*: `{gdrive_error or 'Unavailable'}` — retained in local storage (`{local_name}`)"
             )
-            msg = "\n".join(
-                [
-                    f"⚠️ *Receipt OCR Extraction Unavailable*: `{os.path.basename(file_path)}`",
-                    f"• *Reason*: {err}",
-                    "• *Books Integrity*: **No financial record or journal entry was posted** (zero invented amounts).",
-                    "• *Action Required*: Reply with a typed note (e.g. `Vendor Name $Amount category`) to record exact details manually.",
-                    drive_line,
-                ]
-            )
+            msg_lines = [
+                f"⚠️ *Receipt OCR Extraction Unavailable*: `{os.path.basename(file_path)}`",
+                f"• *Reason*: {err}",
+            ]
+            if user_note:
+                msg_lines.append(f"• *Your Accompanying Note*: `{user_note}`")
+            msg_lines.extend([
+                "• *Books Integrity*: **No financial record or journal entry was posted** (zero invented amounts).",
+                "• *Action Required*: Reply with a typed note (e.g. `Vendor Name $Amount category`) to record exact details manually.",
+                drive_line,
+            ])
+            msg = "\n".join(msg_lines)
             return IntakeSummary(
                 receipt_id=0,
                 vendor="Extraction Unavailable",
@@ -399,16 +435,19 @@ class ChiefOfStaff:
                 gdrive_file_id=gdrive_id,
                 gdrive_status=gdrive_status,
                 gdrive_error=gdrive_error,
+                local_path=persisted_local_path,
                 summary_text=msg,
             )
 
         data_dict = parsed.model_dump()
         data_dict["original_filename"] = os.path.basename(file_path)
+        if user_note:
+            data_dict["notes"] = user_note
 
         receipt_id = self.km.record_receipt(
             data=data_dict,
             file_hash=file_hash,
-            local_path=file_path,
+            local_path=persisted_local_path,
             gdrive_file_id=gdrive_id,
             gdrive_status=gdrive_status,
             flagged=qa_res.flagged,

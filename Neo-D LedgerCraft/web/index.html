@@ -857,6 +857,8 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    let fileReadGen = 0;
+    let activeFileReader = null;
     let chosenFileBase64 = null;
     let chosenFileName = null;
 
@@ -868,9 +870,15 @@
         fileInput.value = '';
         return;
       }
+      const currentGen = ++fileReadGen;
+      if (activeFileReader) {
+        try { activeFileReader.abort(); } catch (e) {}
+      }
       chosenFileName = file.name;
       const reader = new FileReader();
+      activeFileReader = reader;
       reader.onload = function(e) {
+        if (currentGen !== fileReadGen) return; // Invalidate stale FileReader callback
         const result = e.target.result;
         chosenFileBase64 = result.split(',')[1] || result;
         const lbl = document.getElementById('intake-file-label');
@@ -882,6 +890,11 @@
     }
 
     function clearIntakeFile() {
+      fileReadGen++; // Invalidate any in-flight FileReader callbacks
+      if (activeFileReader) {
+        try { activeFileReader.abort(); } catch (e) {}
+        activeFileReader = null;
+      }
       chosenFileBase64 = null;
       chosenFileName = null;
       const fileInput = document.getElementById('intake-file-input');
@@ -931,12 +944,17 @@
             setTimeout(() => feedback.classList.add('hidden'), 5000);
           }
         } else {
-          const err = await res.json();
+          // On HTTP 422 or error, do NOT wipe selected file or typed note
+          // Retain state so user can adjust notes or retry without losing inputs
+          const err = await res.json().catch(() => ({}));
           if (feedback) {
-            feedback.textContent = `⚠️ Error: ${err.error || 'Failed to process intake'}`;
-            feedback.className = 'text-xs p-2 rounded-lg bg-rose-50 text-rose-800 border border-rose-200';
+            const rawMsg = err.summary_text || err.error || 'Failed to process intake';
+            const cleanMsg = rawMsg.replace(/[*`_]/g, '');
+            const lines = cleanMsg.split('\n').filter(Boolean);
+            const formatted = lines.map(l => escapeHtml(l)).join('<br>');
+            feedback.innerHTML = `⚠️ <strong>Extraction Issue (${res.status})</strong><br>${formatted}<div class="mt-1 font-normal text-[11px] text-amber-800">Your inputs are preserved above so you can adjust and retry.</div>`;
+            feedback.className = 'text-xs p-2 rounded-lg bg-amber-50 text-amber-900 border border-amber-300';
             feedback.classList.remove('hidden');
-            setTimeout(() => feedback.classList.add('hidden'), 5000);
           }
         }
       } catch (e) {

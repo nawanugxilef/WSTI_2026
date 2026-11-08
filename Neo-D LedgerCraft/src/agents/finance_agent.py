@@ -167,6 +167,7 @@ class FinanceAgent:
     def parse_document(
         self,
         file_path: str,
+        user_note: Optional[str] = None,
         qa_notes: Optional[List[str]] = None,
         vendor_examples: Optional[List[Dict]] = None,
     ) -> ParsedReceipt:
@@ -182,7 +183,7 @@ class FinanceAgent:
                 f"Multimodal OCR is offline/unconfigured for '{os.path.basename(file_path)}'. "
                 "No financial record was posted — please enter the vendor and amount manually via a typed note."
             )
-        return self._call_gemini_multimodal(file_path, qa_notes=qa_notes, vendor_examples=vendor_examples)
+        return self._call_gemini_multimodal(file_path, user_note=user_note, qa_notes=qa_notes, vendor_examples=vendor_examples)
 
     def parse_batch_or_statement(
         self,
@@ -374,6 +375,7 @@ class FinanceAgent:
     def _call_gemini_multimodal(
         self,
         file_path: str,
+        user_note: Optional[str] = None,
         qa_notes: Optional[List[str]] = None,
         vendor_examples: Optional[List[Dict]] = None,
     ) -> ParsedReceipt:
@@ -384,6 +386,8 @@ class FinanceAgent:
         from google.genai import types
 
         prompt = "Extract all fields from this receipt/invoice according to the schema."
+        if user_note:
+            prompt += f"\nUser Note regarding this receipt:\n{user_note}\n"
         if qa_notes:
             prompt += "\nQA Review Feedback to fix:\n"
             for n in qa_notes:
