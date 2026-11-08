@@ -9,6 +9,7 @@ Strictly English and AUD ($ AUD) only.
 from __future__ import annotations
 
 import csv
+import hmac
 import io
 import json
 import logging
@@ -348,7 +349,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return True
         auth_header = self.headers.get("Authorization", "").strip()
         expected = f"Bearer {token}"
-        return auth_header == expected
+        return hmac.compare_digest(auth_header, expected)
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -363,7 +364,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "Unauthorized"}).encode("utf-8"))
                 return
 
-        content_len = int(self.headers.get("Content-Length", 0))
+        cl_header = self.headers.get("Content-Length", "0")
+        try:
+            content_len = int(cl_header)
+            if content_len < 0:
+                raise ValueError("Negative Content-Length")
+        except (ValueError, TypeError):
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Invalid Content-Length header"}).encode("utf-8"))
+            return
+
         raw_body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
         try:
             data = json.loads(raw_body)
@@ -400,6 +412,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 init_db(conn)
                 seed_accounts(conn)
                 cos = ChiefOfStaff(main_conn=conn)
+
+                if tax_val is not None:
+                    existing_rec = cos.km.get_receipt(rec_id)
+                    if existing_rec:
+                        rec_total = float(existing_rec.get("total_amount") or 0.0)
+                        if tax_val > rec_total:
+                            conn.close()
+                            raise ValueError(f"tax_amount (${tax_val:.2f}) cannot exceed receipt total (${rec_total:.2f})")
+
                 cos.correct_receipt(
                     receipt_id=rec_id,
                     category=data.get("category"),
@@ -505,8 +526,45 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
 
+def init_demo_database(db_file: str) -> None:
+    """
+    If DEMO_MODE is enabled ('1', 'true', 'yes'), resets or populates
+    the database with clean [FICTIONAL DEMO] records on startup.
+    """
+    if os.environ.get("DEMO_MODE", "").strip().lower() not in ("1", "true", "yes"):
+        return
+    logger.info("DEMO_MODE active: populating clean [FICTIONAL DEMO] database at %s", db_file)
+    demo_json_path = os.path.join(PROJECT_ROOT, "config", "demo_fictional_data.json")
+    if not os.path.exists(demo_json_path):
+        return
+    with open(demo_json_path, "r", encoding="utf-8") as f:
+        demo_data = json.load(f)
+
+    conn = get_connection(db_file)
+    init_db(conn)
+    seed_accounts(conn)
+    cos = ChiefOfStaff(main_conn=conn)
+
+    cur = conn.execute("SELECT COUNT(*) as c FROM receipts")
+    if cur.fetchone()["c"] == 0:
+        for item in demo_data.get("sample_receipts", []):
+            vendor = item.get("vendor", "[FICTIONAL DEMO] Vendor")
+            total = float(item.get("total_amount", 0.0))
+            tax = float(item.get("tax_amount", 0.0))
+            cat = item.get("category", "materials_3d_printing")
+            note_str = f"{vendor} ${total:.2f} {cat}"
+            try:
+                cos.process_note(note_str)
+            except Exception as e:
+                logger.warning("Could not auto-seed demo receipt: %s", e)
+    conn.close()
+
+
 def run_server(port: int | None = None, host: str | None = None):
     load_config()
+    db_file = get_default_db_path()
+    init_demo_database(db_file)
+
     target_host = host or os.environ.get("WEB_HOST", "127.0.0.1")
     raw_port = port or os.environ.get("PORT") or os.environ.get("WEB_PORT", 8080)
     try:
