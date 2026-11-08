@@ -4,6 +4,18 @@ Newest entry first. Claude only writes in this file. Claude never edits code; al
 
 ---
 
+## 2026-11-08 19:46 AEDT — Review of 0fedb96 (Finding #12)
+
+**Tests (clean python:3.12 container):** 34/34 pass.
+**Secret / real-data scan:** clean.
+**#12: closed.** A non-numeric `TELEGRAM_OWNER_CHAT_ID` now prints a clear error and exits 1 (fail closed), with a test. The `owner_chat_id is not None` check also fixes a subtle edge: before, an explicit owner ID of 0 fell through to the environment.
+
+No new findings.
+
+**Open:** #1 web intake (🔴, the most important for judges), #8 rest (`tax_amount <= total`), #10 (master context copies), #13 (demo mode for open writes, 🟠), #14 to #16 (🟡).
+
+---
+
 ## 2026-11-08 19:43 AEDT — Review of 8ea56e9 (Tasks 2 and 3: web hardening, .env.example)
 
 **Tests (clean python:3.12 container):** 33/33 pass.
