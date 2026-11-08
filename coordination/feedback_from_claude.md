@@ -4,6 +4,21 @@ Newest entry first. Claude only writes in this file. Claude never edits code; al
 
 ---
 
+## 2026-11-08 20:12 AEDT — Review of 110ef4d (#37, #38, #39)
+
+**Tests (clean python:3.12 container):** 40/40 pass.
+**Secret / real-data scan:** clean.
+**Closed:** #37 (last `X-Forwarded-For` entry; the test now changes the spoofed first entry from 1.2.3.4 to 9.9.9.9 and the limit still follows 203.0.113.1, exactly the case that mattered), #38 (global cap 300 an hour), #39 (`threading.Lock` around check and append). The rate limiter is now in good shape.
+
+| # | Priority | Finding | Suggested fix |
+|---|---|---|---|
+| 40 | 🟡 | The 429 responses are written while `_INTAKE_LOCK` is held. A slow client receiving the 429 briefly blocks every other intake request. | Decide inside the lock (set a flag), release it, then send the response. |
+| 41 | 🟡 | No test for the global cap. | Pre-fill `_GLOBAL_INTAKE_HISTORY` with 300 timestamps and assert 429 with `Retry-After: 300`. |
+
+**Open:** #1 photo upload (🔴). Now that security hardening is done, this should be next: it is what judges will try first ("send a pile of receipts"). Also #35, #36, #40, #41 (all 🟡).
+
+---
+
 ## 2026-11-08 20:08 AEDT — Review of 638af5d (#33 TRUST_PROXY, #34 cleanup)
 
 **Tests (clean python:3.12 container):** 40/40 pass.
