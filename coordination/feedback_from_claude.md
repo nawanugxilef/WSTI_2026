@@ -4,6 +4,50 @@ Newest entry first. Claude only writes in this file. Claude never edits code; al
 
 ---
 
+## 2026-11-08 19:50 AEDT — Review of 418d857, 7565542, c8f8b57 (#10, Task 5, Task 6)
+
+**Secret / real-data scan:** clean. The only IP addresses are `127.0.0.1` and `0.0.0.0/0` in firewall examples. No code changed, so tests are unchanged (36/36).
+
+**Closed:** #10 (one copy of `CHATGPT_MASTER_CONTEXT.md`, -16k lines). **Task 5** (`deploy_aws.md`) accepted, with a cost note below.
+
+**🔴 Task 6 `BUILD_LOG.md` needs correcting before any judge sees it.** It is a disclosure document, so every fact must be right. As written it works against Felix:
+
+| # | Priority | Problem in BUILD_LOG.md | Correct version |
+|---|---|---|---|
+| 21 | 🔴 | "Contest Date: November 13–14, 2026" and "Contest Build Workplan (Nov 13–14)". | The build period is **5 to 17 November 2026**. Final submission Tue 17 Nov (2:00 PM per the WSTI site). Pitch Night 20 Nov. |
+| 22 | 🔴 | Section 1.1 calls everything up to Nov 8 "Pre-Contest Hardening & Baseline". 7 and 8 November are **inside** the build period. Labelling this repo's work as pre-contest tells judges the core existed before the challenge. | Say: this repository was started on 7 Nov 2026 (first commit 9d4bbef) during the build period; all code in it was written from 7 Nov onwards. Before the challenge, Felix built a personal receipt bot for his own use only, never published; its idea and lessons informed this entry, and **no code from it is in this repository**. The organisers confirmed this approach on 7 Nov. |
+| 23 | 🟠 | "All commits are cryptographically signed". They are not signed (no GPG/SSH signatures). | Remove the sentence, or say "every commit is public on GitHub with its timestamp". |
+| 24 | 🟡 | "Full secrets audit ensuring zero production credentials ... in repository history". The audit is a pattern scan, not a guarantee. | "Repository history scanned for keys, tokens and personal data on every push (Claude QA); none found." |
+| 25 | 🟡 | Milestone B still uses "+10 XP" as the main reward. | Keep rewards non-punitive (no streaks or lost points), in line with the ADHD brief. |
+
+**Cost note (Task 5):** `t3.medium` is not free tier, roughly US$30 a month on demand. Inside Felix's budget, but stop or delete the instance after 21 Nov. The budget alert step in the guide is good.
+
+**Open:** #1 web intake (🔴), #17 to #25.
+
+---
+
+## 2026-11-08 19:49 AEDT — Review of 8c30038 (#8, #13, #14, #15, #16)
+
+**Tests (clean python:3.12 container):** 36/36 pass.
+**Secret / real-data scan:** clean.
+**Extra check:** with `DEMO_MODE=1`, no Gemini key and an empty DB, `init_demo_database` seeds all 3 [FICTIONAL DEMO] receipts. Works offline.
+
+**Closed:** #8 (`tax_amount` capped at the receipt total), #14 (`hmac.compare_digest`), #15 (one `.env.example`), #16 (Content-Length validated, 400 on bad values).
+**Partly closed:** #13. Demo data now seeds, but see #17.
+
+**New findings:**
+
+| # | Priority | Finding | Suggested fix |
+|---|---|---|---|
+| 17 | 🟠 | Demo mode only seeds when `receipts` is empty. It never resets, so anything a visitor writes through the open `/api/correct` or `/api/reward` stays until someone deletes the DB. That is the original #13 risk on the public link. | In demo mode use a separate file (e.g. `data/demo.db`, never the real ledger), delete and reseed it on every start, and optionally reset every 30 minutes. Log "demo data reset". |
+| 18 | 🟡 | The seeder reads `tax_amount` from the JSON but never uses it, so demo GST comes from the note parser, not the fixture. | Pass the fixture's tax through, or remove it from the JSON so they cannot disagree. |
+| 19 | 🟡 | No test for `init_demo_database`. | Test: empty DB seeds N receipts; a modified DB is reset to N fixture receipts on restart; with `DEMO_MODE` unset nothing changes. |
+| 20 | 🟡 | Only 3 demo receipts. Too few to show "30 done for you, a few need a quick look" or the summary screen. | 12 to 15 fictional receipts, a few deliberately uncertain, across Work and Personal. |
+
+**Open:** #1 web intake (🔴, the most important item for judges), #10, #17 to #20.
+
+---
+
 ## 2026-11-08 19:46 AEDT — Review of 0fedb96 (Finding #12)
 
 **Tests (clean python:3.12 container):** 34/34 pass.
