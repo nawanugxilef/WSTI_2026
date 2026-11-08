@@ -540,34 +540,39 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     client_ip = self.client_address[0] if hasattr(self, "client_address") and self.client_address else "127.0.0.1"
 
                 now = time.time()
+                rate_limited_reason: str | None = None
+                retry_after_sec = 60
+
                 with _INTAKE_LOCK:
                     # Global rate limit guard (Finding #38): max 300 notes/hour across all callers
                     global _GLOBAL_INTAKE_HISTORY
                     _GLOBAL_INTAKE_HISTORY = [t for t in _GLOBAL_INTAKE_HISTORY if now - t < _GLOBAL_WINDOW]
                     if len(_GLOBAL_INTAKE_HISTORY) >= _MAX_GLOBAL_REQUESTS:
-                        self.send_response(429)
-                        self.send_header("Content-Type", "application/json")
-                        self.send_header("Retry-After", "300")
-                        self.end_headers()
-                        self.wfile.write(json.dumps({"error": "Global expense intake limit reached. Please try again later."}).encode("utf-8"))
-                        return
+                        rate_limited_reason = "Global expense intake limit reached. Please try again later."
+                        retry_after_sec = 300
+                    else:
+                        # Clean up expired per-IP entries to prevent memory growth (Finding #34)
+                        expired_ips = [ip for ip, timestamps in _INTAKE_RATE_LIMIT.items() if not [t for t in timestamps if now - t < _RATE_LIMIT_WINDOW]]
+                        for exp_ip in expired_ips:
+                            del _INTAKE_RATE_LIMIT[exp_ip]
 
-                    # Clean up expired per-IP entries to prevent memory growth (Finding #34)
-                    expired_ips = [ip for ip, timestamps in _INTAKE_RATE_LIMIT.items() if not [t for t in timestamps if now - t < _RATE_LIMIT_WINDOW]]
-                    for exp_ip in expired_ips:
-                        del _INTAKE_RATE_LIMIT[exp_ip]
+                        recent_calls = [t for t in _INTAKE_RATE_LIMIT.get(client_ip, []) if now - t < _RATE_LIMIT_WINDOW]
+                        if len(recent_calls) >= _MAX_REQUESTS_PER_WINDOW:
+                            rate_limited_reason = f"Rate limit exceeded (max {_MAX_REQUESTS_PER_WINDOW} requests/min). Please try again shortly."
+                            retry_after_sec = 60
+                        else:
+                            recent_calls.append(now)
+                            _INTAKE_RATE_LIMIT[client_ip] = recent_calls
+                            _GLOBAL_INTAKE_HISTORY.append(now)
 
-                    recent_calls = [t for t in _INTAKE_RATE_LIMIT.get(client_ip, []) if now - t < _RATE_LIMIT_WINDOW]
-                    if len(recent_calls) >= _MAX_REQUESTS_PER_WINDOW:
-                        self.send_response(429)
-                        self.send_header("Content-Type", "application/json")
-                        self.send_header("Retry-After", "60")
-                        self.end_headers()
-                        self.wfile.write(json.dumps({"error": f"Rate limit exceeded (max {_MAX_REQUESTS_PER_WINDOW} requests/min). Please try again shortly."}).encode("utf-8"))
-                        return
-                    recent_calls.append(now)
-                    _INTAKE_RATE_LIMIT[client_ip] = recent_calls
-                    _GLOBAL_INTAKE_HISTORY.append(now)
+                # Send 429 outside of lock (Finding #40)
+                if rate_limited_reason:
+                    self.send_response(429)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Retry-After", str(retry_after_sec))
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": rate_limited_reason}).encode("utf-8"))
+                    return
 
                 note_text = str(data.get("text", "")).strip()
                 if not note_text:

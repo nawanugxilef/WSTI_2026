@@ -251,6 +251,30 @@ class TestWebServer(unittest.TestCase):
             handler.do_POST()
             handler.send_response.assert_called_with(200)
 
+    def test_finding_41_global_intake_rate_limit(self):
+        """Finding #41: Global intake cap (300/hr) triggers 429 across all IPs."""
+        import io, time
+        from src.interfaces.web_server import _GLOBAL_INTAKE_HISTORY, _INTAKE_RATE_LIMIT
+        _INTAKE_RATE_LIMIT.clear()
+        now = time.time()
+        # Pre-fill global history with 300 timestamps
+        _GLOBAL_INTAKE_HISTORY.clear()
+        _GLOBAL_INTAKE_HISTORY.extend([now - 10.0] * 300)
+
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.client_address = ("198.51.100.5", 12345)
+        handler.path = "/api/intake"
+        handler.headers = {"Content-Length": "30"}
+        handler.rfile = io.BytesIO(json.dumps({"text": "Global test $5"}).encode("utf-8"))
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+
+        handler.do_POST()
+        handler.send_response.assert_called_with(429)
+        handler.send_header.assert_any_call("Retry-After", "300")
+
 
 if __name__ == "__main__":
     unittest.main()
