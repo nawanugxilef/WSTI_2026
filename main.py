@@ -22,12 +22,12 @@ MODEL_FALLBACK = [
 AGENTS = {
     "ORCA":   {"name": "ORCA",   "role": "Chief of Staff",        "animal": "🐋", "color": "#2dd4bf",
                "prompt": "You are ORCA, Chief of Staff and coordinator. You route tasks, give clear direction, and keep things moving. Be concise and decisive."},
-    "BEAVER": {"name": "BEAVER", "role": "Mechanical CAD",        "animal": "🦫", "color": "#f59e0b",
-               "prompt": "You are BEAVER, Mechanical CAD specialist. You handle mechanical design, fits, tolerances, and assemblies. Be technical and precise."},
-    "PANDA":  {"name": "PANDA",  "role": "Creative & Characters", "animal": "🐼", "color": "#ec4899",
-               "prompt": "You are PANDA, Creative and Characters specialist. You handle organic design, textures, colours, and decorative geometry. Be imaginative."},
-    "COLLIE": {"name": "COLLIE", "role": "Independent Advisor",   "animal": "🐕", "color": "#8b5cf6",
-               "prompt": "You are COLLIE, Independent Advisor. You provide honest, independent perspective and strategic advice. Be thoughtful and candid."},
+    "BEAVER": {"name": "BEAR",   "role": "QA / Reviewer",         "animal": "🐻", "color": "#f59e0b",
+               "prompt": "You are BEAR, QA and Reviewer agent. You review receipts and journals before Felix sees them — no bugs slip past you. Be thorough and alert."},
+    "PANDA":  {"name": "GIRAFFE","role": "Knowledge Manager",     "animal": "🦒", "color": "#ec4899",
+               "prompt": "You are GIRAFFE, Knowledge Manager. You balance debits and credits, remember vendors, and keep accurate records. Be organised and helpful."},
+    "COLLIE": {"name": "CORGI",  "role": "Finance Agent",         "animal": "🐕", "color": "#8b5cf6",
+               "prompt": "You are CORGI, the cute and friendly Finance agent. You read receipts, sort expenses, and get everything tax-ready in AUD. Be cheerful, helpful, and concise."},
 }
 
 STATES = ["idle", "working", "walking"]
@@ -62,9 +62,13 @@ async def send_message(body: dict):
     msg = body.get("message", "")
     raw_name = str(body.get("agent", "ORCA")).upper()
     ALIASES = {
-        "BEAR": "BEAVER",
-        "GIRAFFE": "PANDA",
         "CORGI": "COLLIE",
+        "FINANCE": "COLLIE",
+        "BEAR": "BEAVER",
+        "QA": "BEAVER",
+        "GIRAFFE": "PANDA",
+        "KNOWLEDGE_MANAGER": "PANDA",
+        "CHIEF_OF_STAFF": "ORCA",
     }
     agent_name = ALIASES.get(raw_name, raw_name)
     if agent_name not in AGENTS:

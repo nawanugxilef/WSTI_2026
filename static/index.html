@@ -3686,9 +3686,9 @@ THREE.DefaultLoadingManager.setURLModifier(function(url){const normalized=decode
 
 window.OFFICE_PERSONALITIES = {
   chief_of_staff: { name: 'ORCA', role: 'Receives every task and hands it to the right agent', intro: 'Hey! I am ORCA 🐋, Chief of Staff. I coordinate everything — just tell me what you need and I will route it to the right agent.' },
-  finance:        { name: 'BEAR', role: 'Reads receipts and sorts them for tax time', intro: 'Hi there! I am BEAR 🐻, the Finance agent. I read receipts, categorise expenses, and get everything ready for tax time.' },
-  knowledge_manager: { name: 'GIRAFFE', role: 'Posts balanced journals and remembers past vendors', intro: 'Hello! I am GIRAFFE 🦒, Knowledge Manager. I keep the journals, remember every vendor, and make sure nothing gets forgotten.' },
-  qa:             { name: 'CORGI', role: "Checks everyone's work before it reaches Felix", intro: 'Woof! I am CORGI 🐕, QA agent. I review everything before it goes to Felix — no bugs slip past me.' },
+  finance:        { name: 'CORGI', role: 'Reads receipts and sorts them for tax time', intro: 'Woof! I am CORGI 🐕, the Finance agent. I read receipts, categorise expenses, and get everything tax-ready in AUD.' },
+  knowledge_manager: { name: 'GIRAFFE', role: 'Posts balanced journals and remembers past vendors', intro: 'Hello! I am GIRAFFE 🦒, Knowledge Manager. I keep the journals, remember every vendor, and balance debits and credits.' },
+  qa:             { name: 'BEAR', role: "Checks everyone's work before it reaches Felix", intro: 'Hi there! I am BEAR 🐻, QA agent. I review everything before it goes to Felix — no bugs slip past me.' },
   boss:           { name: 'Felix', role: 'The Boss 🦁' }
 };
 
@@ -4025,8 +4025,8 @@ window.OFFICE_PERSONALITIES = {
   // static, idle, walk, run, eat, dance, gesture-positive, gesture-negative.
   const PET_CLIPS = { idle: 'idle', walk: 'walk', work: 'eat', wave: 'gesture-positive', grumpy: 'gesture-negative' };
   const DEFAULT_MODELS = {
-    chief_of_staff: 'animal-dog.glb',
-    finance: 'animal-fox.glb',
+    chief_of_staff: 'animal-fox.glb',
+    finance: 'animal-dog.glb',
     qa: 'animal-polar.glb',
     knowledge_manager: 'animal-giraffe.glb',
     boss: 'animal-lion.glb',
@@ -4209,12 +4209,12 @@ window.OFFICE_PERSONALITIES = {
       } else if (snapshot && typeof snapshot === 'object') {
         const idMap = {
           ORCA: 'chief_of_staff',
-          BEAR: 'finance',
-          BEAVER: 'finance',
+          CORGI: 'finance',
+          COLLIE: 'finance',
+          BEAR: 'qa',
+          BEAVER: 'qa',
           GIRAFFE: 'knowledge_manager',
           PANDA: 'knowledge_manager',
-          CORGI: 'qa',
-          COLLIE: 'qa',
           chief_of_staff: 'chief_of_staff',
           finance: 'finance',
           knowledge_manager: 'knowledge_manager',
