@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>neo.madewithfelix.app</title>
+<style>
+:root { --bg: #0d1526; --teal: #2dd4bf; --text: #f1f5f9; --muted: #94a3b8; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+header { padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; border-bottom: 1px solid #1e293b; }
+header h1 { font-size: 1.1rem; font-weight: 600; color: var(--teal); }
+header span { font-size: 0.75rem; color: var(--muted); }
+.office { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; padding: 2rem; max-width: 900px; margin: 0 auto; }
+.agent-card { background: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; display: flex; gap: 1rem; align-items: flex-start; transition: border-color .2s; }
+.agent-card:hover { border-color: var(--teal); }
+.avatar { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; flex-shrink: 0; }
+.info h2 { font-size: 1rem; font-weight: 600; }
+.info .role { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+.state-badge { display: inline-block; margin-top: 0.5rem; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 500; }
+.state-idle { background: #1e3a5f; color: #60a5fa; }
+.state-working { background: #14532d; color: #4ade80; }
+.state-walking { background: #3b1d5e; color: #c084fc; }
+.task { font-size: 0.75rem; color: var(--muted); margin-top: 0.4rem; }
+.input-area { padding: 0 2rem 2rem; max-width: 900px; margin: 0 auto; }
+.input-row { display: flex; gap: 0.75rem; }
+input[type=text] { flex: 1; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 0.75rem 1rem; color: var(--text); font-size: 0.9rem; outline: none; }
+input[type=text]:focus { border-color: var(--teal); }
+button { background: var(--teal); color: #0d1526; font-weight: 600; border: none; border-radius: 8px; padding: 0.75rem 1.5rem; cursor: pointer; font-size: 0.9rem; }
+button:hover { opacity: 0.9; }
+.reply-box { margin-top: 1rem; background: #1e293b; border-radius: 8px; padding: 1rem; font-size: 0.85rem; color: var(--muted); display: none; }
+@media (max-width: 600px) { .office { grid-template-columns: 1fr; padding: 1rem; } .input-area { padding: 0 1rem 1rem; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>neo.madewithfelix.app</h1>
+  <span>AI Agent Office — live</span>
+</header>
+<div class="office" id="office"></div>
+<div class="input-area">
+  <div class="input-row">
+    <input type="text" id="msg" placeholder="Send a message to ORCA..." />
+    <button onclick="sendMsg()">Send</button>
+  </div>
+  <div class="reply-box" id="reply"></div>
+</div>
+<script>
+const AGENTS_META = {
+  ORCA:   { emoji: '🐋', label: 'ORCA' },
+  BEAVER: { emoji: '🦫', label: 'BEAVER' },
+  PANDA:  { emoji: '🐼', label: 'PANDA' },
+  COLLIE: { emoji: '🐕', label: 'COLLIE' },
+};
+function render(data) {
+  const office = document.getElementById('office');
+  office.innerHTML = Object.entries(data).map(([k, a]) => `
+    <div class="agent-card">
+      <div class="avatar" style="background:${a.color}22">${AGENTS_META[k].emoji}</div>
+      <div class="info">
+        <h2>${a.name}</h2>
+        <div class="role">${a.role}</div>
+        <span class="state-badge state-${a.state}">${a.state}</span>
+        <div class="task">${a.task}</div>
+      </div>
+    </div>`).join('');
+}
+async function poll() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    render(d);
+  } catch(e) {}
+}
+async function sendMsg() {
+  const msg = document.getElementById('msg').value.trim();
+  if (!msg) return;
+  const r = await fetch('/api/message', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({message: msg}) });
+  const d = await r.json();
+  const box = document.getElementById('reply');
+  box.style.display = 'block';
+  box.textContent = d.reply;
+  document.getElementById('msg').value = '';
+}
+document.getElementById('msg').addEventListener('keydown', e => { if (e.key==='Enter') sendMsg(); });
+poll(); setInterval(poll, 5000);
+</script>
+</body>
+</html>
