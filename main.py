@@ -56,10 +56,17 @@ def get_status():
         agent["last_seen"] = datetime.utcnow().isoformat()
     return agent_status
 
+@app.post("/chat")
 @app.post("/api/message")
 async def send_message(body: dict):
     msg = body.get("message", "")
-    agent_name = body.get("agent", "ORCA").upper()
+    raw_name = str(body.get("agent", "ORCA")).upper()
+    ALIASES = {
+        "BEAR": "BEAVER",
+        "GIRAFFE": "PANDA",
+        "CORGI": "COLLIE",
+    }
+    agent_name = ALIASES.get(raw_name, raw_name)
     if agent_name not in AGENTS:
         agent_name = "ORCA"
     agent = AGENTS[agent_name]
@@ -68,7 +75,7 @@ async def send_message(body: dict):
     reply = await call_gemini(agent["prompt"], msg)
     agent_status[agent_name]["state"] = "idle"
     agent_status[agent_name]["task"] = "Waiting for work"
-    return {"reply": reply, "agent": agent_name}
+    return {"reply": reply, "agent": raw_name}
 
 @app.get("/health")
 def health():

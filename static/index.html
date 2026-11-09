@@ -17,9 +17,10 @@
 <body>
 <!-- Standalone export from original FelixSandbox office-preview.html. Original files unchanged. Four agents plus Felix the lion. Demo states only; no live system connection. -->
 <header>
-  <b>🐶 Agent Office preview</b>
+  <b>🏢 Neo Agent Office</b>
   <label>Source
     <select id="src">
+      <option value="/api/status">🟢 Live from Neo Server</option>
       <option value="demo">Offline demo (simulated states)</option>
       </select>
   </label>
@@ -3684,91 +3685,11 @@ THREE.DefaultLoadingManager.setURLModifier(function(url){const normalized=decode
 // nudged: after 3+ taps in a row
 
 window.OFFICE_PERSONALITIES = {
-  chief_of_staff: {
-    name: 'Chief of Staff',
-    role: 'Receives every task and hands it to the right agent',
-    color: '#e0a458',
-    lines: {
-      idle: [
-        "Hi! Welcome to Felix's office 😊 Want to see what we're working on?",
-        "Hello there! I'm the one who keeps this place running.",
-        "Oh, a visitor! Make yourself at home 🐾",
-      ],
-      working: [
-        "Busy helping Felix, but I always have time to say hi 👋",
-        "A new task just came in. I'm passing it to the right person!",
-      ],
-      review: ["QA is double-checking things. They're very thorough 😅"],
-      needs_boss: [
-        "I'm waiting for the boss to make a call 🦁",
-        "Some decisions are Felix's to make. I'm just the messenger!",
-      ],
-      error: ["Hmm, something went wrong. Don't worry, we'll sort it out."],
-      nudged: ["Hehe, you like it here, don't you? 🐾", "You're very friendly! I like you."],
-    },
-  },
-
-  finance: {
-    name: 'Finance',
-    role: 'Reads receipts and sorts them for tax time',
-    color: '#d9534f',
-    lines: {
-      idle: ["What.", "Don't touch the spreadsheet.", "…yes?"],
-      working: ["I'm calculating GST. Do not disturb.", "Numbers. Busy. Go away.", "Shh. I'm counting."],
-      review: ["QA is checking MY work. As if I make mistakes."],
-      needs_boss: ["Not my problem. That's for the boss."],
-      error: ["It wasn't my fault. The receipt was blurry."],
-      nudged: ["…don't you have anything better to do?", "I will send you an invoice for this.", "Tap me again. I dare you."],
-    },
-    turnsAwayWhenNudged: true,
-  },
-
-  qa: {
-    name: 'QA / Reviewer',
-    role: "Checks everyone's work before it reaches Felix",
-    color: '#5b8def',
-    lines: {
-      idle: ["Everything's in order. For now.", "I've checked this room twice. It's fine."],
-      working: ["Checking, checking…"],
-      review: [
-        "Hmm… this GST is off by two cents. Again.",
-        "Sending it back. Rules are rules.",
-        "Nothing leaves this desk until it's right.",
-      ],
-      needs_boss: ["I've flagged it. The boss will decide."],
-      error: ["I found the problem. I always find the problem."],
-      nudged: ["You've tapped me three times. I counted.", "That's four. I'm keeping a log."],
-    },
-  },
-
-  // Not an agent: the lion is Felix, always at the big desk in the Boss Office.
-  boss: {
-    name: 'Felix (Boss)',
-    role: 'Makes the final call',
-    color: '#e9c46a',
-    lines: {
-      idle: [
-        "Welcome to my office. The team does the work, I make the calls.",
-        "Every decision that matters comes to this desk.",
-        "Explore. Experiment. Build. Share. 🦁",
-      ],
-      nudged: ["Yes, I'm a lion. The boss has to look the part.", "Roar. …Was that scary enough?"],
-    },
-  },
-
-  knowledge_manager: {
-    name: 'Knowledge Manager',
-    role: 'Files every record and remembers every vendor',
-    color: '#6fbf73',
-    lines: {
-      idle: ["Oh! Sorry, I was reading. Who are you again?", "Did you know every receipt has a story? …No? Just me?"],
-      working: ["Filing, filing, filing… I never forget a vendor.", "Everything in its right folder."],
-      review: ["Waiting for QA before I file anything."],
-      needs_boss: ["I'll file it once the boss decides."],
-      error: ["Hmm, I can't find the right folder for this one."],
-      nudged: ["I remember every receipt since July. Your name, though…", "Have we met? You look familiar."],
-    },
-  },
+  chief_of_staff: { name: 'ORCA', role: 'Receives every task and hands it to the right agent', intro: 'Hey! I am ORCA 🐋, Chief of Staff. I coordinate everything — just tell me what you need and I will route it to the right agent.' },
+  finance:        { name: 'BEAR', role: 'Reads receipts and sorts them for tax time', intro: 'Hi there! I am BEAR 🐻, the Finance agent. I read receipts, categorise expenses, and get everything ready for tax time.' },
+  knowledge_manager: { name: 'GIRAFFE', role: 'Posts balanced journals and remembers past vendors', intro: 'Hello! I am GIRAFFE 🦒, Knowledge Manager. I keep the journals, remember every vendor, and make sure nothing gets forgotten.' },
+  qa:             { name: 'CORGI', role: "Checks everyone's work before it reaches Felix", intro: 'Woof! I am CORGI 🐕, QA agent. I review everything before it goes to Felix — no bugs slip past me.' },
+  boss:           { name: 'Felix', role: 'The Boss 🦁' }
 };
 
 </script>
@@ -4068,21 +3989,18 @@ window.OFFICE_PERSONALITIES = {
   function makeAgent(id, scene, personality) {
     const root = new THREE.Group();
     const bodyHolder = new THREE.Group();
-    bodyHolder.add(placeholderBody(personality.color));
+    bodyHolder.add(placeholderBody(personality.color || '#2dd4bf'));
     root.add(bodyHolder);
     root.add(blobShadow(0.75));
 
+    // Perubahan 2: Label floating hanya menampilkan nama agent saja (tanpa role/jobdesc)
     const tag = textSprite(personality.name, { size: 34, scale: 0.75 });
-    tag.position.y = 1.75;
+    tag.position.y = 1.6;
     root.add(tag);
 
-    // Always-on activity line under the name (e.g. "Reading a receipt") — stays
-    // up the whole time, not just a few seconds after a change like the tap
-    // speech bubble. Starts empty/hidden until the first status poll arrives.
+    // activityTag kept in memory for interface compatibility but not added to root
     const activityTag = textSprite('', { size: 24, color: '#e9e6ff', bg: 'rgba(40,33,74,0.6)', scale: 0.55 });
-    activityTag.position.y = 1.46;
     activityTag.visible = false;
-    root.add(activityTag);
 
     const alert = textSprite('!', { size: 60, color: '#fff', bg: '#d9534f', scale: 0.9 });
     alert.position.y = 2.55;
@@ -4285,14 +4203,42 @@ window.OFFICE_PERSONALITIES = {
       bubbleUntil = now + 3200;
     }
     function apply(snapshot) {
-      for (const a of snapshot.agents || []) {
+      let list = [];
+      if (Array.isArray(snapshot.agents)) {
+        list = snapshot.agents;
+      } else if (snapshot && typeof snapshot === 'object') {
+        const idMap = {
+          ORCA: 'chief_of_staff',
+          BEAR: 'finance',
+          BEAVER: 'finance',
+          GIRAFFE: 'knowledge_manager',
+          PANDA: 'knowledge_manager',
+          CORGI: 'qa',
+          COLLIE: 'qa',
+          chief_of_staff: 'chief_of_staff',
+          finance: 'finance',
+          knowledge_manager: 'knowledge_manager',
+          qa: 'qa',
+          boss: 'boss'
+        };
+        for (const [k, val] of Object.entries(snapshot)) {
+          const targetId = idMap[k.toUpperCase()] || idMap[k.toLowerCase()] || k.toLowerCase();
+          if (agents[targetId]) {
+            list.push({
+              id: targetId,
+              state: val.state || 'idle',
+              activity: val.task || val.role || ''
+            });
+          }
+        }
+      }
+
+      for (const a of list) {
         const agent = agents[a.id];
         if (!agent) continue;
         const activityChanged = !firstApply && a.activity && a.activity !== agent.activity && a.state !== 'idle';
         agent.state = a.state;
         agent.activity = a.activity;
-        agent.activityTag.userData.setText(a.activity || '');
-        agent.activityTag.visible = !!a.activity;
         const [x, z] = targetFor(a.id, a.state);
         agent.home.set(x, 0, z);
         agent.target.copy(agent.home);
@@ -4301,7 +4247,7 @@ window.OFFICE_PERSONALITIES = {
       }
       firstApply = false;
       const tasks = snapshot.stats ? snapshot.stats.tasks_this_week : 0;
-      hud.textContent = (live ? '🟢 Live from FelixServer' : '🟡 Demo') + ` · ${tasks} tasks this week`;
+      hud.textContent = (live ? '🟢 Live from Neo Server' : '🟡 Demo') + (tasks ? ` · ${tasks} tasks this week` : '');
     }
     async function poll() {
       if (opts.statusUrl === 'demo' || !opts.statusUrl) {
@@ -4343,25 +4289,102 @@ window.OFFICE_PERSONALITIES = {
       while (o && !o.userData.agentId) o = o.parent;
       if (o) speak(agents[o.userData.agentId]);
     }
-    function speak(agent) {
+    const RANDOM_PROMPTS = {
+      chief_of_staff: [
+        "What's on the agenda today?",
+        "Any new tasks coming in?",
+        "How is the team performing?",
+        "Give me a quick briefing!"
+      ],
+      finance: [
+        "How are the receipts looking today?",
+        "Are all expenses categorized properly?",
+        "Did we calculate GST correctly?",
+        "Any tax tips for the week?"
+      ],
+      knowledge_manager: [
+        "What have we learned from recent vendors?",
+        "Are the double-entry books balanced?",
+        "Any new rules saved to memory?",
+        "Tell me about our vendor database!"
+      ],
+      qa: [
+        "Are there any bugs or flagged receipts?",
+        "How thorough is our testing today?",
+        "Did everything pass inspection?",
+        "What's your QA verdict?"
+      ],
+      boss: [
+        "How's the office running today, boss?",
+        "Any big announcements?",
+        "What's our next big milestone?",
+        "Roar for us, boss!"
+      ]
+    };
+
+    async function speak(agent) {
       const now = performance.now();
-      agent.taps = agent.taps.filter((t) => now - t < 10000);
-      agent.taps.push(now);
-      const lines = agent.personality.lines || {};
-      const nudged = agent.taps.length >= 3 && lines.nudged;
-      const line = pick(nudged ? lines.nudged : (lines[agent.state] || lines.idle || ['…']));
-      if (nudged && agent.personality.turnsAwayWhenNudged) agent.turnAwayUntil = now + 3500;
+      agent.pokeCount = (agent.pokeCount || 0) + 1;
+
       bubble.innerHTML = '';
       const who = document.createElement('div');
       who.style.cssText = 'font:600 12px/1.3 ' + LABEL_FONT + ';color:#6b62b8;margin-bottom:2px';
-      who.textContent = `${agent.personality.name} · ${agent.activity || agent.personality.role || ''}`;
+      who.textContent = agent.personality.name;
+
       const say = document.createElement('div');
-      say.textContent = line;
       bubble.append(who, say);
       bubble.style.display = 'block';
       bubbleAgent = agent;
-      bubbleUntil = now + 4500;
-      playOnce(agent, nudged && agent.personality.turnsAwayWhenNudged ? 'grumpy' : 'wave');
+
+      if (agent.pokeCount === 1) {
+        // Perubahan 3: Klik pertama tampilkan intro dari OFFICE_PERSONALITIES[key].intro
+        say.textContent = agent.personality.intro || `Hello! I am ${agent.personality.name}.`;
+        bubbleUntil = now + 5000;
+        playOnce(agent, 'wave');
+      } else {
+        // Perubahan 3: Klik berikutnya kirim ke backend /chat atau /api/message endpoint
+        const prompts = RANDOM_PROMPTS[agent.id] || [
+          "Give me a quick status update!",
+          "What are you working on right now?",
+          "How is everything going?"
+        ];
+        const promptText = prompts[Math.floor(Math.random() * prompts.length)];
+
+        say.textContent = 'Thinking... 💭';
+        bubbleUntil = now + 8000;
+        playOnce(agent, 'dance');
+
+        try {
+          const payload = { message: promptText, agent: agent.personality.name };
+          let res = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) {
+            res = await fetch('/api/message', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+          }
+          if (res.ok) {
+            const data = await res.json();
+            say.textContent = data.reply || data.message || '...';
+            bubbleUntil = performance.now() + 6500;
+          } else {
+            throw new Error(res.statusText);
+          }
+        } catch (err) {
+          const fallbacks = [
+            `I am right on it! (Poked: "${promptText}")`,
+            `Everything is running smoothly!`,
+            `Working hard as always!`
+          ];
+          say.textContent = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+          bubbleUntil = performance.now() + 4500;
+        }
+      }
     }
     // Drag = rotate the view 360° around the room; a clean tap (no drag) = talk to
     // that agent. Same move-threshold pattern as the main world's orbit camera.
