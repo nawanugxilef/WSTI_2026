@@ -30,9 +30,9 @@ export default {
     }
 
     try {
-      const upstream = await fetch(new URL(route.path, env.NEO_OFFICE_ORIGIN), {
+      const upstream = await fetch(new URL(route.path, env.NEO_OFFICE_ORIGIN).href, {
         headers: { Accept: route.type },
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.timeout(5000),
         cf: { cacheTtl: 0 },
       });
