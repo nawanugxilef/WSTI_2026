@@ -36,7 +36,7 @@ def test_saved_personal_photo_is_compact_and_uses_gross_gst():
         "$6.50 AUD · GST $0.60 · Card",
         "Item: [FICTIONAL DEMO] Flat white (large)",
         "Personal · Dining & coffee",
-        "Source: AI suggestion",
+        "Source: 🦊 AI suggestion",
         "Status: Recorded · Drive saved",
     ]
     assert "fictional_receipt_identifier" not in card
@@ -54,10 +54,11 @@ def test_rule_based_note_omits_unverified_gst_and_raw_item_text():
         items_summary="[FICTIONAL DEMO] Raw typed note ($6.50)",
     )
     card = format_receipt_card(summary)
+    assert card.startswith("✍️ #42 · [FICTIONAL DEMO] _Cafe*")
     assert "GST" not in card
     assert card.splitlines()[1] == "$6.50 AUD"
     assert "Raw typed note" not in card
-    assert "Source: Rule-based" in card
+    assert "Source: 🧭 Rule-based" in card
 
 
 def test_review_card_and_details_do_not_expose_payment_numbers_or_freeform_reasons():
@@ -94,7 +95,7 @@ def test_abn_details_reuse_card_and_explain_allocation():
     card = format_receipt_card(summary)
     details = format_receipt_details(summary)
     assert "3D Printing · 85.5% business · Printing materials" in card
-    assert "Source: Vendor memory" in card
+    assert "Source: 🧠 Vendor memory" in card
     assert details.startswith(card + "\n\n")
     assert "Tax stream: ABN sole trader" in details
     assert "Confidence: 100%" in details
@@ -106,14 +107,20 @@ def test_duplicate_only_shows_existing_receipt_id():
         DEMO_RECEIPT,
         receipt_id=0,
         status="duplicate",
+        exact_duplicate_of=42,
         flag_reason="This exact file is already saved as receipt #42.",
     )
-    assert format_receipt_card(summary) == "Already saved as receipt #42."
+    assert format_receipt_card(summary) == "↩️ Already saved as receipt #42."
 
 
 def test_possible_duplicate_stays_visible_on_compact_card():
-    summary = replace(DEMO_RECEIPT, status="flagged", flag_reason="Likely duplicate of receipt #12.")
-    assert format_receipt_card(summary).splitlines()[-1] == "Status: Possible duplicate · Needs review"
+    summary = replace(
+        DEMO_RECEIPT, status="flagged",
+        flag_reason="GST mismatch; Likely duplicate: matching vendor '[FICTIONAL DEMO] _Cafe*' "
+        "and amount $6.5 within 3 days of existing receipt #12.",
+    )
+    assert format_receipt_card(summary).splitlines()[-1] == "Status: Possible duplicate of #12 · Excluded from totals"
+    assert "Check possible duplicate, GST." in format_receipt_details(summary)
 
 
 def test_unposted_status_reports_missing_details_or_drive_failure():

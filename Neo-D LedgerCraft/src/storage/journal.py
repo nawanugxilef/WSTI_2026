@@ -9,6 +9,7 @@ and segregates needs-review expenses from confirmed myTax claim totals.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -37,16 +38,17 @@ class JournalManager:
         """
         if not reference:
             return 0
-        with self.conn:
-            cur = self.conn.execute(
-                "SELECT id FROM journal_transactions WHERE reference = ?",
-                (reference,),
-            )
-            tx_ids = [row["id"] for row in cur.fetchall()]
-            for tx_id in tx_ids:
-                self.conn.execute("DELETE FROM journal_lines WHERE transaction_id = ?", (tx_id,))
-            self.conn.execute("DELETE FROM journal_transactions WHERE reference = ?", (reference,))
-        return len(tx_ids)
+        with nullcontext() if self.conn.in_transaction else self.conn:
+            return self._delete_by_reference(reference)
+
+    def _delete_by_reference(self, reference: str) -> int:
+        self.conn.execute(
+            "DELETE FROM journal_lines WHERE transaction_id IN "
+            "(SELECT id FROM journal_transactions WHERE reference = ?)",
+            (reference,),
+        )
+        cursor = self.conn.execute("DELETE FROM journal_transactions WHERE reference = ?", (reference,))
+        return cursor.rowcount
 
     def post_transaction(
         self,
@@ -74,10 +76,9 @@ class JournalManager:
                 f"Transaction does not balance: Debits={total_debit:.2f}, Credits={total_credit:.2f} (diff={total_debit - total_credit:.2f})"
             )
 
-        if replace_existing and reference:
-            self.delete_by_reference(reference)
-
-        with self.conn:
+        with nullcontext() if self.conn.in_transaction else self.conn:
+            if replace_existing and reference:
+                self._delete_by_reference(reference)
             cursor = self.conn.execute(
                 """
                 INSERT INTO journal_transactions (tx_date, description, reference, source)

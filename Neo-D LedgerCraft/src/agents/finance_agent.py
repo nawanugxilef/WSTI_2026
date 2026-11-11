@@ -130,6 +130,19 @@ BATCH_SYSTEM_PROMPT = SYSTEM_PROMPT + "\nReturn one JSON object matching this sc
 # Remove dates before scanning for amounts so a day or year cannot become a dollar value.
 NOTE_DATE_PATTERN = re.compile(r"(?<!\w)(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{2,4}|today|yesterday)(?!\w)", re.IGNORECASE)
 NUMBER_PATTERN = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2}|,\d{2})?"
+_NOTE_WORD = r"(?:3d|[^\W\d_][^\W\d_]*(?:[.'’&-][^\W\d_]*)*)"
+_TERSE_EXPENSE_NOTE = re.compile(
+    rf"(?:\[FICTIONAL DEMO\][ \t]+)?{_NOTE_WORD}(?:[ \t]+{_NOTE_WORD}){{0,5}}"
+    rf"[ \t]+(?:AUD[ \t]*\$?|A\$|\$)?[ \t]*{NUMBER_PATTERN}",
+    re.IGNORECASE,
+)
+_OTHER_DATE_CUE = re.compile(
+    r"\b(?:tomorrow|yday|yest|last|next|ago|date|days?|weeks?|months?|years?|"
+    r"mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|"
+    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|"
+    r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b",
+    re.IGNORECASE,
+)
 
 
 def _calendar_date(value: str) -> Optional[str]:
@@ -209,14 +222,19 @@ class FinanceAgent:
         text: str,
         qa_notes: Optional[List[str]] = None,
         vendor_examples: Optional[List[Dict]] = None,
+        *,
+        capture_date: Optional[datetime.date] = None,
     ) -> ParsedReceipt:
         """
         Parses a casual typed note (e.g., 'Fictional Demo Cafe coffee 6.50 today')
         either using Gemini or standard rule-based heuristic when offline.
+        The Telegram caller may supply the Sydney date when it received the note.
         """
         if self._client:
-            return self._call_gemini_text(text, qa_notes=qa_notes, vendor_examples=vendor_examples)
-        return self._heuristic_parse_text(text, qa_notes=qa_notes)
+            return self._call_gemini_text(
+                text, qa_notes=qa_notes, vendor_examples=vendor_examples, capture_date=capture_date
+            )
+        return self._heuristic_parse_text(text, qa_notes=qa_notes, capture_date=capture_date)
 
     def parse_document(
         self,
@@ -400,14 +418,22 @@ class FinanceAgent:
         text: str,
         qa_notes: Optional[List[str]] = None,
         vendor_examples: Optional[List[Dict]] = None,
+        *,
+        capture_date: Optional[datetime.date] = None,
     ) -> ParsedReceipt:
         """Invokes Gemini model for text extraction with fallback models."""
         from google.genai import types
 
-        evidence = self._heuristic_parse_text(text)
+        evidence = self._heuristic_parse_text(text, capture_date=capture_date)
         if evidence.date is None or evidence.total_amount is None:
             return evidence
 
+        system_instruction = RECEIPT_SYSTEM_PROMPT
+        if capture_date is not None and not NOTE_DATE_PATTERN.search(text):
+            system_instruction += (
+                f"\nFor this short manual Telegram note the application verified the entry date as {evidence.date} "
+                "in Australia/Sydney. Use that date and base confidence on the expense classification."
+            )
         prompt = "Extract the transaction details from this note:\n\n" + json.dumps(text, ensure_ascii=False)
         if qa_notes:
             prompt += "\nQA review feedback from previous attempt (please correct these):\n"
@@ -431,7 +457,7 @@ class FinanceAgent:
                     model=m,
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        system_instruction=RECEIPT_SYSTEM_PROMPT,
+                        system_instruction=system_instruction,
                         response_mime_type="application/json",
                         temperature=0.0,
                     ),
@@ -509,8 +535,14 @@ class FinanceAgent:
             "No financial record was posted — please enter the vendor and amount manually via a typed note."
         )
 
-    def _heuristic_parse_text(self, text: str, qa_notes: Optional[List[str]] = None) -> ParsedReceipt:
-        """Classify typed notes and extract only dates and amounts present in the note."""
+    def _heuristic_parse_text(
+        self,
+        text: str,
+        qa_notes: Optional[List[str]] = None,
+        *,
+        capture_date: Optional[datetime.date] = None,
+    ) -> ParsedReceipt:
+        """Read note amounts and use a supplied capture date only for terse manual entries."""
 
         # 1. Check for explicit GST in note (e.g. "gst=0", "gst $0", "no gst", "gst free", "gst=2.50", "gst $2")
         explicit_gst: Optional[float] = None
@@ -538,10 +570,12 @@ class FinanceAgent:
         for match in NOTE_DATE_PATTERN.finditer(text_without_pct):
             value = match.group().lower()
             if value in ("today", "yesterday"):
-                try:
-                    day = datetime.datetime.now(ZoneInfo("Australia/Sydney")).date()
-                except ZoneInfoNotFoundError:
-                    day = datetime.date.today()
+                day = capture_date
+                if day is None:
+                    try:
+                        day = datetime.datetime.now(ZoneInfo("Australia/Sydney")).date()
+                    except ZoneInfoNotFoundError:
+                        day = datetime.date.today()
                 if value == "yesterday":
                     day -= datetime.timedelta(days=1)
                 dates.add(day.isoformat())
@@ -566,6 +600,16 @@ class FinanceAgent:
         vendor_source = text_without_dates[:amount_matches[0].start()] if amount_matches else text_without_dates
         explicit_vendor = re.search(r"(?:^|[|;])\s*(?:vendor|merchant)\s*[:=]\s*([^|;]+)", vendor_source, re.IGNORECASE)
         vendor = (explicit_vendor.group(1) if explicit_vendor else vendor_source).strip(" \t,;|-")
+        if (
+            capture_date is not None
+            and not dates
+            and total is not None
+            and total > 0
+            and vendor
+            and _TERSE_EXPENSE_NOTE.fullmatch(text.strip())
+            and not _OTHER_DATE_CUE.search(text)
+        ):
+            date = capture_date.isoformat()
 
         currency = "AUD"
         category = "general"
@@ -577,6 +621,7 @@ class FinanceAgent:
         )
 
         lower = text.lower()
+        is_coffee = any(word in lower for word in ("coffee", "cafe", "latte")) or bool(re.search(r"\bcoffe\b", lower))
         if "afterpay" in lower or "pay in 4" in lower or "zippay" in lower or "zip pay" in lower:
             payment_method = "Afterpay / BNPL (2200)"
         elif "osko" in lower:
@@ -645,7 +690,7 @@ class FinanceAgent:
         ):
             if any(k in lower for k in ("3d", "print", "nozzle", "filament", "resin", "pla")):
                 category = "hobby_3d_printing"
-            elif "coffee" in lower or "cafe" in lower or "latte" in lower:
+            elif is_coffee:
                 category = "dining_coffee"
             elif "grocer" in lower or "supermarket" in lower:
                 category = "groceries"
@@ -659,12 +704,13 @@ class FinanceAgent:
         # Priority 4: Ambiguous Bare Transfers or Payment Rail Notes without merchant/category context
         elif (
             any(k in lower for k in ("transfer", "tfr", "osko", "payid", "atm cash", "cash out", "afterpay", "pay in 4", "zip pay", "zippay"))
+            and not is_coffee
             and not any(
                 k in lower
                 for k in (
                     "dog", "walk", "pet", "leash", "client", "income", "fee", "3d", "print",
                     "nozzle", "maker", "pla", "resin", "filament", "supplies", "supply",
-                    "office", "fuel", "petrol", "servo", "coffee", "cafe", "grocer", "supermarket",
+                    "office", "fuel", "petrol", "servo", "grocer", "supermarket",
                     "uniform", "education"
                 )
             )
@@ -704,7 +750,7 @@ class FinanceAgent:
             business_activity = "printing_3d"
             confidence = 0.88
             uncertainty_note = None
-        elif "coffee" in lower or "cafe" in lower or "latte" in lower:
+        elif is_coffee:
             category = "dining_coffee"
             claim_stream = "personal"
             business_activity = "none"

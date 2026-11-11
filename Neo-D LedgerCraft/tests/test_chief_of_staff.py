@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from src.agents.chief_of_staff import ChiefOfStaff
 from src.agents.finance_agent import FinanceAgent
@@ -95,6 +95,22 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         self.finance._client = SimpleNamespace(models=SimpleNamespace(generate_content=generate))
         return generate
 
+    def _process_matching_photos(self, **second_fields):
+        other_photo = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNg+M8AAAICAQB7CYF4AAAAAElFTkSuQmCC"
+        )
+        second_receipt = {**self.receipt, **second_fields}
+        self._mock_ocr(self.receipt, second_receipt, second_receipt, second_receipt)
+        first = self.cos.process_file(self.photo, file_bytes=self.photo_bytes)
+        second = self.cos.process_file("fictional-demo-other-receipt.png", file_bytes=other_photo)
+        return first, second
+
+    def _journal_references(self):
+        return [
+            row["reference"]
+            for row in self.conn.execute("SELECT reference FROM journal_transactions ORDER BY reference")
+        ]
+
     def test_photo_retries_missing_date_then_archives_and_posts_once(self):
         generate = self._mock_ocr({**self.receipt, "date": None}, self.receipt)
         caption = "[FICTIONAL DEMO] Coffee with Sam"
@@ -116,6 +132,7 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         duplicate = self.cos.process_file(self.photo, user_note=caption, file_bytes=self.photo_bytes)
         self.assertEqual(duplicate.status, "duplicate")
         self.assertEqual(duplicate.receipt_id, 0)
+        self.assertEqual(duplicate.exact_duplicate_of, result.receipt_id)
         self.gdrive.upload_receipt_bytes.assert_called_once_with(
             self.photo_bytes, self.photo, file_hash=hashlib.sha256(self.photo_bytes).hexdigest()
         )
@@ -123,6 +140,70 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         balance = JournalManager(self.conn).get_trial_balance()
         self.assertEqual(sum(row["total_debit"] for row in balance), 11.00)
         self.assertEqual(sum(row["total_credit"] for row in balance), 11.00)
+
+    def test_confirming_possible_duplicate_posts_once_and_survives_later_correction(self):
+        first, second = self._process_matching_photos()
+        original_reference = f"receipt:{first.receipt_id}"
+        distinct_reference = f"receipt:{second.receipt_id}"
+
+        self.assertGreater(second.receipt_id, first.receipt_id)
+        self.assertEqual(second.status, "flagged")
+        self.assertIsNone(second.exact_duplicate_of)
+        self.assertIn(f"existing receipt #{first.receipt_id}", second.flag_reason)
+        self.assertEqual(self._journal_references(), [original_reference])
+
+        with self.assertRaisesRegex(ValueError, "no longer has that possible duplicate match"):
+            self.cos.confirm_distinct_receipt(second.receipt_id, second.receipt_id)
+        self.assertEqual(self.cos.km.get_receipt(second.receipt_id)["status"], "flagged")
+        self.assertEqual(self._journal_references(), [original_reference])
+
+        confirmed = self.cos.confirm_distinct_receipt(second.receipt_id, first.receipt_id)
+        self.assertEqual(confirmed.receipt_id, second.receipt_id)
+        self.assertIsNone(confirmed.flag_reason)
+        self.assertEqual(self._journal_references(), [original_reference, distinct_reference])
+
+        repeated = self.cos.confirm_distinct_receipt(second.receipt_id, first.receipt_id)
+        self.assertEqual(repeated.status, confirmed.status)
+        corrected = self.cos.correct_receipt(second.receipt_id, category="general")
+        self.assertEqual(corrected.category, "general")
+        self.assertIsNone(corrected.flag_reason)
+        self.assertEqual(self._journal_references(), [original_reference, distinct_reference])
+        balance = JournalManager(self.conn).get_trial_balance()
+        self.assertEqual(sum(row["total_debit"] for row in balance), 22.00)
+        self.assertEqual(sum(row["total_credit"] for row in balance), 22.00)
+
+    def test_journal_failure_leaves_possible_duplicate_held_and_retryable(self):
+        first, second = self._process_matching_photos()
+        journal = self.cos.km.journal
+        post_transaction = journal.post_transaction
+
+        def fail_after_writing(*args, **kwargs):
+            post_transaction(*args, **kwargs)
+            raise sqlite3.OperationalError("synthetic journal failure")
+
+        with patch.object(journal, "post_transaction", side_effect=fail_after_writing):
+            with self.assertRaisesRegex(sqlite3.OperationalError, "synthetic journal failure"):
+                self.cos.confirm_distinct_receipt(second.receipt_id, first.receipt_id)
+
+        still_held = self.cos.km.get_receipt(second.receipt_id)
+        self.assertEqual(still_held["status"], "flagged")
+        self.assertEqual(still_held["flag_reason"], second.flag_reason)
+        self.assertEqual(self._journal_references(), [f"receipt:{first.receipt_id}"])
+
+        self.cos.confirm_distinct_receipt(second.receipt_id, first.receipt_id)
+        self.assertEqual(self._journal_references(), [f"receipt:{first.receipt_id}", f"receipt:{second.receipt_id}"])
+
+    def test_confirming_distinct_receipt_preserves_independent_gst_hold(self):
+        first, second = self._process_matching_photos(tax_amount=2.00)
+        self.assertIn("Likely duplicate", second.flag_reason)
+        self.assertIn("GST amount", second.flag_reason)
+
+        updated = self.cos.confirm_distinct_receipt(second.receipt_id, first.receipt_id)
+
+        self.assertEqual(updated.status, "flagged")
+        self.assertIn("GST amount", updated.flag_reason)
+        self.assertNotIn("Likely duplicate", updated.flag_reason)
+        self.assertEqual(self._journal_references(), [f"receipt:{first.receipt_id}"])
 
     def test_unreadable_amount_and_date_hold_photo_after_two_retries(self):
         incomplete = {**self.receipt, "date": None, "total_amount": None}
@@ -183,6 +264,8 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         result = self.cos.process_file(self.photo, file_bytes=self.photo_bytes)
 
         self.assertEqual(result.status, "duplicate")
+        self.assertEqual(result.receipt_id, 0)
+        self.assertEqual(result.exact_duplicate_of, receipt_id)
         self.assertEqual(self.cos.km.get_receipt(receipt_id)["gdrive_file_id"], "1FictionalDemoBackupId")
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 1)

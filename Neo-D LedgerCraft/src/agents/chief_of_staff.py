@@ -64,6 +64,8 @@ class IntakeSummary:
     gdrive_status: str = "not_applicable"
     gdrive_error: Optional[str] = None
     local_path: Optional[str] = None
+    exact_duplicate_of: Optional[int] = None
+    has_file_hash: bool = False
 
 
 class ChiefOfStaff:
@@ -281,6 +283,7 @@ class ChiefOfStaff:
             gdrive_status=gdrive_status,
             gdrive_error=gdrive_error,
             local_path=rec.get("local_path"),
+            has_file_hash=bool(rec.get("file_hash")),
             summary_text="\n".join(lines),
         )
 
@@ -325,6 +328,7 @@ class ChiefOfStaff:
         gdrive_file_id: Optional[str] = None,
         gdrive_status: str = "not_applicable",
         gdrive_error: Optional[str] = None,
+        exact_duplicate_of: Optional[int] = None,
     ) -> IntakeSummary:
         message = [reason, "No financial record or journal entry was posted."]
         if gdrive_status == "uploaded" and gdrive_file_id:
@@ -345,12 +349,14 @@ class ChiefOfStaff:
             gdrive_file_id=gdrive_file_id,
             gdrive_status=gdrive_status,
             gdrive_error=gdrive_error,
+            exact_duplicate_of=exact_duplicate_of,
             summary_text="\n".join(message),
         )
 
-    def process_note(self, text: str) -> IntakeSummary:
+    def process_note(self, text: str, *, capture_date: Optional[datetime.date] = None) -> IntakeSummary:
         """Processes a casual typed note without a file."""
         examples = self.km.memory.get_recent_examples(limit=10)
+        note_context = {"capture_date": capture_date} if capture_date is not None else {}
 
         retry_count = 0
         qa_notes = []
@@ -358,7 +364,7 @@ class ChiefOfStaff:
         qa_res = None
 
         while retry_count <= self.qa.max_retries:
-            parsed = self.finance.parse_note(text, qa_notes=qa_notes, vendor_examples=examples)
+            parsed = self.finance.parse_note(text, qa_notes=qa_notes, vendor_examples=examples, **note_context)
             parsed = self._apply_vendor_memory_if_known(parsed)
             parsed_dict = parsed.model_dump()
             qa_res = self.qa.inspect_receipt(parsed_dict, retry_count=retry_count)
@@ -411,6 +417,7 @@ class ChiefOfStaff:
             return self._unposted_summary(
                 "duplicate", f"This exact file is already saved as receipt #{duplicate['id']}.",
                 gdrive_file_id=duplicate["gdrive_file_id"], gdrive_status="uploaded",
+                exact_duplicate_of=duplicate["id"],
             )
 
         gdrive_id, gdrive_status, gdrive_error = self._archive_original(filename, payload, file_hash)
@@ -433,7 +440,8 @@ class ChiefOfStaff:
                     (gdrive_id, duplicate["id"]),
                 )
             return self._unposted_summary(
-                "duplicate", f"This exact file is already saved as receipt #{duplicate['id']}.", **archive
+                "duplicate", f"This exact file is already saved as receipt #{duplicate['id']}.",
+                exact_duplicate_of=duplicate["id"], **archive,
             )
         return self._process_archived_receipt(filename, payload, file_hash, user_note, archive)
 
@@ -547,6 +555,10 @@ class ChiefOfStaff:
             is_correction=True,
         )
 
+    def confirm_distinct_receipt(self, receipt_id: int, matched_receipt_id: int) -> IntakeSummary:
+        updated = self.km.correct_receipt(receipt_id, distinct_from=matched_receipt_id, remember_vendor=False)
+        return self._build_summary_from_receipt_row(updated, is_correction=True)
+
     @staticmethod
     def _batch_summary(summary: IntakeSummary, document_type: str = "unknown") -> Dict[str, Any]:
         recorded = bool(summary.receipt_id)
@@ -558,6 +570,7 @@ class ChiefOfStaff:
             "summary_text": summary.summary_text,
             "receipt_ids": [summary.receipt_id] if recorded else [],
             "status": summary.status,
+            "exact_duplicate_of": summary.exact_duplicate_of,
             "gdrive_file_id": summary.gdrive_file_id,
             "gdrive_status": summary.gdrive_status,
             "local_path": None,

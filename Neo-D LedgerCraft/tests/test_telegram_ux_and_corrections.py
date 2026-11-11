@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import os
 import subprocess
 import tempfile
@@ -458,7 +459,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         sent_kb = note_reply.kwargs["reply_markup"]
         self.assertIn("55.00", sent_text)
         self.assertIn("AUD", sent_text)
-        self.assertNotIn("+10 XP", sent_text)
+        self.assertEqual(sent_text.splitlines()[-1], "🐾 Womby: +10 XP")
         self.assertIsNone(note_reply.kwargs.get("parse_mode"))
         self.assertEqual(bot._get_companion_state()["total_xp"], original_xp + 10)
         self.assert_compact_receipt_keyboard(sent_kb, 1, "abn")
@@ -502,11 +503,138 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         progress_edit = photo_update.message.reply_text.return_value.edit_text
         progress_edit.assert_awaited_once()
         photo_reply_text = progress_edit.call_args[0][0]
-        self.assertIn("Google Drive", photo_reply_text)
-        self.assertIn("No financial record or journal entry was posted", photo_reply_text)
+        self.assertIn("Drive unavailable · Not posted", photo_reply_text)
+        self.assertIn("Keep your original", photo_reply_text)
         self.assertIsNone(progress_edit.call_args.kwargs["reply_markup"])
         self.assertEqual(bot._get_companion_state()["total_xp"], original_xp + 10)
         self.assertFalse(os.path.exists(os.path.join(self.tmp_dir.name, "receipts")))
+
+    def test_terse_telegram_note_uses_sydney_capture_day_and_one_companion_line(self):
+        """[FICTIONAL DEMO] A short expense uses the Sydney day the owner sent it."""
+        bot = TelegramReceiptBot(
+            bot_token="fictional_token",
+            owner_chat_id=12345,
+            db_path=self.db_path,
+            finance_agent=FinanceAgent(api_key=""),
+            load_dotenv=False,
+        )
+        self.addCleanup(bot.conn.close)
+        bot.conn.execute(
+            "UPDATE companion_state SET reward_target_xp=10, reward_name=? WHERE id=1",
+            ("[FICTIONAL DEMO] Tea break",),
+        )
+        bot.conn.commit()
+        sydney_day = datetime.date.today() - datetime.timedelta(days=1)
+        utc_sent = datetime.datetime.combine(
+            sydney_day - datetime.timedelta(days=1), datetime.time(14, 5), tzinfo=datetime.timezone.utc,
+        )
+        message = SimpleNamespace(
+            text="coffe 6.50", date=utc_sent,
+            reply_chat_action=AsyncMock(), reply_text=AsyncMock(),
+        )
+        update = SimpleNamespace(message=message, effective_chat=SimpleNamespace(id=12345))
+        # Use a fixed Sydney summer offset in the Windows test environment.
+        sydney_summer = datetime.timezone(datetime.timedelta(hours=11))
+        with patch("src.interfaces.telegram_bot.ZoneInfo", return_value=sydney_summer) as timezone_lookup:
+            asyncio.run(bot.handle_text(update, SimpleNamespace()))
+
+        timezone_lookup.assert_called_once_with("Australia/Sydney")
+        receipt = bot.cos.km.get_receipt(1)
+        self.assertEqual(receipt["date"], sydney_day.isoformat())
+        self.assertEqual(receipt["total_amount"], 6.50)
+        self.assertEqual(receipt["category"], "dining_coffee")
+        reply = message.reply_text.await_args
+        self.assertIsNone(reply.kwargs.get("parse_mode"))
+        self.assertTrue(reply.args[0].startswith("✍️ #1 · coffe · "))
+        self.assertNotIn("coffe 6.50", reply.args[0])
+        self.assertEqual(reply.args[0].splitlines()[-1], "🐾 Womby: +10 XP · Treat unlocked: [FICTIONAL DEMO] Tea break")
+        self.assertEqual(bot._get_companion_state()["total_xp"], 10)
+
+    def test_exact_upload_and_possible_duplicate_have_distinct_telegram_controls(self):
+        """[FICTIONAL DEMO] Same bytes show the original; a soft match can be reviewed."""
+        bot = TelegramReceiptBot(
+            bot_token="fictional_token",
+            owner_chat_id=12345,
+            db_path=self.db_path,
+            finance_agent=FinanceAgent(api_key=""),
+            load_dotenv=False,
+        )
+        self.addCleanup(bot.conn.close)
+        initial_file = b"[FICTIONAL DEMO] first receipt"
+        separate_file = b"[FICTIONAL DEMO] separate receipt"
+        original_drive_id = "1FictionalOriginalReceipt123"
+        parsed = ParsedReceipt(
+            vendor="[FICTIONAL DEMO] Zinc Shop",
+            date=(datetime.date.today() - datetime.timedelta(days=1)).isoformat(),
+            total_amount=23.50,
+            tax_amount=0.0,
+            gst_status="explicit",
+            category="materials_3d_printing",
+            confidence=0.95,
+        )
+
+        def extract(filename, *, file_bytes, **kwargs):
+            return parsed.model_copy(update={"tax_amount": 8.0 if file_bytes == separate_file else 0.0})
+
+        async def upload(payload, caption=None):
+            progress = SimpleNamespace(edit_text=AsyncMock())
+            message = SimpleNamespace(
+                photo=[SimpleNamespace(file_id="fictional_id", file_unique_id="fictional_file", file_size=len(payload))],
+                caption=caption,
+                reply_text=AsyncMock(return_value=progress),
+            )
+            file = SimpleNamespace(file_size=len(payload), download_as_bytearray=AsyncMock(return_value=bytearray(payload)))
+            context = SimpleNamespace(bot=SimpleNamespace(get_file=AsyncMock(return_value=file)))
+            await bot.handle_photo(SimpleNamespace(message=message, effective_chat=SimpleNamespace(id=12345)), context)
+            return progress.edit_text.await_args
+
+        async def tap(data):
+            query = SimpleNamespace(data=data, answer=AsyncMock(), edit_message_text=AsyncMock())
+            await bot.handle_correction_callback(
+                SimpleNamespace(callback_query=query, effective_chat=SimpleNamespace(id=12345)), SimpleNamespace(),
+            )
+            return query.edit_message_text.await_args
+
+        with (
+            patch.object(bot.cos.finance, "parse_document", side_effect=extract) as ocr,
+            patch.object(bot.gdrive, "upload_receipt_bytes", side_effect=[original_drive_id, "1FictionalSecondReceipt321"]) as archive,
+        ):
+            first = asyncio.run(upload(initial_file))
+            self.assert_compact_receipt_keyboard(first.kwargs["reply_markup"], 1, "abn")
+            self.assertIn("Womby: +10 XP", first.args[0])
+
+            for caption in (None, "[FICTIONAL DEMO] batch"):
+                exact = asyncio.run(upload(initial_file, caption))
+                self.assertIn("Already saved as receipt #1.", exact.args[0])
+                self.assertIn("$23.50 AUD", exact.args[0])
+                self.assertNotIn("Womby:", exact.args[0])
+                [read_only] = [button for row in exact.kwargs["reply_markup"].inline_keyboard for button in row]
+                details = asyncio.run(tap(read_only.callback_data))
+                self.assertIn("Already saved as receipt #1.", details.kwargs["text"])
+                buttons = [button for row in details.kwargs["reply_markup"].inline_keyboard for button in row]
+                self.assertIn(f"https://drive.google.com/open?id={original_drive_id}", {b.url for b in buttons})
+                self.assertFalse(any(b.callback_data and ":distinct:" in b.callback_data for b in buttons))
+            ocr.assert_called_once()
+            archive.assert_called_once()
+            self.assertEqual(bot._get_companion_state()["total_xp"], 10)
+            self.assertEqual(bot.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
+
+            possible = asyncio.run(upload(separate_file))
+            self.assertIn("Possible duplicate of #1 · Excluded from totals", possible.args[0])
+            self.assertIn("Womby: +10 XP", possible.args[0])
+            buttons = [button for row in possible.kwargs["reply_markup"].inline_keyboard for button in row]
+            distinct = next(button for button in buttons if button.text == "↩️ Not a duplicate, count it")
+            self.assertEqual(distinct.callback_data, "corr:2:distinct:1")
+
+            corrected = asyncio.run(tap(distinct.callback_data))
+            self.assertIn("Needs review · Not posted", corrected.kwargs["text"])
+            self.assertNotIn("Womby:", corrected.kwargs["text"])
+            self.assert_compact_receipt_keyboard(corrected.kwargs["reply_markup"], 2, "abn")
+            remaining = bot.cos.km.get_receipt(2)["flag_reason"]
+            self.assertIn("GST", remaining)
+            self.assertNotIn("duplicate", remaining.lower())
+            self.assertEqual(bot.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 1)
+            self.assertEqual(bot._get_companion_state()["total_xp"], 20)
 
     def test_category_controls_keep_archive_private_and_preserve_legacy_corrections(self):
         bot = TelegramReceiptBot(
@@ -635,7 +763,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                     claim_stream="abn",
                     summary_text="Detailed report" if saved else "Please confirm the receipt date.",
                     status="recorded" if saved else "needs_review",
-                    flag_reason=None,
+                    flag_reason=None if saved else "Transaction date is missing.",
                     gdrive_status="uploaded",
                     gdrive_file_id=drive_id,
                     items_summary="Nozzle kit",
@@ -646,7 +774,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                         "recorded_count": 0, "xp_earned": 0, "summary_text": "No new records",
                         "gdrive_status": "uploaded", "gdrive_file_id": drive_id,
                     }) as process_batch,
-                    patch.object(bot, "_award_xp_and_emit", return_value="+10 XP") as award_xp,
+                    patch.object(bot, "_award_xp_and_emit", return_value="🐾 Womby: +10 XP") as award_xp,
                 ):
                     handler = bot.handle_photo if filename is None else bot.handle_document
                     asyncio.run(handler(update, context))
@@ -665,7 +793,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                         self.assertIn(summary.vendor, reply.args[0])
                         self.assertIn("$23.50 AUD", reply.args[0])
                         self.assertNotIn("Detailed report", reply.args[0])
-                        self.assertNotIn("+10 XP", reply.args[0])
+                        self.assertEqual(reply.args[0].splitlines()[-1], "🐾 Womby: +10 XP")
                         self.assertIsNone(reply.kwargs.get("parse_mode"))
                         award_xp.assert_called_once()
                     else:
@@ -673,6 +801,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                         self.assertEqual(
                             keyboard.inline_keyboard[0][0].url, f"https://drive.google.com/open?id={drive_id}"
                         )
+                        self.assertNotIn("Womby:", reply.args[0])
                         award_xp.assert_not_called()
                     if batch:
                         process_batch.assert_called_once_with(expected_name, user_note=caption, file_bytes=raw_bytes)
@@ -681,7 +810,9 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                         process_single.assert_called_once_with(expected_name, user_note=caption, file_bytes=raw_bytes)
                         process_batch.assert_not_called()
                         if not saved:
-                            self.assertEqual(reply.args[0], "Please confirm the receipt date.")
+                            self.assertEqual(reply.args[0].splitlines(), [
+                                "Status: Needs review · Not posted", "Check date.", "Original saved to Drive.",
+                            ])
 
     def test_media_result_only_retries_a_markdown_parse_rejection(self):
         send = AsyncMock(side_effect=[BadRequest("Can't parse entities: Can't find end of the entity"), None])

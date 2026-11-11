@@ -7,6 +7,7 @@ import re
 from datetime import date
 from typing import TYPE_CHECKING
 
+from src.agents.qa_agent import likely_duplicate_receipt_id
 from src.storage.categories import VALID_ABN_TAX_LABELS, VALID_PAYG_TAX_LABELS
 
 if TYPE_CHECKING:
@@ -39,10 +40,10 @@ CATEGORY_LABELS = {
     "general": "General",
 }
 SOURCE_LABELS = {
-    "ai_suggestion": "AI suggestion",
-    "rule_heuristic": "Rule-based",
-    "vendor_memory": "Vendor memory",
-    "owner_correction": "Owner correction",
+    "ai_suggestion": "🦊 AI suggestion",
+    "rule_heuristic": "🧭 Rule-based",
+    "vendor_memory": "🧠 Vendor memory",
+    "owner_correction": "✏️ Owner correction",
 }
 ACTIVITY_LABELS = {"printing_3d": "3D Printing", "dog_walking": "Dog Walking"}
 STREAM_LABELS = {"abn": "ABN sole trader", "payg": "PAYG employment", "personal": "Personal"}
@@ -126,9 +127,10 @@ def _review_required(summary: IntakeSummary) -> bool:
 
 
 def _review_reason(summary: IntakeSummary) -> str:
-    reason = (summary.flag_reason or "").casefold()
-    checks = [label for keywords, label in (
-        (("duplicate",), "possible duplicate"),
+    flags = (summary.flag_reason or "").split(";")
+    reason = " ".join(flag for flag in flags if not likely_duplicate_receipt_id(flag)).casefold()
+    checks = ["possible duplicate"] if "duplicate" in (summary.flag_reason or "").casefold() else []
+    checks.extend(label for keywords, label in (
         (("vendor",), "vendor"),
         (("date",), "date"),
         (("total amount", "positive total"), "total amount"),
@@ -136,20 +138,20 @@ def _review_reason(summary: IntakeSummary) -> str:
         (("gst",), "GST"),
         (("item",), "item totals"),
         (("category", "classification", "business_activity", "business_pct", "percentage"), "classification"),
-    ) if any(keyword in reason for keyword in keywords)]
+    ) if any(keyword in reason for keyword in keywords))
     return "Check " + ", ".join(checks[:3]) + "." if checks else "Check the receipt details."
 
 
 def format_receipt_card(summary: IntakeSummary) -> str:
     """Return a compact receipt card or a short, truthful intake status."""
     if summary.status == "duplicate":
-        matched = re.search(r"\bsaved as receipt #(\d{1,12})\b", summary.flag_reason or "", re.IGNORECASE)
-        receipt_id = summary.receipt_id or (matched.group(1) if matched else None)
-        return f"Already saved as receipt #{receipt_id}." if receipt_id else "This receipt is already saved."
+        if summary.exact_duplicate_of:
+            return f"↩️ Already saved as receipt #{summary.exact_duplicate_of}."
+        return "↩️ This receipt is already saved."
 
     if not summary.receipt_id:
         if summary.status == "archive_unavailable":
-            return "Status: Drive unavailable · Not posted\nTry uploading the receipt again."
+            return "Status: Drive unavailable · Not posted\nKeep your original and try again once Drive reconnects."
         if summary.status == "extraction_unavailable":
             lines = ["Status: Could not read receipt · Not posted", "Send a clearer photo or enter the details."]
         elif _review_required(summary):
@@ -161,7 +163,8 @@ def format_receipt_card(summary: IntakeSummary) -> str:
         return "\n".join(lines)
 
     vendor = _safe_preview(summary.vendor, 35) or "Unknown vendor"
-    lines = [f"🧾 #{summary.receipt_id} · {vendor} · {_date_label(summary.date)}", _amount_line(summary)]
+    icon = "✍️" if summary.gdrive_status == "not_applicable" and not summary.local_path else "🧾"
+    lines = [f"{icon} #{summary.receipt_id} · {vendor} · {_date_label(summary.date)}", _amount_line(summary)]
     # Typed-note items can contain the input note verbatim. Preview only uploaded receipt items.
     if _drive_saved(summary) or summary.local_path:
         description = _ITEM_AMOUNT.split(summary.items_summary, maxsplit=1)[0]
@@ -174,7 +177,10 @@ def format_receipt_card(summary: IntakeSummary) -> str:
     review_required = _review_required(summary)
     if review_required:
         status = "Needs review · Not posted"
-        if "duplicate" in (summary.flag_reason or "").casefold():
+        matched = likely_duplicate_receipt_id(summary.flag_reason) if summary.status == "flagged" else None
+        if matched and matched != summary.receipt_id:
+            status = f"Possible duplicate of #{matched} · Excluded from totals"
+        elif "duplicate" in (summary.flag_reason or "").casefold():
             status = "Possible duplicate · Needs review"
     elif summary.status in SAVED_STATUSES and any(key in summary.category.lower() for key in ("transfer", "repayment")):
         status = "Saved · Journal pending"

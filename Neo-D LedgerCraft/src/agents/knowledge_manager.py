@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
-from src.agents.qa_agent import QAAgent
+from src.agents.qa_agent import QAAgent, likely_duplicate_receipt_id
 from src.storage.categories import (
     VALID_ACTIVITIES,
     VALID_STREAMS,
@@ -39,7 +40,7 @@ class KnowledgeManager:
         cur = self.main_conn.execute("SELECT code FROM accounts WHERE code = ?", (code,))
         if cur.fetchone():
             return code
-        with self.main_conn:
+        with nullcontext() if self.main_conn.in_transaction else self.main_conn:
             self.main_conn.execute(
                 "INSERT OR IGNORE INTO accounts (code, name, type, currency) VALUES (?, ?, ?, 'AUD')",
                 (code, name, acc_type),
@@ -523,6 +524,8 @@ class KnowledgeManager:
         payment_method: Optional[str] = None,
         date: Optional[str] = None,
         remember_vendor: bool = True,
+        *,
+        distinct_from: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Applies an owner correction to an existing receipt, validating all modified fields
@@ -661,6 +664,18 @@ class KnowledgeManager:
             confirmed_fields = set(json.loads(current.get("confirmed_fields") or "[]"))
         except Exception:
             confirmed_fields = set()
+        # Record the owner's decision about this pair alongside other reviewed fields.
+        # A later category edit should not re-flag a match the owner already reviewed.
+        if distinct_from is not None:
+            decision = f"distinct_from:{distinct_from}"
+            if decision in confirmed_fields:
+                return current
+            if (
+                prev_status != "flagged"
+                or not current.get("file_hash")
+                or distinct_from != likely_duplicate_receipt_id(current.get("flag_reason"))
+            ):
+                raise ValueError("This receipt no longer has that possible duplicate match.")
         if prev_source in ("owner_correction", "vendor_memory") and prev_conf >= 1.0 and prev_status in ("recorded", "corrected"):
             confirmed_fields.update({"stream", "category", "activity", "pct"})
         was_classification_confirmed = (prev_source == "owner_correction" and prev_conf >= 1.0)
@@ -951,8 +966,6 @@ class KnowledgeManager:
             candidate_conf = prev_conf
             candidate_uncertainty = prev_uncertainty
 
-        confirmed_fields_json = json.dumps(sorted(confirmed_fields))
-
         # 3. Revalidate the complete candidate record and reconcile unresolved QA/validation flags
         items_for_qa = None
         if current.get("items_json"):
@@ -986,6 +999,16 @@ class KnowledgeManager:
             existing_receipts=other_receipts,
             retry_count=self.qa.max_retries,
         )
+
+        if distinct_from is not None:
+            matched_ids = {likely_duplicate_receipt_id(issue) for issue in qa_res.issues}
+            has_identical_file = any(
+                receipt.get("file_hash") == current["file_hash"] for receipt in (other_receipts or ())
+            )
+            if distinct_from not in matched_ids or has_identical_file:
+                raise ValueError("This receipt no longer has that possible duplicate match.")
+            confirmed_fields.add(decision)
+        confirmed_fields_json = json.dumps(sorted(confirmed_fields))
 
         old_clauses = [c.strip() for c in old_flag_reason.split(";") if c.strip()]
         preserved_clauses: List[str] = []
@@ -1037,6 +1060,9 @@ class KnowledgeManager:
 
         remaining_issues: List[str] = []
         for c in preserved_clauses + qa_res.issues + missing_allocation_reasons:
+            match_id = likely_duplicate_receipt_id(c)
+            if match_id is not None and f"distinct_from:{match_id}" in confirmed_fields:
+                continue
             if c and c not in remaining_issues:
                 remaining_issues.append(c)
 
@@ -1074,7 +1100,7 @@ class KnowledgeManager:
             final_conf = 1.0 if candidate_source in ("owner_correction", "vendor_memory") else candidate_conf
 
         with self.main_conn:
-            self.main_conn.execute(
+            cursor = self.main_conn.execute(
                 """
                 UPDATE receipts
                 SET vendor = ?,
@@ -1096,7 +1122,7 @@ class KnowledgeManager:
                     uncertainty_note = ?,
                     status = ?,
                     flag_reason = ?
-                WHERE id = ?
+                WHERE id = ? AND confirmed_fields IS ? AND status IS ? AND flag_reason IS ?
                 """,
                 (
                     new_vendor,
@@ -1119,7 +1145,26 @@ class KnowledgeManager:
                     new_status,
                     new_flag_reason,
                     receipt_id,
+                    current.get("confirmed_fields"),
+                    current.get("status"),
+                    current.get("flag_reason"),
                 ),
+            )
+            if not cursor.rowcount:
+                raise ValueError("This receipt changed. Reopen it before making another correction.")
+            # The receipt and its journal entry commit together.
+            self._post_journal_for_receipt(
+                receipt_id=receipt_id,
+                vendor=new_vendor,
+                date=new_date,
+                total=total,
+                category=final_cat,
+                purpose=final_purpose,
+                business_pct=effective_pct,
+                business_activity=final_activity,
+                payment_method=new_payment,
+                status=new_status,
+                flag_reason=new_flag_reason,
             )
 
         # Save to Vendor Memory ONLY when all required allocation fields are owner-confirmed and no QA flags remain
@@ -1136,21 +1181,6 @@ class KnowledgeManager:
                 source="owner_correction",
                 confidence=1.0,
             )
-
-        # Repost balanced double-entry journal transaction (replaces prior reference="receipt:<id>")
-        self._post_journal_for_receipt(
-            receipt_id=receipt_id,
-            vendor=new_vendor,
-            date=new_date,
-            total=total,
-            category=final_cat,
-            purpose=final_purpose,
-            business_pct=effective_pct,
-            business_activity=final_activity,
-            payment_method=new_payment,
-            status=new_status,
-            flag_reason=new_flag_reason,
-        )
 
         updated = self.get_receipt(receipt_id)
         updated["personal_share"] = amounts["personal_share"]
