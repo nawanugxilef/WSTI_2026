@@ -38,7 +38,7 @@ from src.agents.chief_of_staff import ChiefOfStaff, IntakeSummary
 from src.agents.finance_agent import FinanceAgent
 from src.agents.qa_agent import likely_duplicate_receipt_id
 from src.interfaces.cli import load_config, seed_accounts
-from src.interfaces.telegram_receipt import format_receipt_card, format_receipt_details
+from src.interfaces.telegram_receipt import CATEGORY_LABELS, format_receipt_card, format_receipt_details
 from src.storage.categories import (
     ATO_SUGGESTION_DISCLAIMER,
     VALID_ACTIVITIES,
@@ -59,6 +59,33 @@ logger = logging.getLogger(__name__)
 MAX_TELEGRAM_RECEIPT_BYTES = FileSizeLimit.FILESIZE_DOWNLOAD
 XP_ELIGIBLE_STATUSES = {"recorded", "confirmed", "corrected", "flagged", "needs_review"}
 
+_CATEGORY_ICONS = {
+    "materials_3d_printing": "🖨️",
+    "shipping_freight": "📦",
+    "tools_equipment": "🛠️",
+    "income_3d_printing": "💰",
+    "dog_walking_supplies": "🐕",
+    "income_dog_walking": "🦮",
+    "travel_parking": "🅿️",
+    "car_fuel_maintenance": "⛽",
+    "software_subscriptions": "💻",
+    "office_supplies": "📎",
+    "work_car_travel": "🚗",
+    "work_uniform_clothing": "👕",
+    "self_education": "🎓",
+    "work_home_office_other": "🖥️",
+    "groceries": "🛒",
+    "dining_coffee": "☕",
+    "utilities": "🔌",
+    "health_medical": "🏥",
+    "transport_personal": "🚆",
+    "entertainment": "🎬",
+    "hobby_3d_printing": "🎨",
+    "transfer": "🔁",
+    "general": "🗂️",
+}
+_CATEGORY_STREAM_ICONS = {"abn": "💼", "payg": "👔", "personal": "🏠"}
+
 
 def build_correction_keyboard(
     receipt_id: int,
@@ -77,10 +104,13 @@ def build_correction_keyboard(
         rows: List[List[InlineKeyboardButton]] = []
         row: List[InlineKeyboardButton] = []
         for spec in cats:
-            prefix = "💼" if spec.stream == "abn" else ("👔" if spec.stream == "payg" else "🏠")
-            label = f"{prefix} {spec.key.replace('_', ' ').title()}"
+            icon = _CATEGORY_ICONS.get(spec.key) or _CATEGORY_STREAM_ICONS.get(spec.stream, "🏠")
+            name = CATEGORY_LABELS.get(spec.key, spec.key.replace("_", " ").title())
+            label = f"{icon} {name}"
+            if len(label) > 28:
+                label = label[:27].rstrip() + "…"
             row.append(
-                InlineKeyboardButton(label[:28], callback_data=f"corr:{receipt_id}:cat:{spec.key}")
+                InlineKeyboardButton(label, callback_data=f"corr:{receipt_id}:cat:{spec.key}")
             )
             if len(row) == 2:
                 rows.append(row)
