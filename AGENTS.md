@@ -9,7 +9,7 @@
 ## 2. Deployed 4-Agent AI Architecture
 1. **Chief of Staff / Intake ([`src/agents/chief_of_staff.py`](./Neo-D%20LedgerCraft/src/agents/chief_of_staff.py))**:
    - Receives single receipts, multi-receipt batch photos, casual notes, and bank statements (CSV/PDF/Image) via Telegram (`@neo_ledgercraft_bot`) or Email.
-   - Saves raw files locally and backs them up to Google Drive, runs the agent pipeline, triggers the IoT Dopamine Reward Box (`+10 XP`), and replies to the user.
+   - Stores verified originals in Google Drive. Uploaded file bytes are processed in memory, then discarded. Runs the agent pipeline, triggers the IoT Dopamine Reward Box (`+10 XP`), and replies to the user.
 2. **Finance AI ([`src/agents/finance_agent.py`](./Neo-D%20LedgerCraft/src/agents/finance_agent.py))**:
    - Reads vendor, date (`YYYY-MM-DD`), total (`$ AUD`), and 10% GST while simultaneously classifying **Personal vs. Business** (`Dog Walking` / `3D Printing` ABN activities) and **Australian ATO myTax** labels in **ONE single multimodal LLM call** (not two separate agents).
 3. **QA / Reviewer ([`src/agents/qa_agent.py`](./Neo-D%20LedgerCraft/src/agents/qa_agent.py))**:

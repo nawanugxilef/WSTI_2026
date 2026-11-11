@@ -1,5 +1,6 @@
 import base64
 import datetime
+import hashlib
 import json
 import sqlite3
 import tempfile
@@ -72,12 +73,12 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         self.conn.commit()
         self.finance = FinanceAgent(api_key="")
         self.gdrive = Mock()
-        self.gdrive.upload_receipt.return_value = "1FictionalDemoBackupId"
+        self.gdrive.upload_receipt_bytes.return_value = "1FictionalDemoBackupId"
         self.cos = ChiefOfStaff(self.conn, gdrive=self.gdrive, finance_agent=self.finance)
-        self.photo = self.root / "fictional-demo-receipt.png"
-        self.photo.write_bytes(base64.b64decode(
+        self.photo = "fictional-demo-receipt.png"
+        self.photo_bytes = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kv1sAAAAASUVORK5CYII="
-        ))
+        )
         self.receipt = {
             "merchant": "[FICTIONAL DEMO] Cafe",
             "date": datetime.date.today().isoformat(),
@@ -98,20 +99,26 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         generate = self._mock_ocr({**self.receipt, "date": None}, self.receipt)
         caption = "[FICTIONAL DEMO] Coffee with Sam"
 
-        result = self.cos.process_file(str(self.photo), user_note=caption)
+        result = self.cos.process_file(self.photo, user_note=caption, file_bytes=self.photo_bytes)
         self.assertEqual(result.status, "recorded")
         self.assertEqual(result.vendor, self.receipt["merchant"])
-        self.assertEqual(Path(result.local_path).read_bytes(), self.photo.read_bytes())
-        self.assertEqual(self.cos.km.get_receipt(result.receipt_id)["notes"], caption)
+        self.assertIsNone(result.local_path)
+        self.assertFalse((self.root / "receipts").exists())
+        stored = self.cos.km.get_receipt(result.receipt_id)
+        self.assertEqual(stored["notes"], caption)
+        self.assertEqual(stored["gdrive_file_id"], "1FictionalDemoBackupId")
+        self.assertIsNone(stored["local_path"])
         self.assertEqual(generate.call_count, 2)
         second_prompt = generate.call_args.kwargs["contents"][1]
         self.assertIn(caption, second_prompt)
         self.assertIn("Transaction date is missing", second_prompt)
 
-        duplicate = self.cos.process_file(str(self.photo), user_note=caption)
+        duplicate = self.cos.process_file(self.photo, user_note=caption, file_bytes=self.photo_bytes)
         self.assertEqual(duplicate.status, "duplicate")
         self.assertEqual(duplicate.receipt_id, 0)
-        self.gdrive.upload_receipt.assert_called_once()
+        self.gdrive.upload_receipt_bytes.assert_called_once_with(
+            self.photo_bytes, self.photo, file_hash=hashlib.sha256(self.photo_bytes).hexdigest()
+        )
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
         balance = JournalManager(self.conn).get_trial_balance()
         self.assertEqual(sum(row["total_debit"] for row in balance), 11.00)
@@ -120,14 +127,16 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
     def test_unreadable_amount_and_date_hold_photo_after_two_retries(self):
         incomplete = {**self.receipt, "date": None, "total_amount": None}
         generate = self._mock_ocr(incomplete, incomplete, incomplete)
-        result = self.cos.process_file(str(self.photo))
+        result = self.cos.process_file(self.photo, file_bytes=self.photo_bytes)
 
         self.assertEqual(generate.call_count, 3)
         self.assertEqual(result.status, "needs_review")
         self.assertEqual(result.receipt_id, 0)
         self.assertIsNone(result.date)
         self.assertIsNone(result.total_amount)
-        self.assertEqual(Path(result.local_path).read_bytes(), self.photo.read_bytes())
+        self.assertIsNone(result.local_path)
+        self.assertFalse((self.root / "receipts").exists())
+        self.assertEqual(result.gdrive_file_id, "1FictionalDemoBackupId")
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 0)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 0)
 
@@ -137,14 +146,47 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
             "receipts": [self.receipt, {**self.receipt, "date": None, "total_amount": 5.50}],
         })
         caption = "[FICTIONAL DEMO] Batch"
-        result = self.cos.process_batch_or_statement(str(self.photo), user_note=caption)
+        result = self.cos.process_batch_or_statement(self.photo, user_note=caption, file_bytes=self.photo_bytes)
 
         self.assertEqual(result["recorded_count"], 1)
         self.assertEqual(result["xp_earned"], 10)
         self.assertIn("Held for review (1)", result["summary_text"])
         self.assertIn(caption, generate.call_args.kwargs["contents"][1])
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
-        self.assertEqual(Path(result["local_path"]).read_bytes(), self.photo.read_bytes())
+        self.assertIsNone(result["local_path"])
+        self.assertEqual(result["gdrive_file_id"], "1FictionalDemoBackupId")
+        self.assertFalse((self.root / "receipts").exists())
+
+    def test_unavailable_drive_does_not_archive_locally_or_post(self):
+        generate = self._mock_ocr(self.receipt)
+        self.gdrive.upload_receipt_bytes.return_value = None
+        self.gdrive.last_status = "not_configured"
+
+        result = self.cos.process_file(self.photo, file_bytes=self.photo_bytes)
+        batch = self.cos.process_batch_or_statement(self.photo, file_bytes=self.photo_bytes)
+
+        self.assertEqual(result.status, "archive_unavailable")
+        self.assertEqual(batch["status"], "archive_unavailable")
+        self.assertEqual(batch["xp_earned"], 0)
+        self.assertIsNone(result.local_path)
+        self.assertFalse((self.root / "receipts").exists())
+        generate.assert_not_called()
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 0)
+
+    def test_resending_older_local_receipt_attaches_drive_without_duplicate_journal(self):
+        generate = self._mock_ocr(self.receipt)
+        photo_hash = hashlib.sha256(self.photo_bytes).hexdigest()
+        data = {**self.receipt, "vendor": self.receipt["merchant"]}
+        receipt_id = self.cos.km.record_receipt(data, file_hash=photo_hash, gdrive_status="not_configured")
+
+        result = self.cos.process_file(self.photo, file_bytes=self.photo_bytes)
+
+        self.assertEqual(result.status, "duplicate")
+        self.assertEqual(self.cos.km.get_receipt(receipt_id)["gdrive_file_id"], "1FictionalDemoBackupId")
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 1)
+        generate.assert_not_called()
 
 
 if __name__ == "__main__":

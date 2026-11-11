@@ -3,7 +3,6 @@ import os
 import subprocess
 import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -312,16 +311,16 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         Regression test (7): When multimodal OCR is offline or unavailable for a photo/PDF,
         the system must NEVER invent fictitious amounts or post journal entries.
         """
-        sample_img = os.path.join(self.tmp_dir.name, "fictional_unreadable_photo.jpg")
-        with open(sample_img, "wb") as f:
-            f.write(b"fictional-photo-bytes")
+        raw_bytes = b"[FICTIONAL DEMO] unreadable receipt photo"
+        drive = MagicMock()
+        drive.upload_receipt_bytes.return_value = "1FictionalArchivedReceipt987"
 
         cos_offline = ChiefOfStaff(
             main_conn=self.conn,
-            gdrive=GDriveAdapter(receipts_folder_id=None),
+            gdrive=drive,
             finance_agent=FinanceAgent(api_key=""),  # Offline (no Gemini client)
         )
-        res = cos_offline.process_file(sample_img)
+        res = cos_offline.process_file("fictional_unreadable_photo.jpg", file_bytes=raw_bytes)
 
         self.assertEqual(res.status, "extraction_unavailable")
         self.assertEqual(res.receipt_id, 0)
@@ -329,7 +328,10 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertIsNone(res.date)
         self.assertIn("Finance could not read the receipt.", res.summary_text)
         self.assertIn("No financial record or journal entry was posted", res.summary_text)
-        self.assertIn("Google Drive backup unavailable.", res.summary_text)
+        self.assertEqual(res.gdrive_status, "uploaded")
+        self.assertEqual(res.gdrive_file_id, "1FictionalArchivedReceipt987")
+        self.assertIsNone(res.local_path)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp_dir.name, "receipts")))
 
         # Verify ZERO rows were inserted into receipts or journal_transactions
         rec_count = self.conn.execute("SELECT COUNT(*) as c FROM receipts").fetchone()["c"]
@@ -342,9 +344,9 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         Tests photo intake (when OCR returns structured data) + typed-note corrections across
         Category, Business %, Stream (ABN/PAYG/Personal), Activity, and Vendor without duplicate entries.
         """
-        sample_img = os.path.join(self.tmp_dir.name, "fictional_ocr_photo.jpg")
-        with open(sample_img, "wb") as f:
-            f.write(b"fictional-ocr-photo-bytes")
+        raw_bytes = b"[FICTIONAL DEMO] receipt photo"
+        drive = MagicMock()
+        drive.upload_receipt_bytes.return_value = "1FictionalArchivedReceipt987"
 
         mock_finance = MagicMock(spec=FinanceAgent)
         mock_finance._normalize_parsed_receipt = FinanceAgent(api_key="")._normalize_parsed_receipt
@@ -370,15 +372,17 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
 
         cos = ChiefOfStaff(
             main_conn=self.conn,
-            gdrive=GDriveAdapter(receipts_folder_id=None),
+            gdrive=drive,
             finance_agent=mock_finance,
         )
-        photo_res = cos.process_file(sample_img)
+        photo_res = cos.process_file("fictional_ocr_photo.jpg", file_bytes=raw_bytes)
         rec_id = photo_res.receipt_id
         self.assertEqual(photo_res.status, "recorded")
         self.assertEqual(photo_res.total_amount, 110.0)
         self.assertEqual(photo_res.tax_amount, 10.0)
-        self.assertIn("Google Drive Backup Failed", photo_res.summary_text)
+        self.assertEqual(photo_res.gdrive_status, "uploaded")
+        self.assertIn("Original saved and verified.", photo_res.summary_text)
+        self.assertIsNone(photo_res.local_path)
         self.assertIn(ATO_SUGGESTION_DISCLAIMER, photo_res.summary_text)
 
         # Correct Business % to 50% and Activity to dog_walking
@@ -456,7 +460,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertFalse(any(":pct:" in cb for cb in edited_callbacks))
         self.assertFalse(any(":act:" in cb for cb in edited_callbacks))
 
-        # 3. Offline photo sent to Telegram -> reports Extraction Unavailable without posting fictitious record
+        # 3. Drive archive unavailable -> no new record, link or correction buttons
         photo_update = MagicMock()
         photo_update.effective_chat.id = 12345
         photo_update.message.caption = ""
@@ -466,34 +470,26 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         photo_obj = MagicMock()
         photo_obj.file_id = "fictional_photo_id"
         photo_obj.file_unique_id = "fictional_unique_photo_1"
+        photo_obj.file_size = None
         photo_update.message.photo = [photo_obj]
 
-        created_photo_paths = []
-
-        async def fake_download_to_drive(dest_path):
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            with open(dest_path, "wb") as f:
-                f.write(b"fictional-telegram-photo-bytes")
-            created_photo_paths.append(dest_path)
-
-        tg_file_mock = MagicMock()
-        tg_file_mock.download_to_drive = AsyncMock(side_effect=fake_download_to_drive)
+        tg_file_mock = SimpleNamespace(
+            file_size=None,
+            download_as_bytearray=AsyncMock(return_value=bytearray(b"[FICTIONAL DEMO] Telegram photo")),
+        )
         context.bot.get_file = AsyncMock(return_value=tg_file_mock)
 
-        try:
+        with patch.object(bot.gdrive, "upload_receipt_bytes", return_value=None):
             asyncio.run(bot.handle_photo(photo_update, context))
-        finally:
-            for p in created_photo_paths:
-                if os.path.exists(p):
-                    os.remove(p)
 
         photo_update.message.reply_text.assert_awaited_once()
         progress_edit = photo_update.message.reply_text.return_value.edit_text
         progress_edit.assert_awaited_once()
         photo_reply_text = progress_edit.call_args[0][0]
-        self.assertIn("Finance could not read the receipt.", photo_reply_text)
+        self.assertIn("Google Drive", photo_reply_text)
         self.assertIn("No financial record or journal entry was posted", photo_reply_text)
         self.assertIsNone(progress_edit.call_args.kwargs["reply_markup"])
+        self.assertFalse(os.path.exists(os.path.join(self.tmp_dir.name, "receipts")))
 
     def test_media_intake_downloads_bytes_and_forwards_the_original_caption(self):
         bot = TelegramReceiptBot(
@@ -504,6 +500,8 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             load_dotenv=False,
         )
         self.addCleanup(bot.conn.close)
+        raw_bytes = b"[FICTIONAL DEMO] Telegram attachment bytes"
+        drive_id = "1FictionalArchivedReceipt987"
         uploads = (
             (None, "[FICTIONAL DEMO] For Project Zinc", False),
             (None, "[FICTIONAL DEMO] BaTcH for Project Zinc", True),
@@ -512,7 +510,10 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
         for filename, caption, batch in uploads:
             with self.subTest(filename=filename, caption=caption):
-                media = SimpleNamespace(file_name=filename, file_unique_id="fictional_file", file_id="fictional_id")
+                media = SimpleNamespace(
+                    file_name=filename, file_unique_id="fictional_file", file_id="fictional_id",
+                    file_size=len(raw_bytes),
+                )
                 progress = SimpleNamespace(edit_text=AsyncMock())
                 message = SimpleNamespace(
                     photo=[media],
@@ -521,51 +522,53 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                     reply_text=AsyncMock(return_value=progress),
                 )
                 update = SimpleNamespace(message=message, effective_chat=SimpleNamespace(id=12345))
-                downloaded_paths = []
-
-                async def download(path):
+                async def download():
                     message.reply_text.assert_awaited_once()
-                    downloaded = Path(path)
-                    downloaded.write_bytes(b"[FICTIONAL DEMO] Telegram attachment bytes")
-                    downloaded_paths.append(downloaded)
+                    return bytearray(raw_bytes)
 
-                file = SimpleNamespace(download_to_drive=AsyncMock(side_effect=download))
+                file = SimpleNamespace(file_size=len(raw_bytes), download_as_bytearray=AsyncMock(side_effect=download))
                 context = SimpleNamespace(bot=SimpleNamespace(get_file=AsyncMock(return_value=file)))
                 summary = SimpleNamespace(
                     receipt_id=42,
                     vendor="[FICTIONAL DEMO] Project Zinc Supplies",
                     claim_stream="abn",
                     summary_text="Recorded receipt",
+                    status="recorded",
+                    gdrive_status="uploaded",
+                    gdrive_file_id=drive_id,
                 )
                 with (
                     patch.object(bot.cos, "process_file", return_value=summary) as process_single,
                     patch.object(bot.cos, "process_batch_or_statement", return_value={
                         "recorded_count": 0, "xp_earned": 0, "summary_text": "No new records",
+                        "gdrive_status": "uploaded", "gdrive_file_id": drive_id,
                     }) as process_batch,
                     patch.object(bot, "_award_xp_and_emit", return_value="+10 XP") as award_xp,
                 ):
                     handler = bot.handle_photo if filename is None else bot.handle_document
                     asyncio.run(handler(update, context))
                     context.bot.get_file.assert_awaited_once_with("fictional_id")
+                    file.download_as_bytearray.assert_awaited_once_with()
                     message.reply_text.assert_awaited_once()
                     progress.edit_text.assert_awaited_once()
-                    [downloaded] = downloaded_paths
-                    self.assertTrue(downloaded.is_relative_to(Path(self.tmp_dir.name) / "receipts"))
-                    self.assertEqual(downloaded.read_bytes(), b"[FICTIONAL DEMO] Telegram attachment bytes")
+                    self.assertFalse(os.path.exists(os.path.join(self.tmp_dir.name, "receipts")))
                     expected_name = "fictional_file.jpg" if filename is None else (
                         "fictional_file_" + filename.replace("\\", "/").rsplit("/", 1)[-1]
                     )
-                    self.assertEqual(downloaded.name, expected_name)
+                    keyboard = progress.edit_text.await_args.kwargs["reply_markup"]
+                    self.assertEqual(
+                        keyboard.inline_keyboard[-1][0].url, f"https://drive.google.com/open?id={drive_id}"
+                    )
                     if batch:
-                        process_batch.assert_called_once_with(str(downloaded), user_note=caption)
+                        process_batch.assert_called_once_with(expected_name, user_note=caption, file_bytes=raw_bytes)
                         process_single.assert_not_called()
                         award_xp.assert_not_called()
-                        self.assertIsNone(progress.edit_text.await_args.kwargs["reply_markup"])
+                        self.assertEqual(len(keyboard.inline_keyboard), 1)
                     else:
-                        process_single.assert_called_once_with(str(downloaded), user_note=caption)
+                        process_single.assert_called_once_with(expected_name, user_note=caption, file_bytes=raw_bytes)
                         process_batch.assert_not_called()
                         award_xp.assert_called_once()
-                        self.assertIsNotNone(progress.edit_text.await_args.kwargs["reply_markup"])
+                        self.assertTrue(any(b.callback_data for row in keyboard.inline_keyboard for b in row))
 
     def test_media_result_only_retries_a_markdown_parse_rejection(self):
         send = AsyncMock(side_effect=[BadRequest("Can't parse entities: Can't find end of the entity"), None])
@@ -582,6 +585,41 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 with self.assertRaises(type(error)):
                     asyncio.run(TelegramReceiptBot._send_intake_result(send, "[FICTIONAL DEMO] Receipt"))
                 send.assert_awaited_once()
+
+    def test_media_intake_rejects_oversized_and_empty_uploads_before_processing(self):
+        bot = TelegramReceiptBot(
+            bot_token="fictional_token",
+            owner_chat_id=12345,
+            db_path=self.db_path,
+            finance_agent=FinanceAgent(api_key=""),
+            load_dotenv=False,
+        )
+        self.addCleanup(bot.conn.close)
+        oversized = bytearray(b"[FICTIONAL DEMO]" * 3)
+        cases = (
+            (len(oversized), None, oversized, 0, 0, "too large"),
+            (None, len(oversized), oversized, 1, 0, "too large"),
+            (None, None, oversized, 1, 1, "too large"),
+            (None, None, bytearray(), 1, 1, "arrived empty"),
+        )
+        for media_size, file_size, contents, fetches, downloads, expected in cases:
+            with self.subTest(media_size=media_size, file_size=file_size, expected=expected):
+                media = SimpleNamespace(file_id="fictional_id", file_unique_id="fictional_file", file_size=media_size)
+                progress = SimpleNamespace(edit_text=AsyncMock())
+                message = SimpleNamespace(photo=[media], caption=None, reply_text=AsyncMock(return_value=progress))
+                update = SimpleNamespace(message=message, effective_chat=SimpleNamespace(id=12345))
+                file = SimpleNamespace(file_size=file_size, download_as_bytearray=AsyncMock(return_value=contents))
+                context = SimpleNamespace(bot=SimpleNamespace(get_file=AsyncMock(return_value=file)))
+                with (
+                    patch("src.interfaces.telegram_bot.MAX_TELEGRAM_RECEIPT_BYTES", 32),
+                    patch.object(bot.cos, "process_file") as process,
+                ):
+                    asyncio.run(bot.handle_photo(update, context))
+                self.assertEqual(context.bot.get_file.await_count, fetches)
+                self.assertEqual(file.download_as_bytearray.await_count, downloads)
+                process.assert_not_called()
+                reply = progress.edit_text if fetches else message.reply_text
+                self.assertIn(expected, reply.await_args.args[0])
 
     def test_defect_8_vendor_only_rename_preserves_qa_flags_and_field_uncertainty(self):
         """

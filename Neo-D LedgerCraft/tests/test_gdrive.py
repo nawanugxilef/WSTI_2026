@@ -1,11 +1,15 @@
+import hashlib
 import os
 import tempfile
 import unittest
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from src.storage.gdrive import GDriveAdapter
+from google.auth.exceptions import DefaultCredentialsError
+from requests.exceptions import Timeout
+
+from src.storage.gdrive import GDriveAdapter, drive_file_url
 
 
 class GDriveFolderResolutionTests(unittest.TestCase):
@@ -62,3 +66,123 @@ class GDriveFolderResolutionTests(unittest.TestCase):
             self.assertTrue(receipt.is_file())
         self.assertEqual(adapter.last_status, "failed")
         self.assertIn("could not be verified", adapter.last_error)
+
+
+class GDriveReceiptBytesTests(unittest.TestCase):
+    """[FICTIONAL DEMO] Exercise the Drive API protocol without external requests."""
+
+    folder_id = "Fictional_Receipts_Folder_001"
+    file_id = "Fictional_Receipt_File_002"
+    file_bytes = b"%PDF-1.4\n[FICTIONAL DEMO]"
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    upload_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=fictional"
+
+    def setUp(self):
+        self.adapter = GDriveAdapter(receipts_folder_id=self.folder_id)
+        adc = patch("src.storage.gdrive.google.auth.default", return_value=(MagicMock(), None))
+        session = patch("src.storage.gdrive.AuthorizedSession")
+        self.adc = adc.start()
+        self.session_factory = session.start()
+        self.session = self.session_factory.return_value.__enter__.return_value
+        self.addCleanup(adc.stop)
+        self.addCleanup(session.stop)
+
+    @staticmethod
+    def response(status=200, data=None, headers=None):
+        return MagicMock(status_code=status, headers=headers or {}, **{"json.return_value": data})
+
+    def metadata(self, **overrides):
+        return {
+            "id": self.file_id,
+            "parents": [self.folder_id],
+            "size": str(len(self.file_bytes)),
+            "sha256Checksum": self.file_hash,
+            "appProperties": {"neod_receipt_sha256": self.file_hash},
+            "trashed": False,
+            **overrides,
+        }
+
+    def start_new_upload(self, *readbacks):
+        self.session.get.side_effect = [
+            self.response(data={"files": []}),
+            self.response(data={"ids": [self.file_id]}),
+            *readbacks,
+        ]
+        self.session.post.return_value = self.response(headers={"Location": self.upload_url})
+
+    def upload(self):
+        return self.adapter.upload_receipt_bytes(self.file_bytes, "fictional-receipt.pdf", file_hash=self.file_hash)
+
+    def test_uploads_exact_original_bytes_to_configured_parent(self):
+        self.start_new_upload()
+        self.session.put.return_value = self.response(status=201, data=self.metadata())
+
+        self.assertEqual(self.upload(), self.file_id)
+        self.assertEqual(self.adapter.last_status, "uploaded")
+        self.assertIsNone(self.adapter.last_error)
+        self.adc.assert_called_once_with(default_scopes=["https://www.googleapis.com/auth/drive.file"])
+        create = self.session.post.call_args.kwargs
+        self.assertEqual(create["json"]["id"], self.file_id)
+        self.assertEqual(create["json"]["parents"], [self.folder_id])
+        self.assertEqual(create["json"]["appProperties"], {"neod_receipt_sha256": self.file_hash})
+        self.assertEqual(create["params"]["uploadType"], "resumable")
+        self.assertEqual(self.session.put.call_args.args[0], self.upload_url)
+        self.assertIs(self.session.put.call_args.kwargs["data"], self.file_bytes)
+
+    def test_retry_reuses_a_verified_file_on_the_next_search_page(self):
+        self.session.get.side_effect = [
+            self.response(data={"files": [], "nextPageToken": "fictional-page"}),
+            self.response(data={"files": [self.metadata(
+                sha256Checksum=None,
+                md5Checksum=hashlib.md5(self.file_bytes, usedforsecurity=False).hexdigest(),
+            )]}),
+        ]
+
+        self.assertEqual(self.upload(), self.file_id)
+        lookup = self.session.get.call_args.kwargs["params"]
+        self.assertIn(f"'{self.folder_id}' in parents", lookup["q"])
+        self.assertIn(self.file_hash, lookup["q"])
+        self.assertEqual(lookup["pageToken"], "fictional-page")
+        self.session.post.assert_not_called()
+        self.session.put.assert_not_called()
+
+    def test_timeout_after_storage_verifies_the_reserved_id_without_second_upload(self):
+        self.start_new_upload(self.response(data=self.metadata()))
+        self.session.put.side_effect = Timeout("fictional-sensitive-session-url")
+
+        self.assertEqual(self.upload(), self.file_id)
+        self.assertTrue(self.session.get.call_args.args[0].endswith(f"/{self.file_id}"))
+        self.session.put.assert_called_once()
+
+    def test_mismatched_readback_fails_closed(self):
+        for metadata in (
+            self.metadata(parents=["Fictional_Wrong_Parent"]),
+            self.metadata(size="0"),
+            self.metadata(sha256Checksum="wrong-checksum"),
+        ):
+            with self.subTest(metadata=metadata):
+                self.start_new_upload(self.response(data=metadata))
+                self.session.put.return_value = self.response(status=201, data=metadata)
+                self.assertIsNone(self.upload())
+                self.assertEqual(self.adapter.last_status, "failed")
+                self.assertIn("did not confirm", self.adapter.last_error)
+
+    def test_untrusted_upload_session_url_never_receives_receipt_bytes(self):
+        self.start_new_upload()
+        self.session.post.return_value = self.response(headers={"Location": "https://example.invalid/upload"})
+
+        self.assertIsNone(self.upload())
+        self.session.put.assert_not_called()
+        self.assertEqual(self.adapter.last_status, "failed")
+
+    def test_missing_credentials_fail_without_exposing_provider_details(self):
+        self.adc.side_effect = DefaultCredentialsError("fictional-sensitive-credential-path")
+
+        self.assertIsNone(self.upload())
+        self.session_factory.assert_not_called()
+        self.assertEqual(self.adapter.last_status, "not_configured")
+        self.assertEqual(self.adapter.last_error, "Google Drive authorized credentials are not available.")
+
+    def test_drive_link_uses_only_valid_file_id(self):
+        self.assertEqual(drive_file_url(self.file_id), f"https://drive.google.com/open?id={self.file_id}")
+        self.assertIsNone(drive_file_url("https://example.invalid/file"))

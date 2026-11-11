@@ -15,7 +15,6 @@ import io
 import json
 import logging
 import os
-import tempfile
 import threading
 import time
 from collections import defaultdict
@@ -28,6 +27,7 @@ from src.agents.finance_agent import FinanceAgent
 from src.interfaces.cli import load_config, seed_accounts
 from src.storage.categories import ATO_SUGGESTION_DISCLAIMER
 from src.storage.db import get_connection, init_db
+from src.storage.gdrive import drive_file_url
 from src.storage.journal import JournalManager
 
 logger = logging.getLogger("web_server")
@@ -72,7 +72,7 @@ def validate_uploaded_file(file_b64: str, filename: str) -> tuple[bytes, str]:
     if len(raw_bytes) > MAX_DECODED_FILE_SIZE:
         raise ValueError("File exceeds maximum size of 5 MB")
 
-    clean_name = os.path.basename(str(filename or "receipt.jpg").strip())
+    clean_name = os.path.basename(str(filename or "receipt.jpg").strip().replace("\\", "/"))
     safe_name = "".join(c for c in clean_name if c.isalnum() or c in "._- ")
     if not safe_name:
         safe_name = "receipt.jpg"
@@ -661,64 +661,49 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     seed_accounts(conn)
                     cos = ChiefOfStaff(main_conn=conn)
 
-                    summary = None
                     if file_b64:
-                        ext = os.path.splitext(safe_filename)[1].lower()
-                        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_f:
-                            tmp_f.write(raw_bytes)
-                            tmp_path = tmp_f.name
-
-                        try:
-                            summary = cos.process_file(tmp_path, user_note=note_text or None)
-                        finally:
-                            # Keep the staging file if it is the only retained copy.
-                            kept_path = getattr(summary, "local_path", None)
-                            if not kept_path or os.path.abspath(tmp_path) != os.path.abspath(kept_path):
-                                try:
-                                    os.remove(tmp_path)
-                                except OSError:
-                                    pass
+                        summary = cos.process_file(safe_filename, user_note=note_text or None, file_bytes=raw_bytes)
                     else:
                         summary = cos.process_note(note_text)
 
-                # Safely normalize summary fields to JSON-serializable primitives
                 rec_id = int(summary.receipt_id) if hasattr(summary, "receipt_id") and isinstance(summary.receipt_id, (int, float)) else 0
-                sum_text = str(getattr(summary, "summary_text", "") or "")
                 sum_status = str(getattr(summary, "status", "recorded") or "recorded")
                 sum_gdrive = str(getattr(summary, "gdrive_status", "not_applicable") or "not_applicable")
-                raw_local = getattr(summary, "local_path", None)
-                sum_local = str(raw_local) if isinstance(raw_local, str) and raw_local.strip() else None
+                intake_summary = {
+                    "receipt_id": rec_id,
+                    "summary_text": str(getattr(summary, "summary_text", "") or ""),
+                    "status": sum_status,
+                    "gdrive_status": sum_gdrive,
+                    "local_path": None,
+                }
+                # The intake endpoint permits demo traffic when no admin token is configured.
+                if sum_gdrive == "uploaded" and os.environ.get("WEB_ADMIN_TOKEN", "").strip():
+                    archive_url = drive_file_url(getattr(summary, "gdrive_file_id", None))
+                    if archive_url:
+                        intake_summary["gdrive_url"] = archive_url
 
-                # Keep the submitted file and note available in the dashboard when no receipt was created.
-                if sum_status == "extraction_unavailable" or rec_id <= 0:
+                # Non-success responses let the dashboard keep the selected file for retry.
+                if sum_status in ("archive_unavailable", "extraction_unavailable") or rec_id <= 0:
                     intake_errors = {
                         "needs_review": "Receipt needs review before it can be recorded",
                         "duplicate": "This receipt has already been uploaded",
                         "extraction_unavailable": "Extraction unavailable",
+                        "archive_unavailable": "Google Drive could not save the original",
                     }
                     err_payload = {
+                        **intake_summary,
                         "error": intake_errors.get(sum_status, "Receipt was not recorded"),
                         "status": sum_status if sum_status in intake_errors else "not_recorded",
-                        "summary_text": sum_text,
-                        "receipt_id": rec_id,
-                        "local_path": sum_local,
-                        "gdrive_status": sum_gdrive,
                     }
                     body = json.dumps(err_payload).encode("utf-8")
-                    self.send_response(422)
+                    self.send_response(503 if sum_status == "archive_unavailable" else 422)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
                     self.wfile.write(body)
                     return
 
                 payload = build_dashboard_payload(db_file)
-                payload["intake_summary"] = {
-                    "receipt_id": rec_id,
-                    "summary_text": sum_text,
-                    "status": sum_status,
-                    "gdrive_status": sum_gdrive,
-                    "local_path": sum_local,
-                }
+                payload["intake_summary"] = intake_summary
                 body = json.dumps(payload).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")

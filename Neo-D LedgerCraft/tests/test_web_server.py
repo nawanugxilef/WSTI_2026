@@ -26,6 +26,7 @@ class TestWebServer(unittest.TestCase):
             "LEDGER_DB_PATH": self.db_path,
             "GEMINI_API_KEY": "",
             "GDRIVE_RECEIPTS_FOLDER_ID": "",
+            "WEB_ADMIN_TOKEN": "",
         })
         test_env.start()
         self.addCleanup(test_env.stop)
@@ -318,37 +319,52 @@ class TestWebServer(unittest.TestCase):
         handler.send_header.assert_any_call("Retry-After", "300")
 
     def test_finding_1_web_intake_file_upload(self):
-        """Finding #1: Fast intake endpoint /api/intake processes base64 photo/PDF."""
+        """[FICTIONAL DEMO] Web uploads use RAM and disclose the archive link only to the owner."""
         import base64, io
-        from unittest.mock import patch
         handler = DashboardHandler.__new__(DashboardHandler)
         handler.path = "/api/intake"
+        drive_id = "1FictionalArchivedReceipt987"
+        raw_bytes = b"\xff\xd8\xff\xe0[FICTIONAL DEMO] receipt bytes"
+        request = json.dumps({
+            "file_data": base64.b64encode(raw_bytes).decode("utf-8"),
+            "filename": r"../outside\receipt_test.jpg",
+        }).encode("utf-8")
+        for token in ("", "fictional-admin-token"):
+            with (
+                self.subTest(authenticated=bool(token)),
+                patch.dict(os.environ, {"WEB_ADMIN_TOKEN": token}),
+                patch("src.interfaces.web_server.ChiefOfStaff") as cos,
+            ):
+                cos.return_value.process_file.return_value = MagicMock(
+                    receipt_id=99,
+                    summary_text="Processed receipt photo",
+                    status="recorded",
+                    gdrive_status="uploaded",
+                    gdrive_file_id=drive_id,
+                )
+                handler.rfile = io.BytesIO(request)
+                handler.headers = {"Content-Length": str(len(request))}
+                if token:
+                    handler.headers["Authorization"] = f"Bearer {token}"
+                handler.send_response = MagicMock()
+                handler.send_header = MagicMock()
+                handler.end_headers = MagicMock()
+                handler.wfile = io.BytesIO()
 
-        # Mock ChiefOfStaff.process_file
-        with patch("src.interfaces.web_server.ChiefOfStaff") as MockCOS:
-            mock_inst = MagicMock()
-            mock_inst.process_file.return_value = MagicMock(
-                receipt_id=99,
-                summary_text="Processed receipt photo",
-                status="recorded",
-                gdrive_status="uploaded",
-            )
-            MockCOS.return_value = mock_inst
+                handler.do_POST()
 
-            sample_b64 = base64.b64encode(b"\xff\xd8\xff\xe0dummy jpeg bytes").decode("utf-8")
-            handler.rfile = io.BytesIO(json.dumps({
-                "file_data": sample_b64,
-                "filename": "receipt_test.jpg"
-            }).encode("utf-8"))
-            handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
-            handler.send_response = MagicMock()
-            handler.send_header = MagicMock()
-            handler.end_headers = MagicMock()
-            handler.wfile = io.BytesIO()
-
-            handler.do_POST()
-            handler.send_response.assert_called_with(200)
-            mock_inst.process_file.assert_called_once()
+                handler.send_response.assert_called_with(200)
+                cos.return_value.process_file.assert_called_once_with(
+                    "receipt_test.jpg", user_note=None, file_bytes=raw_bytes
+                )
+                summary = json.loads(handler.wfile.getvalue())["intake_summary"]
+                self.assertIsNone(summary["local_path"])
+                if token:
+                    self.assertEqual(summary["gdrive_url"], f"https://drive.google.com/open?id={drive_id}")
+                else:
+                    self.assertNotIn("gdrive_url", summary)
+                    self.assertNotIn(drive_id.encode(), handler.wfile.getvalue())
+                self.assertFalse(os.path.exists(os.path.join(self.tmp_dir.name, "receipts")))
 
         # Reject payload without text or file_data -> 400
         handler.rfile = io.BytesIO(json.dumps({}).encode("utf-8"))
@@ -433,35 +449,49 @@ class TestWebServer(unittest.TestCase):
         handler.send_response.assert_called_with(413)
         handler.rfile.read.assert_not_called()  # Verifies pre-read check prevented allocation
 
-    def test_finding_durable_local_retention_when_drive_unconfigured(self):
-        """
-        Finding #1: When Google Drive upload fails or is unconfigured,
-        the receipt file is safely copied into durable authorized local storage (data/receipts/YYYY/MM/...)
-        and persisted local_path points to an existing file on disk.
-        """
+    def test_web_upload_cannot_post_or_save_locally_when_drive_is_unavailable(self):
+        """[FICTIONAL DEMO] Archive failure produces a retryable error and leaves the ledger empty."""
+        import base64, io
         from src.agents.chief_of_staff import ChiefOfStaff
+
+        drive = MagicMock()
+        drive.upload_receipt_bytes.return_value = None
+        drive.last_status = "not_configured"
+        finance = MagicMock()
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.path = "/api/intake"
+        raw_bytes = b"\xff\xd8\xff\xe0[FICTIONAL DEMO] receipt bytes"
+        request = json.dumps({
+            "file_data": base64.b64encode(raw_bytes).decode("utf-8"),
+            "filename": "receipt.jpg",
+        }).encode("utf-8")
+        handler.rfile = io.BytesIO(request)
+        handler.headers = {"Content-Length": str(len(request))}
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+
+        with patch(
+            "src.interfaces.web_server.ChiefOfStaff",
+            side_effect=lambda main_conn: ChiefOfStaff(main_conn, gdrive=drive, finance_agent=finance),
+        ):
+            handler.do_POST()
+
+        handler.send_response.assert_called_with(503)
+        payload = json.loads(handler.wfile.getvalue())
+        self.assertEqual(payload["status"], "archive_unavailable")
+        self.assertEqual(payload["receipt_id"], 0)
+        self.assertIsNone(payload["local_path"])
+        self.assertIn("Keep your copy", payload["summary_text"])
+        self.assertFalse(os.path.exists(os.path.join(self.tmp_dir.name, "receipts")))
+        self.assertEqual(drive.upload_receipt_bytes.call_args.args, (raw_bytes, "receipt.jpg"))
+        finance.parse_document.assert_not_called()
         conn = get_connection(self.db_path)
-        init_db(conn)
-        seed_accounts(conn)
-        cos = ChiefOfStaff(main_conn=conn)
-
-        # Create temporary mock receipt file
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_f:
-            tmp_f.write(b"\xff\xd8\xff\xe0test_receipt_bytes")
-            tmp_path = tmp_f.name
-
         try:
-            # Multi-modal OCR offline will raise ExtractionUnavailableError,
-            # which must still persist the file into durable local storage
-            summary = cos.process_file(tmp_path)
-            self.assertEqual(summary.status, "extraction_unavailable")
-            self.assertIsNotNone(summary.local_path)
-            self.assertTrue(os.path.exists(summary.local_path), f"Persisted local_path must exist: {summary.local_path}")
-            self.assertIn("receipts", summary.local_path)
-            self.assertIn("retained in local storage", summary.summary_text)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 0)
         finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
             conn.close()
 
     def test_finding_accompanying_note_preserved_and_passed_with_file(self):
@@ -484,11 +514,13 @@ class TestWebServer(unittest.TestCase):
             )
             MockCOS.return_value = mock_inst
 
-            valid_jpg = base64.b64encode(b"\xff\xd8\xff\xe0image_data").decode("utf-8")
+            raw_bytes = b"\xff\xd8\xff\xe0[FICTIONAL DEMO] image data"
+            valid_jpg = base64.b64encode(raw_bytes).decode("utf-8")
+            note = "[FICTIONAL DEMO] Nozzles for the 3D printer"
             handler.rfile = io.BytesIO(json.dumps({
                 "file_data": valid_jpg,
                 "filename": "tools.jpg",
-                "text": "Bunnings nozzles for 3D printer dog walking"
+                "text": note
             }).encode("utf-8"))
             handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
             handler.send_response = MagicMock()
@@ -498,9 +530,7 @@ class TestWebServer(unittest.TestCase):
 
             handler.do_POST()
             handler.send_response.assert_called_with(200)
-            mock_inst.process_file.assert_called_once()
-            _, kwargs = mock_inst.process_file.call_args
-            self.assertEqual(kwargs.get("user_note"), "Bunnings nozzles for 3D printer dog walking")
+            mock_inst.process_file.assert_called_once_with("tools.jpg", user_note=note, file_bytes=raw_bytes)
 
     def test_unposted_uploads_return_their_own_status_and_keep_retry_inputs(self):
         """[FICTIONAL DEMO] A held or duplicate upload cannot look like an OCR outage."""
@@ -520,7 +550,7 @@ class TestWebServer(unittest.TestCase):
                     summary_text=summary,
                     status=status,
                     gdrive_status="not_configured",
-                    local_path="/fictional-demo/retained.jpg",
+                    local_path=None,
                 )
                 handler = DashboardHandler.__new__(DashboardHandler)
                 handler.path = "/api/intake"
@@ -539,7 +569,7 @@ class TestWebServer(unittest.TestCase):
                     "status": status,
                     "summary_text": summary,
                     "receipt_id": 0,
-                    "local_path": "/fictional-demo/retained.jpg",
+                    "local_path": None,
                     "gdrive_status": "not_configured",
                 })
 

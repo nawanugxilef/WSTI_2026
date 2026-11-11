@@ -905,6 +905,13 @@
       if (clearBtn) clearBtn.classList.add('hidden');
     }
 
+    function intakeDriveLink(url) {
+      if (typeof url !== 'string' || !/^https:\/\/drive\.google\.com\/open\?id=[A-Za-z0-9_-]{10,64}$/.test(url)) {
+        return '';
+      }
+      return `<br><a class="underline" href="${url}" target="_blank" rel="noopener noreferrer">Open original in Google Drive</a>`;
+    }
+
     async function submitWebIntakeNote() {
       const input = document.getElementById('intake-note-input');
       const text = (input ? input.value : '').trim();
@@ -938,7 +945,7 @@
             cleanSummary = cleanSummary.replace(/[*`_]/g, '');
             const lines = cleanSummary.split('\n').filter(Boolean);
             const formatted = lines.map(l => escapeHtml(l)).join('<br>');
-            feedback.innerHTML = `<strong>✓ Processed!</strong><br>${formatted}`;
+            feedback.innerHTML = `<strong>✓ Processed!</strong><br>${formatted}${intakeDriveLink(summary?.gdrive_url)}`;
             feedback.className = 'text-xs p-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200';
             feedback.classList.remove('hidden');
             setTimeout(() => feedback.classList.add('hidden'), 5000);
@@ -954,8 +961,9 @@
             const formatted = lines.map(l => escapeHtml(l)).join('<br>');
             const title = err.status === 'needs_review' ? 'Details needed'
               : err.status === 'duplicate' ? 'Already saved'
+              : err.status === 'archive_unavailable' ? 'Google Drive unavailable'
               : err.status === 'extraction_unavailable' ? 'Could not read receipt' : 'Could not process intake';
-            feedback.innerHTML = `⚠️ <strong>${title}</strong><br>${formatted}`;
+            feedback.innerHTML = `⚠️ <strong>${title}</strong><br>${formatted}${intakeDriveLink(err.gdrive_url)}`;
             feedback.className = 'text-xs p-2 rounded-lg bg-amber-50 text-amber-900 border border-amber-300';
             feedback.classList.remove('hidden');
           }

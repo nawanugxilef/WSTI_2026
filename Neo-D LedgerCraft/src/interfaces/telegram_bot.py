@@ -22,6 +22,7 @@ import sys
 from typing import Dict, List, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import FileSizeLimit
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
@@ -45,13 +46,14 @@ from src.storage.categories import (
     require_finite_float,
 )
 from src.storage.db import get_connection, init_db
-from src.storage.gdrive import GDriveAdapter
+from src.storage.gdrive import GDriveAdapter, drive_file_url
 from src.storage.journal import JournalManager
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+MAX_TELEGRAM_RECEIPT_BYTES = FileSizeLimit.FILESIZE_DOWNLOAD
 
 
 def build_correction_keyboard(
@@ -667,6 +669,7 @@ class TelegramReceiptBot:
         doc = update.message.document
         # Telegram document names are user-controlled. Retain only the basename.
         filename = os.path.basename((doc.file_name or "").replace("\\", "/"))
+        filename = "".join(c for c in filename if c.isalnum() or c in "._- ")
         if not filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".csv")):
             await update.message.reply_text("Please send a Receipt/Invoice (PDF/JPG/PNG) or Bank Statement (CSV/PDF).")
             return
@@ -674,6 +677,11 @@ class TelegramReceiptBot:
         await self._handle_media(update.message, context, doc, document_name=filename)
 
     async def _handle_media(self, message, context, media, *, document_name: Optional[str] = None):
+        size_error = "This file is too large. Please send a file up to 20 MB."
+        if media.file_size is not None and media.file_size > MAX_TELEGRAM_RECEIPT_BYTES:
+            await message.reply_text(size_error)
+            return
+
         caption = message.caption
         caption_lower = (caption or "").lower()
         filename_lower = (document_name or "").lower()
@@ -685,23 +693,36 @@ class TelegramReceiptBot:
         filename = f"{media.file_unique_id}_{document_name}" if document_name else f"{media.file_unique_id}.jpg"
 
         progress = await message.reply_text("📥 Got it. I’m reading your file now…")
-        kb = None
-
         try:
             file = await context.bot.get_file(media.file_id)
-            today = datetime.date.today()
-            receipt_dir = os.path.join(
-                os.path.dirname(os.path.abspath(self.db_path)), "receipts", str(today.year), f"{today.month:02d}"
+            downloaded = (
+                None if file.file_size is not None and file.file_size > MAX_TELEGRAM_RECEIPT_BYTES
+                else await file.download_as_bytearray()
             )
-            os.makedirs(receipt_dir, exist_ok=True)
-            local_path = os.path.join(receipt_dir, filename)
-            await file.download_to_drive(local_path)
+        except Exception as error:
+            logger.error("Could not download Telegram receipt (%s)", type(error).__name__)
+            await progress.edit_text("I couldn’t download that file. Could you try sending it again?")
+            return
 
+        if downloaded is None or len(downloaded) > MAX_TELEGRAM_RECEIPT_BYTES:
+            await progress.edit_text(size_error)
+            return
+        if not downloaded:
+            await progress.edit_text("That file arrived empty. Could you try sending it again?")
+            return
+
+        raw_bytes = bytes(downloaded)
+        del downloaded
+        kb = None
+        archive_url = None
+        try:
             if batch:
-                batch_res = self.cos.process_batch_or_statement(local_path, user_note=caption)
+                batch_res = self.cos.process_batch_or_statement(filename, user_note=caption, file_bytes=raw_bytes)
                 response = batch_res["summary_text"]
+                if batch_res.get("gdrive_status") == "uploaded":
+                    archive_url = drive_file_url(batch_res.get("gdrive_file_id"))
                 count = batch_res["recorded_count"]
-                if count > 0:
+                if count > 0 and batch_res.get("status") != "archive_unavailable":
                     event_label = (
                         f"Batch/Statement ({count} synced)"
                         if document_name is None else f"Bank Statement Sync ({count} added)"
@@ -712,9 +733,11 @@ class TelegramReceiptBot:
                     )
                     response = f"{response}\n{xp_block}"
             else:
-                summary = self.cos.process_file(local_path, user_note=caption)
+                summary = self.cos.process_file(filename, user_note=caption, file_bytes=raw_bytes)
                 response = summary.summary_text
-                if summary.receipt_id:
+                if summary.gdrive_status == "uploaded":
+                    archive_url = drive_file_url(summary.gdrive_file_id)
+                if summary.receipt_id and summary.status != "archive_unavailable":
                     xp_block = self._award_xp_and_emit(xp_gain=10, event_label=f"{receipt_label}: {summary.vendor}")
                     kb = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
                     response = f"{response}\n{xp_block}"
@@ -722,6 +745,10 @@ class TelegramReceiptBot:
             logger.error("Error processing Telegram receipt: %s", e)
             response = "🦊 I had trouble reading that file. Could you try sending it again?"
 
+        if archive_url:
+            rows = list(kb.inline_keyboard) if kb else []
+            rows.append((InlineKeyboardButton("Open original in Google Drive", url=archive_url),))
+            kb = InlineKeyboardMarkup(rows)
         await self._send_intake_result(progress.edit_text, response, reply_markup=kb)
 
     async def balance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

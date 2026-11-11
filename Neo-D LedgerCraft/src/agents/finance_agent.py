@@ -11,10 +11,12 @@ fictitious amounts when multimodal OCR is offline.
 from __future__ import annotations
 
 import datetime
+import io
 import json
 import math
 import os
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -222,34 +224,47 @@ class FinanceAgent:
         user_note: Optional[str] = None,
         qa_notes: Optional[List[str]] = None,
         vendor_examples: Optional[List[Dict]] = None,
+        *,
+        file_bytes: Optional[bytes] = None,
     ) -> ParsedReceipt:
         """
         Parses an image or PDF receipt document in a single multimodal call (reading + categorization).
+        When file_bytes is supplied, file_path is used only as the document name.
         Raises ExtractionUnavailableError when multimodal OCR is offline or fails so fictitious
         amounts are never invented.
         """
-        if not os.path.exists(file_path):
+        if file_bytes is None and not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
         if not self._client:
             raise ExtractionUnavailableError(
                 f"Multimodal OCR is offline/unconfigured for '{os.path.basename(file_path)}'. "
                 "No financial record was posted — please enter the vendor and amount manually via a typed note."
             )
-        return self._call_gemini_multimodal(file_path, user_note=user_note, qa_notes=qa_notes, vendor_examples=vendor_examples)
+        if file_bytes is None:
+            file_bytes = Path(file_path).read_bytes()
+        return self._call_gemini_multimodal(
+            file_path, file_bytes, user_note=user_note, qa_notes=qa_notes, vendor_examples=vendor_examples
+        )
 
     def parse_batch_or_statement(
         self,
         file_path: str,
         vendor_examples: Optional[List[Dict]] = None,
         user_note: Optional[str] = None,
+        *,
+        file_bytes: Optional[bytes] = None,
     ) -> ParsedBatch:
         """
         Extracts multiple receipts from a single photo/PDF OR parses a Bank Statement (CSV/PDF/Image)
         in a single model call (simultaneous OCR extraction + business/personal & ATO myTax classification).
         """
-        if file_path.lower().endswith(".csv") and os.path.exists(file_path):
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                csv_text = f.read()
+        if file_bytes is None and not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if file_path.lower().endswith(".csv"):
+            if file_bytes is None:
+                file_bytes = Path(file_path).read_bytes()
+            csv_text = file_bytes.decode("utf-8-sig", errors="ignore")
             if self._client:
                 try:
                     from google.genai import types
@@ -286,12 +301,12 @@ class FinanceAgent:
                             continue
                 except Exception as e:
                     print(f"[FinanceAgent] CSV Gemini batch parse fallback: {e}")
-            return self._parse_csv_heuristic(file_path)
+            return self._parse_csv_heuristic(csv_text)
 
-        if self._client and os.path.exists(file_path):
+        if self._client:
             from google.genai import types
-            with open(file_path, "rb") as f:
-                file_bytes = f.read()
+            if file_bytes is None:
+                file_bytes = Path(file_path).read_bytes()
             mime_type = "image/jpeg"
             if file_path.lower().endswith(".png"):
                 mime_type = "image/png"
@@ -334,14 +349,16 @@ class FinanceAgent:
                     print(f"[FinanceAgent] Batch multimodal {m} error: {e}")
                     continue
 
-        single = self.parse_document(file_path, user_note=user_note, vendor_examples=vendor_examples)
+        single = self.parse_document(
+            file_path, user_note=user_note, vendor_examples=vendor_examples, file_bytes=file_bytes
+        )
         return ParsedBatch(document_type="single_receipt", receipts=[single])
 
-    def _parse_csv_heuristic(self, file_path: str) -> ParsedBatch:
+    def _parse_csv_heuristic(self, csv_text: str) -> ParsedBatch:
         """Deterministic CSV bank statement parser for Australian bank exports."""
         import csv
         receipts: List[ParsedReceipt] = []
-        with open(file_path, "r", encoding="utf-8-sig", errors="ignore", newline="") as f:
+        with io.StringIO(csv_text, newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 norm = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
@@ -436,6 +453,7 @@ class FinanceAgent:
     def _call_gemini_multimodal(
         self,
         file_path: str,
+        file_bytes: bytes,
         user_note: Optional[str] = None,
         qa_notes: Optional[List[str]] = None,
         vendor_examples: Optional[List[Dict]] = None,
@@ -455,9 +473,6 @@ class FinanceAgent:
                 prompt += f"- {n}\n"
 
         models_to_try = [self.model_name] + self.fallback_models
-        with open(file_path, "rb") as f:
-            file_bytes = f.read()
-
         mime_type = "image/jpeg"
         if file_path.lower().endswith(".png"):
             mime_type = "image/png"

@@ -8,12 +8,10 @@ Never invents financial records when OCR is offline/unavailable.
 
 from __future__ import annotations
 
-import datetime
 import hashlib
 import json
 import math
 import os
-import shutil
 import sqlite3
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -33,6 +31,9 @@ from src.storage.categories import (
 from src.storage.gdrive import GDriveAdapter
 
 
+MAX_RECEIPT_BYTES = 20 * 1024 * 1024
+
+
 @dataclass
 class IntakeSummary:
     receipt_id: int
@@ -43,7 +44,7 @@ class IntakeSummary:
     purpose: str
     category: str
     tax_label: Optional[str]
-    status: str  # recorded, corrected, flagged, needs_review, duplicate, or extraction_unavailable
+    status: str  # recorded, corrected, flagged, needs_review, duplicate, extraction_unavailable, or archive_unavailable
     flag_reason: Optional[str]
     gdrive_file_id: Optional[str]
     summary_text: str
@@ -181,7 +182,7 @@ class ChiefOfStaff:
         elif needs_review:
             header_icon = "⚠️"
             header_verb = "Needs Review"
-        elif rec.get("local_path"):
+        elif rec.get("local_path") or gdrive_id:
             header_icon = "🧾"
             header_verb = "Recorded"
         else:
@@ -244,16 +245,11 @@ class ChiefOfStaff:
         if rec.get("notes"):
             lines.append(f"• 📝 *Accompanying Note*: `{rec['notes']}`")
 
-        # Honest Google Drive and Local retention status reporting
+        # Historical records can still point to an original saved before Drive-only intake.
         if gdrive_status == "uploaded" and gdrive_id:
-            lines.append(f"• ☁️ *Google Drive*: Backed up (`ID: {gdrive_id}`)")
+            lines.append("• ☁️ *Google Drive*: Original saved and verified.")
         elif gdrive_status in ("failed", "not_configured"):
-            reason = gdrive_error or self.gdrive.last_error or "Google Drive upload unavailable"
-            local_fname = os.path.basename(rec.get("local_path") or "")
-            if local_fname:
-                lines.append(f"• ⚠️ *Google Drive Backup Failed*: `{reason}` — retained in local storage (`{local_fname}`)")
-            else:
-                lines.append(f"• ⚠️ *Google Drive Backup Failed*: `{reason}` — stored locally only")
+            lines.append("• ⚠️ *Google Drive*: Original upload was not verified for this earlier receipt.")
         else:
             lines.append("• 📝 *Storage*: Saved in local SQLite ledger (typed note — no file attachment)")
 
@@ -300,21 +296,17 @@ class ChiefOfStaff:
             details.append("positive total amount")
         return details
 
-    def _retain_original(self, file_path: str, file_hash: str) -> str:
-        db_path = self.main_conn.execute("PRAGMA database_list").fetchone()[2] or "./data/ledger.db"
-        today = datetime.date.today()
-        folder = os.path.join(os.path.dirname(os.path.abspath(db_path)), "receipts", f"{today:%Y}", f"{today:%m}")
-        if os.path.dirname(os.path.abspath(file_path)) == folder:
-            return os.path.abspath(file_path)
-        os.makedirs(folder, exist_ok=True)
-        target = os.path.join(folder, f"{file_hash}_{os.path.basename(file_path)}")
-        if os.path.abspath(file_path) != os.path.abspath(target):
-            shutil.copy2(file_path, target)
-        return target
+    @staticmethod
+    def _read_original(file_path: str, file_bytes: Optional[bytes]) -> tuple[str, bytes]:
+        filename = os.path.basename(os.fspath(file_path).replace("\\", "/")) or "receipt"
+        if file_bytes is None:
+            with open(file_path, "rb") as original:
+                file_bytes = original.read(MAX_RECEIPT_BYTES + 1)
+        return filename, file_bytes
 
-    def _backup_original(self, file_path: str) -> tuple[Optional[str], str, Optional[str]]:
+    def _archive_original(self, filename: str, payload: bytes, file_hash: str) -> tuple[Optional[str], str, Optional[str]]:
         try:
-            file_id = self.gdrive.upload_receipt(file_path)
+            file_id = self.gdrive.upload_receipt_bytes(payload, filename, file_hash=file_hash)
             if file_id:
                 return file_id, "uploaded", None
             status = getattr(self.gdrive, "last_status", None)
@@ -322,7 +314,7 @@ class ChiefOfStaff:
                 self.gdrive, "last_error", None
             )
         except Exception:
-            return None, "failed", "Google Drive backup unavailable."
+            return None, "failed", "Google Drive storage unavailable."
 
     @staticmethod
     def _unposted_summary(
@@ -330,18 +322,13 @@ class ChiefOfStaff:
         reason: str,
         *,
         parsed: Optional[ParsedReceipt] = None,
-        local_path: Optional[str] = None,
         gdrive_file_id: Optional[str] = None,
         gdrive_status: str = "not_applicable",
         gdrive_error: Optional[str] = None,
     ) -> IntakeSummary:
         message = [reason, "No financial record or journal entry was posted."]
-        if local_path:
-            message.append("The original was retained in local storage.")
-            if gdrive_status == "uploaded":
-                message.append("Google Drive backup verified.")
-            elif gdrive_status in ("failed", "not_configured"):
-                message.append("Google Drive backup unavailable.")
+        if gdrive_status == "uploaded" and gdrive_file_id:
+            message.append("The original was saved to Google Drive.")
         if status in ("needs_review", "extraction_unavailable"):
             message.append("Send a clearer receipt or enter the vendor, exact date and amount as a typed note.")
         return IntakeSummary(
@@ -358,7 +345,6 @@ class ChiefOfStaff:
             gdrive_file_id=gdrive_file_id,
             gdrive_status=gdrive_status,
             gdrive_error=gdrive_error,
-            local_path=local_path,
             summary_text="\n".join(message),
         )
 
@@ -409,34 +395,52 @@ class ChiefOfStaff:
             gdrive_error=None,
         )
 
-    def process_file(self, file_path: str, user_note: Optional[str] = None) -> IntakeSummary:
-        """
-        Processes an image or PDF receipt document.
-        Never invents amounts if multimodal OCR is offline or fails; instead reports
-        extraction unavailable and requests manual details without posting to the books.
-        Retains the original in local storage before attempting a Drive backup or OCR.
-        """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        with open(file_path, "rb") as f:
-            file_hash = hashlib.file_digest(f, "sha256").hexdigest()
-
+    def process_file(
+        self, file_path: str, user_note: Optional[str] = None, *, file_bytes: Optional[bytes] = None
+    ) -> IntakeSummary:
+        """Verify the Drive original before OCR and bookkeeping. Uploaded bytes stay in RAM."""
+        filename, payload = self._read_original(file_path, file_bytes)
+        if not payload or len(payload) > MAX_RECEIPT_BYTES:
+            return self._unposted_summary("extraction_unavailable", "Send a non-empty receipt up to 20 MB.")
+        file_hash = hashlib.sha256(payload).hexdigest()
         duplicate = self.main_conn.execute(
-            "SELECT id FROM receipts WHERE file_hash = ? ORDER BY id LIMIT 1", (file_hash,)
+            "SELECT id, gdrive_file_id, gdrive_status FROM receipts WHERE file_hash = ? ORDER BY id LIMIT 1",
+            (file_hash,),
         ).fetchone()
-        if duplicate is not None:
-            return self._unposted_summary("duplicate", f"This exact file is already saved as receipt #{duplicate[0]}.")
+        if duplicate and duplicate["gdrive_status"] == "uploaded" and duplicate["gdrive_file_id"]:
+            return self._unposted_summary(
+                "duplicate", f"This exact file is already saved as receipt #{duplicate['id']}.",
+                gdrive_file_id=duplicate["gdrive_file_id"], gdrive_status="uploaded",
+            )
 
-        persisted_local_path = self._retain_original(file_path, file_hash)
-        gdrive_id, gdrive_status, gdrive_error = self._backup_original(file_path)
+        gdrive_id, gdrive_status, gdrive_error = self._archive_original(filename, payload, file_hash)
         archive = {
-            "local_path": persisted_local_path,
             "gdrive_file_id": gdrive_id,
             "gdrive_status": gdrive_status,
             "gdrive_error": gdrive_error,
         }
+        if not gdrive_id:
+            return self._unposted_summary(
+                "archive_unavailable",
+                "Google Drive could not confirm the original. Keep your copy and try again once Drive is connected.",
+                **archive,
+            )
+        if duplicate:
+            # A resend can archive an earlier local-only receipt without creating a second ledger entry.
+            with self.main_conn:
+                self.main_conn.execute(
+                    "UPDATE receipts SET gdrive_file_id = ?, gdrive_status = 'uploaded' WHERE id = ?",
+                    (gdrive_id, duplicate["id"]),
+                )
+            return self._unposted_summary(
+                "duplicate", f"This exact file is already saved as receipt #{duplicate['id']}.", **archive
+            )
+        return self._process_archived_receipt(filename, payload, file_hash, user_note, archive)
 
+    def _process_archived_receipt(
+        self, filename: str, payload: bytes, file_hash: str,
+        user_note: Optional[str], archive: Dict[str, Any],
+    ) -> IntakeSummary:
         cursor = self.main_conn.execute("SELECT id, file_hash, vendor, total_amount, date FROM receipts")
         existing_receipts = [dict(r) for r in cursor.fetchall()]
 
@@ -449,11 +453,13 @@ class ChiefOfStaff:
 
         try:
             while retry_count <= self.qa.max_retries:
-                parsed = self.finance.parse_document(file_path, user_note=user_note, qa_notes=qa_notes, vendor_examples=examples)
+                parsed = self.finance.parse_document(
+                    filename, user_note=user_note, qa_notes=qa_notes, vendor_examples=examples, file_bytes=payload
+                )
                 parsed = self._apply_vendor_memory_if_known(parsed)
                 parsed_dict = parsed.model_dump()
                 parsed_dict["file_hash"] = file_hash
-                parsed_dict["original_filename"] = os.path.basename(file_path)
+                parsed_dict["original_filename"] = filename
 
                 qa_res = self.qa.inspect_receipt(
                     parsed_dict, existing_receipts=existing_receipts, retry_count=retry_count
@@ -479,16 +485,16 @@ class ChiefOfStaff:
             return self._unposted_summary("needs_review", reason, parsed=parsed, **archive)
 
         data_dict = parsed.model_dump()
-        data_dict["original_filename"] = os.path.basename(file_path)
+        data_dict["original_filename"] = filename
         if user_note:
             data_dict["notes"] = user_note
 
         receipt_id = self.km.record_receipt(
             data=data_dict,
             file_hash=file_hash,
-            local_path=persisted_local_path,
-            gdrive_file_id=gdrive_id,
-            gdrive_status=gdrive_status,
+            local_path=None,
+            gdrive_file_id=archive["gdrive_file_id"],
+            gdrive_status=archive["gdrive_status"],
             flagged=qa_res.flagged,
             flag_reason=qa_res.flag_reason,
         )
@@ -497,7 +503,7 @@ class ChiefOfStaff:
         return self._build_summary_from_receipt_row(
             rec=rec,
             uncertainty_note=parsed.uncertainty_note,
-            gdrive_error=gdrive_error,
+            gdrive_error=archive["gdrive_error"],
         )
 
     def correct_receipt(
@@ -541,54 +547,71 @@ class ChiefOfStaff:
             is_correction=True,
         )
 
-    def process_batch_or_statement(self, file_path: str, user_note: Optional[str] = None) -> Dict[str, Any]:
+    @staticmethod
+    def _batch_summary(summary: IntakeSummary, document_type: str = "unknown") -> Dict[str, Any]:
+        recorded = bool(summary.receipt_id)
+        return {
+            "document_type": document_type,
+            "recorded_count": int(recorded),
+            "matched_count": 0,
+            "xp_earned": 10 if recorded else 0,
+            "summary_text": summary.summary_text,
+            "receipt_ids": [summary.receipt_id] if recorded else [],
+            "status": summary.status,
+            "gdrive_file_id": summary.gdrive_file_id,
+            "gdrive_status": summary.gdrive_status,
+            "local_path": None,
+        }
+
+    def process_batch_or_statement(
+        self, file_path: str, user_note: Optional[str] = None, *, file_bytes: Optional[bytes] = None
+    ) -> Dict[str, Any]:
         """
         Handles multi-receipt photos/PDFs OR Bank Statement reconciliation (CSV/PDF/Image).
         """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
+        filename, payload = self._read_original(file_path, file_bytes)
+        if not payload or len(payload) > MAX_RECEIPT_BYTES:
+            return self._batch_summary(
+                self._unposted_summary("extraction_unavailable", "Send a non-empty document up to 20 MB.")
+            )
+        file_hash = hashlib.sha256(payload).hexdigest()
+        if self.main_conn.execute("SELECT 1 FROM receipts WHERE file_hash = ?", (file_hash,)).fetchone():
+            return self._batch_summary(
+                self.process_file(filename, user_note=user_note, file_bytes=payload), "single_receipt"
+            )
 
-        with open(file_path, "rb") as f:
-            file_hash = hashlib.file_digest(f, "sha256").hexdigest()
-        local_path = self._retain_original(file_path, file_hash)
+        gdrive_id, gdrive_status, gdrive_error = self._archive_original(filename, payload, file_hash)
+        archive = {
+            "gdrive_file_id": gdrive_id,
+            "gdrive_status": gdrive_status,
+            "gdrive_error": gdrive_error,
+        }
+        if not gdrive_id:
+            return self._batch_summary(self._unposted_summary(
+                "archive_unavailable",
+                "Google Drive could not confirm the original. Keep your copy and try again once Drive is connected.",
+                **archive,
+            ))
 
         examples = self.km.memory.get_recent_examples(limit=15)
         try:
-            batch = self.finance.parse_batch_or_statement(file_path, vendor_examples=examples, user_note=user_note)
+            batch = self.finance.parse_batch_or_statement(
+                filename, vendor_examples=examples, user_note=user_note, file_bytes=payload
+            )
         except ExtractionUnavailableError:
             batch = None
 
-        if batch and len(batch.receipts) == 1 and batch.document_type == "single_receipt" and not file_path.lower().endswith(".csv"):
-            single_res = self.process_file(file_path, user_note=user_note)
-            return {
-                "document_type": "single_receipt",
-                "recorded_count": int(bool(single_res.receipt_id)),
-                "matched_count": 0,
-                "xp_earned": 10 if single_res.receipt_id else 0,
-                "summary_text": single_res.summary_text,
-                "receipt_ids": [single_res.receipt_id] if single_res.receipt_id else [],
-                "local_path": single_res.local_path or local_path,
-            }
+        if batch and len(batch.receipts) == 1 and batch.document_type == "single_receipt" and not filename.lower().endswith(".csv"):
+            single_res = self._process_archived_receipt(filename, payload, file_hash, user_note, archive)
+            return self._batch_summary(single_res, "single_receipt")
 
-        gdrive_id, gdrive_status, gdrive_error = self._backup_original(file_path)
         if not batch or not batch.receipts:
             unavailable = self._unposted_summary(
                 "extraction_unavailable",
                 "Finance could not read any transactions from the document.",
-                local_path=local_path,
-                gdrive_file_id=gdrive_id,
-                gdrive_status=gdrive_status,
-                gdrive_error=gdrive_error,
+                **archive,
             )
-            return {
-                "document_type": batch.document_type if batch else "unknown",
-                "recorded_count": 0,
-                "matched_count": 0,
-                "xp_earned": 0,
-                "summary_text": unavailable.summary_text,
-                "receipt_ids": [],
-                "local_path": local_path,
-            }
+            return self._batch_summary(unavailable, batch.document_type if batch else "unknown")
 
         cursor = self.main_conn.execute("SELECT id, vendor, total_amount, date FROM receipts")
         existing = [dict(r) for r in cursor.fetchall()]
@@ -626,14 +649,14 @@ class ChiefOfStaff:
                 continue
 
             item_dict = item.model_dump()
-            item_dict["original_filename"] = os.path.basename(file_path)
+            item_dict["original_filename"] = filename
             if user_note:
                 item_dict["notes"] = user_note
             qa_res = self.qa.inspect_receipt(item_dict, existing_receipts=existing, retry_count=self.qa.max_retries)
             rec_id = self.km.record_receipt(
                 data=item_dict,
                 file_hash=None,
-                local_path=local_path,
+                local_path=None,
                 gdrive_file_id=gdrive_id,
                 gdrive_status=gdrive_status,
                 flagged=qa_res.flagged,
@@ -650,11 +673,12 @@ class ChiefOfStaff:
 
         doc_title = (
             "🏦 *BANK STATEMENT AI AUTO-SYNC COMPLETE*"
-            if batch.document_type == "bank_statement" or file_path.lower().endswith(".csv")
+            if batch.document_type == "bank_statement" or filename.lower().endswith(".csv")
             else f"📸 *MULTI-RECEIPT BATCH CAPTURE ({len(batch.receipts)} items)*"
         )
         summary_parts = [
             doc_title,
+            "• *Original*: Saved to Google Drive.",
             f"• *New / Missed Receipts Added*: `{recorded_count}`",
             f"• *Already Logged (Deduplicated)*: `{matched_count}`",
             f"• _Note: AI classifications and ATO myTax labels are suggestions only — use `/correct <id>` to adjust._\n",
@@ -678,5 +702,8 @@ class ChiefOfStaff:
             "xp_earned": xp_earned,
             "summary_text": "\n".join(summary_parts),
             "receipt_ids": recorded_ids,
-            "local_path": local_path,
+            "status": "recorded" if recorded_ids else "needs_review" if held_lines else "duplicate",
+            "gdrive_file_id": gdrive_id,
+            "gdrive_status": gdrive_status,
+            "local_path": None,
         }

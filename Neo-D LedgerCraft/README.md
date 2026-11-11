@@ -27,7 +27,7 @@ Telegram / CLI / Notes / Receipts / Bank Statements
                │
      ┌─────────┴─────────┐
      ▼                   ▼
-Local SQLite (WAL)   Google Drive (Optional)
+Local SQLite (WAL)   Google Drive (Receipt Originals)
 - ledger.db          - Receipts/
                      - Backups/ (Snapshots)
                      - Statements/
@@ -42,7 +42,22 @@ Local SQLite (WAL)   Google Drive (Optional)
 
 ## ☁️ Google Drive Structure (Configured via `.env`)
 
-Set your own Google Drive folder IDs in `.env` (see `.env.example`):
+Uploaded receipt files are held in memory until Google Drive confirms the original. SQLite stores the structured ledger and the Drive file ID. If Drive cannot verify the original, the upload is rejected before OCR and bookkeeping.
+
+For a My Drive folder, connect the Google account that can write to that folder:
+
+1. Enable the Google Drive API and Google Picker API in the Neo-D Google Cloud project. Configure Google Auth Platform and create a Desktop OAuth client with the `drive.file` scope.
+2. On the owner's computer, install the setup-only package `google-auth-oauthlib`. Run the following command with the OAuth client JSON, intended folder ID, and a new credentials path outside the repository. Sign in and select the intended Receipts folder in Google's picker.
+
+   ```bash
+   python scripts/authorize_receipt_drive.py --client-secrets /private/desktop-client.json \
+     --folder-id YOUR_RECEIPTS_FOLDER_ID --output /private/neo-drive-adc.json
+   ```
+
+3. Transfer the generated credentials securely to the server. Set `GOOGLE_APPLICATION_CREDENTIALS` to its private path and set `GDRIVE_RECEIPTS_FOLDER_ID` to the authorized folder ID in the bot and dashboard service environment. Restrict the file to the service user. Keep the credential files out of the repository.
+4. Verify with a `[FICTIONAL DEMO]` photo. The owner should see the original link in Telegram, and the file should appear in the chosen Drive folder.
+
+The Google Drive folder settings are:
 
 | Environment Variable | Purpose |
 |---|---|
