@@ -176,15 +176,15 @@
       byDay.set(event.day, day);
     }
     const status = {
-      waiting: 'Waiting for Office activity.',
-      connected: activity.length ? 'Connected to Office activity.' : 'Connected. No receipt activity yet.',
-      offline: activity.length ? 'Connection unavailable. Showing the last activity received.' : 'Office activity is unavailable.',
+      waiting: 'Connecting…',
+      connected: activity.length ? 'Live activity' : 'No receipts yet.',
+      offline: activity.length ? 'Offline · Last activity shown' : 'Activity unavailable.',
     }[connection];
     setText(ui.status, status);
     renderMonth(byDay, sydneyDateKey(new Date()), focusDay);
     setText(ui.date, dayLabel.format(dateFor(selectedDay)));
     const entries = byDay.get(selectedDay) || [];
-    const empty = connection === 'connected' || activity.length ? 'No matching activity on this day.' : 'No activity has loaded.';
+    const empty = connection === 'connected' || activity.length ? 'No activity for this day.' : 'No activity loaded.';
     ui.empty.textContent = entries.length ? '' : empty;
     ui.list.hidden = !entries.length;
     ui.list.replaceChildren(...entries.map((event) => {
@@ -214,7 +214,7 @@
     dialog.addEventListener('close', () => launch.focus({ preventScroll: true }));
 
     const top = element('div', { class: 'neo-calendar-top' });
-    const title = element('h2', { id: 'neo-calendar-title' }, 'Activity calendar');
+    const title = element('h2', { id: 'neo-calendar-title' }, 'Calendar');
     const status = element('p', { class: 'neo-calendar-status', role: 'status' });
     const heading = element('div');
     heading.append(title, status);
@@ -252,23 +252,26 @@
     const date = element('h3', { id: 'neo-calendar-date', 'aria-live': 'polite' });
     const empty = element('p', { class: 'neo-calendar-empty' });
     const list = element('ol', { class: 'neo-calendar-list' });
-    details.append(date, element('p', { class: 'neo-calendar-zone' }, 'Times in Australia/Sydney'), empty, list);
+    details.append(date, element('p', { class: 'neo-calendar-zone' }, 'Sydney time'), empty, list);
     body.append(monthPanel, details);
     dialog.append(top, body);
     ui = { dialog, status, month, grid, days, date, empty, list };
     document.head.append(element('style', {}, calendarStyles));
     document.body.append(dialog);
-    toolbar.append(launch);
+    toolbar.insertBefore(launch, toolbar.querySelector('#office-agents-launch'));
   }
 
   const calendarStyles = `
     .neo-calendar, .neo-calendar-launch {
-      --cal-surface: #171e33; --cal-border: #465579; --cal-hover: #263556;
-      --cal-text: #f0f3fa; --cal-muted: #bac6df; --cal-accent: #a9c9ff;
-      font: inherit; color: var(--cal-text);
+      --cal-surface: #fff; --cal-border: #dce3e5; --cal-hover: #e8efed;
+      --cal-text: #202a32; --cal-muted: #546370; --cal-accent: #297666;
+      font: 400 0.875rem/1.45 var(--office-font, system-ui, sans-serif);
+      color: var(--cal-text);
     }
     .neo-calendar button, .neo-calendar select, .neo-calendar-launch {
-      box-sizing: border-box; background: #222e49; color: inherit; font: inherit;
+      box-sizing: border-box; background: #f7f9f8; color: inherit;
+      font-family: var(--office-font, system-ui, sans-serif);
+      font-size: 0.8125rem; font-weight: 600; line-height: 1.25;
       border: 1px solid var(--cal-border); border-radius: 0.5rem;
       min-height: 2.5rem; padding: 0.4rem 0.65rem; cursor: pointer;
     }
@@ -276,44 +279,46 @@
     .neo-calendar button:focus-visible, .neo-calendar select:focus-visible, .neo-calendar-launch:focus-visible {
       outline: 2px solid var(--cal-accent); outline-offset: 2px;
     }
-    .neo-calendar-launch { margin-inline-start: auto; }
     .neo-calendar {
       box-sizing: border-box; width: min(51rem, calc(100% - 1rem)); max-width: none;
       max-height: calc(100dvh - 1rem); padding: 0; overflow: auto;
       background: var(--cal-surface); border: 1px solid var(--cal-border); border-radius: 1rem;
     }
-    .neo-calendar::backdrop { background: rgba(6, 10, 22, 0.74); }
+    .neo-calendar::backdrop { background: #1c2b3660; }
     .neo-calendar-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;
       padding: 1rem; border-bottom: 1px solid var(--cal-border); }
     .neo-calendar h2, .neo-calendar h3, .neo-calendar p { margin: 0; }
-    .neo-calendar h2 { font-size: 1.25rem; }
-    .neo-calendar h3 { font-size: 1rem; }
+    .neo-calendar h2 { font-size: 1.0625rem; font-weight: 600; }
+    .neo-calendar h3 { font-size: 0.875rem; font-weight: 600; }
     .neo-calendar-status, .neo-calendar-zone, .neo-calendar-empty { color: var(--cal-muted); }
-    .neo-calendar-status, .neo-calendar-zone { font-size: 0.82rem; }
+    .neo-calendar-status, .neo-calendar-zone { font-size: 0.8125rem; }
     .neo-calendar-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.9fr); gap: 1rem; padding: 1rem; }
     .neo-calendar-nav { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem auto; gap: 0.35rem; align-items: center; }
     .neo-calendar-nav h3 { text-align: center; }
-    .neo-calendar-nav button[aria-label] { font-size: 1.35rem; line-height: 1; }
-    .neo-calendar-filter { display: flex; gap: 0.5rem; align-items: center; margin: 0.65rem 0 0.25rem; }
+    .neo-calendar-nav button[aria-label] { font-size: 1.125rem; line-height: 1; }
+    .neo-calendar-filter { display: flex; gap: 0.5rem; align-items: center; margin: 0.65rem 0 0.25rem;
+      font-size: 0.8125rem; }
     .neo-calendar-filter select { padding-inline-end: 1.6rem; }
     .neo-calendar-grid { width: 100%; table-layout: fixed; border-spacing: 0.18rem; }
-    .neo-calendar-grid th { font-size: 0.75rem; color: var(--cal-muted); padding-block: 0.25rem; }
+    .neo-calendar-grid th { font-size: 0.75rem; font-weight: 500; color: var(--cal-muted); padding-block: 0.25rem; }
     .neo-calendar-grid td { padding: 0; }
     .neo-calendar-grid button { display: flex; flex-direction: column; align-items: center;
-      justify-content: center; width: 100%; min-width: 0; min-height: 2.6rem; padding: 0; }
+      justify-content: center; width: 100%; min-width: 0; min-height: 2.6rem; padding: 0;
+      font-size: 0.875rem; font-weight: 500; font-variant-numeric: tabular-nums; }
     .neo-calendar-grid [aria-current='date'] { border-color: var(--cal-accent); }
-    .neo-calendar-grid [aria-selected='true'] button { background: #b7d2ff; color: #172238; border-color: #b7d2ff; font-weight: 700; }
+    .neo-calendar-grid [aria-selected='true'] button { background: #dceee8; color: #203e35; border-color: #9bbfb3; font-weight: 600; }
     .neo-calendar-count { font-size: 0.68rem; line-height: 1; opacity: 0.95; }
     .neo-calendar-details { padding-inline-start: 1rem; border-inline-start: 1px solid var(--cal-border); min-width: 0; }
     .neo-calendar-details .neo-calendar-empty { margin-top: 0.7rem; }
     .neo-calendar-list { list-style: none; margin: 0.55rem 0 0; padding: 0; }
     .neo-calendar-list li { display: grid; grid-template-columns: 5.4rem minmax(0, 1fr); gap: 0.5rem;
       padding: 0.48rem 0; border-bottom: 1px solid var(--cal-border); }
-    .neo-calendar-list time, .neo-calendar-list small { color: var(--cal-muted); font-variant-numeric: tabular-nums; }
+    .neo-calendar-list strong { font-weight: 600; }
+    .neo-calendar-list time, .neo-calendar-list small { color: var(--cal-muted); font-size: 0.8125rem;
+      font-variant-numeric: tabular-nums; }
     .neo-calendar-list small { display: block; }
     .neo-calendar-terminal strong { color: var(--cal-accent); }
     @media (max-width: 40rem) {
-      .neo-calendar-launch { margin-inline-start: 0; }
       .neo-calendar-top, .neo-calendar-body { padding: 0.75rem; }
       .neo-calendar-body { grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
       .neo-calendar-details { padding: 0.75rem 0 0; border-inline-start: 0; border-top: 1px solid var(--cal-border); }

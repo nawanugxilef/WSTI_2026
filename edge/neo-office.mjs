@@ -3,6 +3,7 @@ const ROUTES = new Map([
   ["/", { path: "/office-public", type: "text/html" }],
   ["/index.html", { path: "/office-public", type: "text/html" }],
   ["/office-calendar.js", { path: "/office-calendar.js", type: "text/javascript" }],
+  ["/office-board.js", { path: "/office-board.js", type: "text/javascript" }],
   ["/api/office/receipt-progress", { path: "/api/office/receipt-progress", type: "application/json" }],
 ]);
 

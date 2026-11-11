@@ -361,8 +361,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_file(os.path.join(OFFICE_STATIC_DIR, "index.html"), "text/html; charset=utf-8")
             return
 
-        if path == "/office-calendar.js":
-            self._serve_file(os.path.join(OFFICE_STATIC_DIR, "office-calendar.js"), "text/javascript; charset=utf-8")
+        if path in ("/office-calendar.js", "/office-board.js"):
+            self._serve_file(os.path.join(OFFICE_STATIC_DIR, path[1:]), "text/javascript; charset=utf-8")
             return
 
         if path == "/api/dashboard":

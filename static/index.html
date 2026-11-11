@@ -3,23 +3,79 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Neo Agent Office</title>
+<title>Neo Office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;display=swap">
 <script defer src="./office-calendar.js"></script>
+<script defer src="./office-board.js"></script>
 <style>
-  :root { --bg: #0f1427; --text: #e8ebf2; --muted: #98a1b3; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px 'Nunito', system-ui, sans-serif; }
-  header { padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  #office { height: calc(100dvh - 60px); margin: 0 16px 16px; border-radius: 16px; overflow: hidden;
+  :root {
+    --office-font: 'DM Sans', system-ui, sans-serif;
+    --office-text: #202a32;
+    --office-muted: #546370;
+    --office-line: #dce3e5;
+    --office-surface: #fff;
+  }
+  html, body { margin: 0; height: 100%; background: #f7f8f6; color: var(--office-text); font: 14px/1.45 var(--office-font); }
+  body { display: flex; flex-direction: column; }
+  .office-header { padding: 6px 16px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .office-header h1 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
+  .office-tools { display: flex; gap: 4px; align-items: center; }
+  .office-tools > button, .office-panel button {
+    min-height: 40px; box-sizing: border-box; border: 1px solid transparent; border-radius: 7px;
+    background: transparent; color: var(--office-text); font: 600 13px/1.25 var(--office-font); cursor: pointer; padding: 0 10px;
+  }
+  .office-tools > button:hover, .office-panel button:hover { background: #e8efed; }
+  .office-tools > button:focus-visible, .office-panel button:focus-visible { outline: 2px solid #297666; outline-offset: 2px; }
+  #office { flex: 1; min-height: 0; margin: 0 12px 12px; border: 1px solid var(--office-line); border-radius: 12px; overflow: hidden;
     background: radial-gradient(ellipse at 50% 35%, #f3f0ff 0%, #d9e8ff 55%, #b9cdf2 100%); }
-  .muted { color: var(--muted); }
+  .office-status { position: absolute; left: 12px; top: 12px; z-index: 1; display: flex; align-items: center; gap: 6px;
+    box-sizing: border-box; max-width: calc(100% - 24px); padding: 4px 8px; border: 1px solid #d8e1e3; border-radius: 6px;
+    background: #f9fbfa; color: #344651; font: 600 12px/1.35 var(--office-font); pointer-events: none; }
+  .office-status::before { content: ''; flex: 0 0 6px; height: 6px; border-radius: 50%; background: #7c8b94; }
+  .office-status[data-state="live"]::before { background: #27816a; }
+  .office-status[data-state="demo"]::before { background: #a66e30; }
+  .office-bubble { position: absolute; display: none; z-index: 2; width: max-content; max-width: min(210px, calc(100% - 24px));
+    box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--office-line); border-radius: 8px;
+    background: var(--office-surface); color: var(--office-text); font: 13px/1.4 var(--office-font);
+    box-shadow: 0 3px 12px #172a3920; transform: translate(-50%, -100%); pointer-events: none; }
+  .office-bubble-name { font-weight: 700; }
+  .office-bubble-role { color: var(--office-muted); font-size: 12px; margin-bottom: 4px; }
+  .office-panel { width: min(420px, calc(100% - 24px)); box-sizing: border-box; max-height: calc(100dvh - 24px);
+    padding: 16px; border: 1px solid var(--office-line); border-radius: 12px; background: var(--office-surface); color: var(--office-text); }
+  .office-panel::backdrop { background: #1c2b3660; }
+  .office-panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .office-panel h2 { margin: 0; font-size: 17px; font-weight: 700; }
+  .office-agent-list { list-style: none; margin: 8px 0 0; padding: 0; }
+  .office-agent-list li { border-top: 1px solid var(--office-line); }
+  .office-agent-list button { display: flex; align-items: center; justify-content: space-between; text-align: left; width: 100%; min-height: 50px; padding: 6px 8px; gap: 12px; }
+  .office-agent-list strong, .office-agent-list small { display: block; }
+  .office-agent-list small, .office-agent-state { color: var(--office-muted); font-size: 12px; font-weight: 500; }
+  .office-agent-state { text-align: right; }
+  @media (max-width: 380px) {
+    .office-header { padding-inline: 10px; gap: 6px; }
+    .office-tools { gap: 0; }
+    .office-tools > button { padding-inline: 8px; }
+    #office { margin-inline: 8px; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <b>🏢 Neo Agent Office</b>
-  <span class="muted">Four agents + Felix the lion. Tap an agent to say hi.</span>
+<header class="office-header">
+  <h1>Neo Office</h1>
+  <nav class="office-tools" data-neo-office-toolbar aria-label="Office panels">
+    <button id="office-agents-launch" type="button" aria-haspopup="dialog" aria-controls="office-agents" hidden>Agents</button>
+  </nav>
 </header>
 <div id="office"></div>
+<dialog id="office-agents" class="office-panel" aria-labelledby="office-agents-title">
+  <div class="office-panel-heading">
+    <h2 id="office-agents-title">Agents</h2>
+    <button id="office-agents-close" type="button">Close</button>
+  </div>
+  <ul id="office-agent-list" class="office-agent-list"></ul>
+</dialog>
 
 <script>
 /**
@@ -3678,11 +3734,11 @@ THREE.DefaultLoadingManager.setURLModifier(function(url){const normalized=decode
 // nudged: after 3+ taps in a row
 
 window.OFFICE_PERSONALITIES = {
-  chief_of_staff:    { name: 'Neo', role: 'Chief of Finance', intro: 'Hey! I am Neo 🤖, Chief of Finance. I coordinate the finance team and send each task to the right agent.' },
-  finance:           { name: 'Corgi', role: 'Finance', intro: 'Hi! I am Corgi 🐕 from Finance. I read receipts, categorise expenses, and get everything ready for tax time.' },
-  qa:                { name: 'Bear', role: 'QA', intro: 'Hey! I am Bear 🐻 from QA. I check the receipts and flag anything that needs a second look.' },
-  knowledge_manager: { name: 'Girraffe', role: 'Knowledge Manager', intro: 'Hello! I am Girraffe 🦒, Knowledge Manager. I balance the journals and remember past vendors.' },
-  boss:              { name: 'Felix',  role: 'The Boss 🦁' }
+  chief_of_staff:    { name: 'Neo', role: 'Chief of Finance', intro: 'I send receipts to the right teammate.' },
+  finance:           { name: 'Corgi', role: 'Finance', intro: 'I read receipts and sort expenses.' },
+  qa:                { name: 'Bear', role: 'QA', intro: 'I check receipts and flag anything that needs a second look.' },
+  knowledge_manager: { name: 'Girraffe', role: 'Knowledge Manager', intro: 'I balance the books and remember vendors.' },
+  boss:              { name: 'Felix', role: 'Owner' }
 };
 
 </script>
@@ -3776,44 +3832,38 @@ window.OFFICE_PERSONALITIES = {
   }
 
   // ---------- small helpers ----------
-  // Same type as felixsandbox.com.au: Fredoka for labels/names, Nunito for body text.
-  const LABEL_FONT = "Fredoka, 'Nunito', system-ui, sans-serif";
-  const BODY_FONT = "'Nunito', 'Segoe UI', system-ui, sans-serif";
-  // Labels are drawn on canvases; if Fredoka hasn't loaded yet they are redrawn once it has.
+  const LABEL_FONT = "'DM Sans', system-ui, sans-serif";
+  // Canvas text needs a redraw after the web font arrives.
   const labelRedraws = [];
 
-  function textSprite(text, { size = 44, color = '#ffffff', bg = 'rgba(20,24,40,0.72)', scale = 1 } = {}) {
+  function textSprite(text, { size = 44, color = '#ffffff', bg = '#344651', scale = 1 } = {}) {
     const c = document.createElement('canvas');
     const tex = new THREE.CanvasTexture(c);
     tex.encoding = THREE.sRGBEncoding;
     tex.anisotropy = 4;
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
     s.renderOrder = 10;
-    let current = text;
-
     function draw() {
       const ctx = c.getContext('2d');
       ctx.font = `600 ${size}px ${LABEL_FONT}`;
-      const w = Math.ceil(ctx.measureText(current).width) + size;
-      c.width = w; c.height = size * 1.6;
+      const w = Math.ceil(ctx.measureText(text).width + size * .65);
+      c.width = w; c.height = Math.ceil(size * 1.45);
       ctx.font = `600 ${size}px ${LABEL_FONT}`;
-      if (bg) {
-        ctx.fillStyle = bg;
-        const r = c.height / 2;
+      ctx.fillStyle = bg;
+      if (ctx.roundRect) {
         ctx.beginPath();
-        ctx.moveTo(r, 0); ctx.lineTo(w - r, 0); ctx.arc(w - r, r, r, -Math.PI / 2, Math.PI / 2);
-        ctx.lineTo(r, c.height); ctx.arc(r, r, r, Math.PI / 2, -Math.PI / 2); ctx.fill();
+        ctx.roundRect(0, 0, w, c.height, size * .2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(0, 0, w, c.height);
       }
       ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(current, w / 2, c.height / 2 + 2);
+      ctx.fillText(text, w / 2, c.height / 2 + 1);
       tex.needsUpdate = true;
       s.scale.set((w / c.height) * 0.5 * scale, 0.5 * scale, 1);
     }
     draw();
     labelRedraws.push(draw);
-    // Lets a caller change the text later and have it redraw in place (used for
-    // the always-on activity tag, which updates live instead of being recreated).
-    s.userData.setText = (t) => { current = t; draw(); };
     return s;
   }
 
@@ -3950,13 +4000,6 @@ window.OFFICE_PERSONALITIES = {
     topFace.receiveShadow = true;
     scene.add(topFace);
 
-    const labels = [['Desks', -1.5, 3.3], ['QA', 7.4, 4.6], ['Pantry', -7.5, 7.0], ['Boss Office 🦁', 0, -2.4]];
-    for (const [t, x, z] of labels) {
-      const s = textSprite(t, { size: 38, bg: 'rgba(38,33,74,0.55)', scale: 1.1 });
-      s.position.set(x, 0.35, z);
-      scene.add(s);
-    }
-
     // Glass partition in front of the Boss Office
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(8, 2.4),
       new THREE.MeshStandardMaterial({ color: '#cfe8ff', transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
@@ -4085,14 +4128,10 @@ window.OFFICE_PERSONALITIES = {
     root.add(bodyHolder);
     root.add(blobShadow(0.75));
 
-    // Perubahan 2: Label floating hanya menampilkan nama agent saja (tanpa role/jobdesc)
-    const tag = textSprite(personality.name, { size: 34, scale: 0.75 });
-    tag.position.y = 1.6;
-    root.add(tag);
-
-    // activityTag kept in memory for interface compatibility but not added to root
-    const activityTag = textSprite('', { size: 24, color: '#e9e6ff', bg: 'rgba(40,33,74,0.6)', scale: 0.55 });
-    activityTag.visible = false;
+    const nameTag = new THREE.Group();
+    nameTag.add(textSprite(personality.name, { size: 32, scale: 0.65 }));
+    nameTag.position.y = 1.6;
+    root.add(nameTag);
 
     const alert = textSprite('!', { size: 60, color: '#fff', bg: '#d9534f', scale: 0.9 });
     alert.position.y = 2.55;
@@ -4105,7 +4144,7 @@ window.OFFICE_PERSONALITIES = {
     scene.add(root);
 
     return {
-      id, root, bodyHolder, alert, activityTag, personality,
+      id, root, bodyHolder, nameTag, alert, personality,
       state: 'idle', activity: '', target: new THREE.Vector3(x, 0, z), home: new THREE.Vector3(x, 0, z),
       nextWander: performance.now() + 2000 + Math.random() * 6000, lookPhase: Math.random() * 10, landedAt: -1,
       patrolIndex: 0,
@@ -4222,19 +4261,55 @@ window.OFFICE_PERSONALITIES = {
 
     // HUD + speech bubble (plain HTML on top of the canvas)
     const hud = document.createElement('div');
-    hud.style.cssText = 'position:absolute;left:10px;top:10px;padding:6px 10px;border-radius:10px;' +
-      'max-width:calc(100% - 40px);background:rgba(38,33,74,.72);color:#fff;font:600 12px/1.3 ' + LABEL_FONT + ';pointer-events:none';
+    hud.className = 'office-status';
     hud.setAttribute('role', 'status');
     container.appendChild(hud);
     const bubble = document.createElement('div');
-    bubble.style.cssText = 'position:absolute;max-width:230px;padding:8px 11px;border-radius:12px;background:#fff;' +
-      'color:#1b1f2a;font:14px/1.4 ' + BODY_FONT + ';box-shadow:0 4px 18px rgba(0,0,0,.25);' +
-      'transform:translate(-50%,-100%);pointer-events:none;display:none;z-index:2';
+    bubble.className = 'office-bubble';
+    bubble.setAttribute('role', 'status');
     container.appendChild(bubble);
     let bubbleAgent = null, bubbleUntil = 0;
     if (document.fonts) {
-      Promise.all([document.fonts.load('600 38px Fredoka'), document.fonts.ready])
+      document.fonts.load(`600 32px ${LABEL_FONT}`)
         .then(() => labelRedraws.forEach((draw) => draw())).catch(() => {});
+    }
+
+    const agentPanel = document.getElementById('office-agents');
+    const openAgents = document.getElementById('office-agents-launch');
+    const closeAgents = document.getElementById('office-agents-close');
+    const agentList = document.getElementById('office-agent-list');
+    const agentStates = new Map();
+    const showAgents = () => agentPanel.showModal();
+    const hideAgents = () => agentPanel.close();
+    if (agentPanel && openAgents && closeAgents && agentList) {
+      for (const agent of Object.values(agents)) {
+        const row = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        const identity = document.createElement('span');
+        const name = document.createElement('strong');
+        name.textContent = agent.personality.name;
+        const role = document.createElement('small');
+        role.textContent = agent.personality.role || '';
+        identity.append(name, role);
+        button.append(identity);
+        if (agent.id !== 'boss') {
+          const state = document.createElement('span');
+          state.className = 'office-agent-state';
+          state.textContent = 'Idle';
+          button.append(state);
+          agentStates.set(agent.id, state);
+        }
+        button.addEventListener('click', () => {
+          hideAgents();
+          speak(agent);
+        });
+        row.append(button);
+        agentList.append(row);
+      }
+      openAgents.hidden = false;
+      openAgents.addEventListener('click', showAgents);
+      closeAgents.addEventListener('click', hideAgents);
     }
 
     const camBase = new THREE.Vector3(), camLook = new THREE.Vector3(0, 0.9, 0);
@@ -4258,6 +4333,8 @@ window.OFFICE_PERSONALITIES = {
       camera.aspect = aspect;
       // Portrait (phones) looks along the room's long side so it fills the screen.
       const portrait = aspect < 0.9;
+      const nameScale = portrait ? THREE.MathUtils.clamp(680 / w, 1, 1.85) : 1;
+      for (const agent of Object.values(agents)) agent.nameTag.scale.setScalar(nameScale);
       if (camYaw === null) camYaw = portrait ? Math.PI / 2 : 0;  // first resize only — see note above
       // Low, near eye-level angle (like standing in the office doorway) instead of a top-down view.
       // Phones have spare height, so they get a slightly higher angle to keep the pets big.
@@ -4282,22 +4359,34 @@ window.OFFICE_PERSONALITIES = {
     const lastSequenceByRun = new Map(), activeReceiptStages = new Map();
     const queuedReceiptEvents = [];
     let progressInitialised = false, receiptTimer = 0, recentReceiptEvent = null;
+    function renderBubble(agent, duration, showRole = false) {
+      const name = document.createElement('div');
+      name.className = 'office-bubble-name';
+      name.textContent = agent.personality.name;
+      bubble.replaceChildren(name);
+      if (showRole && agent.personality.role) {
+        const role = document.createElement('div');
+        role.className = 'office-bubble-role';
+        role.textContent = agent.personality.role;
+        bubble.append(role);
+      }
+      const message = document.createElement('div');
+      bubble.append(message);
+      bubble.style.display = 'block';
+      bubbleAgent = agent;
+      bubbleUntil = performance.now() + duration;
+      return message;
+    }
     // Announces what an agent just started doing (e.g. "Reading a receipt") the
     // moment the status feed says so — not only when a visitor taps them. Reuses
     // the same bubble as taps; no new animation clips needed for this (the Kenney
     // Cube Pets only ship idle/walk/run/eat/dance/gesture clips, no per-task poses).
     function announceActivity(agent) {
-      const now = performance.now();
-      bubble.innerHTML = '';
-      const who = document.createElement('div');
-      who.style.cssText = 'font:600 12px/1.3 ' + LABEL_FONT + ';color:#6b62b8;margin-bottom:2px';
-      who.textContent = agent.personality.name;
-      const say = document.createElement('div');
-      say.textContent = agent.activity;
-      bubble.append(who, say);
-      bubble.style.display = 'block';
-      bubbleAgent = agent;
-      bubbleUntil = now + 3200;
+      renderBubble(agent, 3200).textContent = agent.activity;
+    }
+    function showStatus(text, mode) {
+      hud.dataset.state = mode;
+      if (hud.textContent !== text) hud.textContent = text;
     }
     function apply(snapshot, statusLabel) {
       let list = [];
@@ -4322,6 +4411,11 @@ window.OFFICE_PERSONALITIES = {
         const activityChanged = !firstApply && a.activity && a.activity !== agent.activity && a.state !== 'idle';
         agent.state = a.state;
         agent.activity = a.activity;
+        const status = agentStates.get(id);
+        if (status) {
+          const state = a.state === 'idle' ? 'Idle' : a.activity || a.state;
+          if (status.textContent !== state) status.textContent = state;
+        }
         const [x, z] = targetFor(id, a.state);
         agent.home.set(x, 0, z);
         agent.target.copy(agent.home);
@@ -4330,8 +4424,9 @@ window.OFFICE_PERSONALITIES = {
       }
       firstApply = false;
       const tasks = snapshot.stats ? snapshot.stats.tasks_this_week : 0;
-      const label = statusLabel || (live ? '🟢 Live from Neo Server' : '🟡 Demo') + (tasks ? ` · ${tasks} tasks this week` : '');
-      if (hud.textContent !== label) hud.textContent = label;
+      const demo = opts.statusUrl === 'demo' || !opts.statusUrl;
+      const label = statusLabel || (live ? 'Live' : 'Demo') + (tasks ? ` · ${tasks} tasks this week` : '');
+      showStatus(label, live ? 'live' : demo ? 'demo' : 'offline');
     }
 
     function rememberReceiptEvent(event) {
@@ -4346,14 +4441,13 @@ window.OFFICE_PERSONALITIES = {
         byAgent.set(id, { id, state, activity });
       }
       const agents = AGENT_IDS.map(id => byAgent.get(id) || { id, state: 'idle', activity: '' });
-      let label = '🟢 Live · Waiting for receipt activity';
+      let label = 'Live · Waiting for receipts';
       if (recentReceiptEvent) {
         const event = recentReceiptEvent;
         const summary = event.stage === 'terminal'
           ? RECEIPT_OUTCOMES[event.outcome] || 'Receipt processing finished'
           : RECEIPT_STAGES[event.stage][3];
-        const time = new Date(event.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        label = `🟢 Live · Recent: ${summary} · ${time}`;
+        label = `Live · ${summary}`;
       }
       apply({ agents }, label);
     }
@@ -4366,11 +4460,13 @@ window.OFFICE_PERSONALITIES = {
         advanceReceiptProgress();
       }, RECEIPT_STEP_MS);
     }
-    function updateOfficeCalendar(events) {
-      try {
-        window.NeoOfficeCalendar?.update?.(events);
-      } catch (error) {
-        console.warn('[office] Calendar update unavailable');
+    function updateOfficePanels(events) {
+      for (const panel of [window.NeoOfficeCalendar, window.NeoOfficeBoard]) {
+        try {
+          panel?.update(events);
+        } catch (error) {
+          console.warn('[office] Panel update unavailable', error);
+        }
       }
     }
     function acceptReceiptProgress(events) {
@@ -4384,7 +4480,7 @@ window.OFFICE_PERSONALITIES = {
       progressInitialised = true;
       renderReceiptProgress();
       advanceReceiptProgress();
-      updateOfficeCalendar(events);
+      updateOfficePanels(events);
     }
 
     async function poll() {
@@ -4416,16 +4512,17 @@ window.OFFICE_PERSONALITIES = {
         else apply(snapshot);
       } catch (e) {
         if (destroyed) return;
-        if (receiptMode && live) {
+        const wasLive = live;
+        live = false;
+        if (receiptMode && wasLive) {
           clearTimeout(receiptTimer);
           receiptTimer = 0;
           bubble.style.display = 'none';
           bubbleAgent = null;
-          apply({ agents: AGENT_IDS.map(id => ({ id, state: 'idle', activity: '' })) }, '⚪ Live receipt status unavailable');
+          apply({ agents: AGENT_IDS.map(id => ({ id, state: 'idle', activity: '' })) }, 'Reconnecting');
         }
-        live = false;
-        hud.textContent = receiptMode ? '⚪ Live receipt status unavailable' : '⚪ Office offline right now';
-        if (receiptMode) updateOfficeCalendar(null);
+        showStatus(receiptMode ? 'Reconnecting' : 'Office offline', 'offline');
+        if (receiptMode) updateOfficePanels(null);
       } finally {
         clearTimeout(timeout);
         activeRequest = null;
@@ -4483,22 +4580,12 @@ window.OFFICE_PERSONALITIES = {
     async function speak(agent) {
       const now = performance.now();
       agent.pokeCount = (agent.pokeCount || 0) + 1;
-
-      bubble.innerHTML = '';
-      const who = document.createElement('div');
-      who.style.cssText = 'font:600 12px/1.3 ' + LABEL_FONT + ';color:#6b62b8;margin-bottom:2px';
-      who.textContent = agent.personality.name;
-
-      const say = document.createElement('div');
-      bubble.append(who, say);
-      bubble.style.display = 'block';
-      bubbleAgent = agent;
+      const say = renderBubble(agent, 5000, true);
 
       if (agent.pokeCount === 1 || receiptMode) {
         say.textContent = receiptMode && live && agent.state !== 'idle' && agent.activity
           ? agent.activity
-          : agent.personality.intro || `Hello! I am ${agent.personality.name}.`;
-        bubbleUntil = now + 5000;
+          : agent.personality.intro || 'Good to see you.';
         playOnce(agent, 'wave');
       } else {
         // Perubahan 3: Klik berikutnya kirim ke backend /chat atau /api/message endpoint
@@ -4676,8 +4763,11 @@ window.OFFICE_PERSONALITIES = {
         else {
           tmp.copy(bubbleAgent.root.position); tmp.y = 2.3;
           tmp.project(camera);
-          bubble.style.left = ((tmp.x + 1) / 2) * container.clientWidth + 'px';
-          bubble.style.top = ((1 - tmp.y) / 2) * container.clientHeight + 'px';
+          const width = container.clientWidth;
+          const height = container.clientHeight;
+          const side = bubble.offsetWidth / 2 + 8;
+          bubble.style.left = THREE.MathUtils.clamp((tmp.x + 1) / 2 * width, side, width - side) + 'px';
+          bubble.style.top = THREE.MathUtils.clamp((1 - tmp.y) / 2 * height, bubble.offsetHeight + 8, height - 8) + 'px';
         }
       }
       renderer.render(scene, camera);
@@ -4696,6 +4786,13 @@ window.OFFICE_PERSONALITIES = {
         renderer.domElement.removeEventListener('pointermove', onMove);
         renderer.dispose();
         container.innerHTML = '';
+        if (agentPanel && openAgents && closeAgents && agentList) {
+          if (agentPanel.open) hideAgents();
+          openAgents.hidden = true;
+          openAgents.removeEventListener('click', showAgents);
+          closeAgents.removeEventListener('click', hideAgents);
+          agentList.replaceChildren();
+        }
       },
       lastUpdate: () => lastUpdate,
     };
