@@ -50,10 +50,12 @@
   .office-panel h2 { margin: 0; font-size: 17px; font-weight: 700; }
   .office-agent-list { list-style: none; margin: 8px 0 0; padding: 0; }
   .office-agent-list li { border-top: 1px solid var(--office-line); }
-  .office-agent-list button { display: flex; align-items: center; justify-content: space-between; text-align: left; width: 100%; min-height: 50px; padding: 6px 8px; gap: 12px; }
+  .office-agent-list button { display: flex; align-items: flex-start; justify-content: space-between; text-align: left; width: 100%; min-height: 50px; padding: 9px 8px; gap: 10px; }
+  .office-agent-identity { min-width: 0; }
   .office-agent-list strong, .office-agent-list small { display: block; }
   .office-agent-list small, .office-agent-state { color: var(--office-muted); font-size: 12px; font-weight: 500; }
-  .office-agent-state { text-align: right; }
+  .office-agent-duty { display: block; margin-top: 4px; font-size: 13px; line-height: 1.4; font-weight: 400; }
+  .office-agent-state { flex: 0 0 auto; max-width: 30%; overflow-wrap: anywhere; text-align: right; }
   @media (max-width: 380px) {
     .office-header { padding-inline: 10px; gap: 6px; }
     .office-tools { gap: 0; }
@@ -3736,11 +3738,31 @@ THREE.DefaultLoadingManager.setURLModifier(function(url){const normalized=decode
 // nudged: after 3+ taps in a row
 
 window.OFFICE_PERSONALITIES = {
-  chief_of_staff:    { name: 'Neo', role: 'Chief of Finance', intro: 'I send receipts to the right teammate.' },
-  finance:           { name: 'Corgi', role: 'Finance', intro: 'I read receipts and sort expenses.' },
-  qa:                { name: 'Bear', role: 'QA', intro: 'I check receipts and flag anything that needs a second look.' },
-  knowledge_manager: { name: 'Girraffe', role: 'Knowledge Manager', intro: 'I balance the books and remember vendors.' },
-  boss:              { name: 'Felix', role: 'Owner' }
+  chief_of_staff: {
+    name: 'Neo',
+    role: 'Chief of Finance',
+    intro: 'I take in receipts and notes, save originals to Google Drive, and coordinate the team.'
+  },
+  finance: {
+    name: 'Corgi',
+    role: 'Finance',
+    intro: 'I read receipts, pull out totals and GST, and suggest expense categories and myTax labels.'
+  },
+  qa: {
+    name: 'Bear',
+    role: 'QA',
+    intro: 'I check dates, totals, and GST, and flag possible duplicates or missing details.'
+  },
+  knowledge_manager: {
+    name: 'Girraffe',
+    role: 'Knowledge Manager',
+    intro: 'I post balanced ledger entries and remember confirmed vendor categories for next time.'
+  },
+  boss: {
+    name: 'Felix',
+    role: 'Owner',
+    intro: 'I review flagged receipts and confirm or correct their details.'
+  }
 };
 
 </script>
@@ -4289,11 +4311,18 @@ window.OFFICE_PERSONALITIES = {
         const button = document.createElement('button');
         button.type = 'button';
         const identity = document.createElement('span');
+        identity.className = 'office-agent-identity';
         const name = document.createElement('strong');
         name.textContent = agent.personality.name;
         const role = document.createElement('small');
         role.textContent = agent.personality.role || '';
         identity.append(name, role);
+        if (agent.personality.intro) {
+          const duty = document.createElement('span');
+          duty.className = 'office-agent-duty';
+          duty.textContent = agent.personality.intro;
+          identity.append(duty);
+        }
         button.append(identity);
         if (agent.id !== 'boss') {
           const state = document.createElement('span');
