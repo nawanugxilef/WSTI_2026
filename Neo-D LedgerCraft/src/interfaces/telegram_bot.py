@@ -36,6 +36,7 @@ from telegram.ext import (
 from src.agents.chief_of_staff import ChiefOfStaff
 from src.agents.finance_agent import FinanceAgent
 from src.interfaces.cli import load_config, seed_accounts
+from src.interfaces.telegram_receipt import format_receipt_card, format_receipt_details
 from src.storage.categories import (
     ATO_SUGGESTION_DISCLAIMER,
     VALID_ACTIVITIES,
@@ -60,13 +61,11 @@ def build_correction_keyboard(
     receipt_id: int,
     claim_stream: str = "abn",
     show_all_categories: bool = False,
+    *,
+    expanded: bool = False,
+    archive_url: Optional[str] = None,
 ) -> InlineKeyboardMarkup:
-    """
-    Builds a conditional 1-tap owner correction inline keyboard for a recorded receipt:
-    - Personal entries show Stream switcher and Personal category controls ONLY (no Business % or ABN activity buttons).
-    - PAYG entries show Stream switcher, Work %, and PAYG category controls (no ABN activity buttons).
-    - ABN entries show Stream switcher, ABN Activity (Dog Walking / 3D Printing), Business %, and ABN category controls.
-    """
+    """Keep the receipt keyboard short and reveal correction fields on demand."""
     stream = (claim_stream or "abn").strip().lower()
 
     if show_all_categories:
@@ -75,7 +74,7 @@ def build_correction_keyboard(
         row: List[InlineKeyboardButton] = []
         for spec in cats:
             prefix = "💼" if spec.stream == "abn" else ("👔" if spec.stream == "payg" else "🏠")
-            label = f"{prefix} {spec.key}"
+            label = f"{prefix} {spec.key.replace('_', ' ').title()}"
             row.append(
                 InlineKeyboardButton(label[:28], callback_data=f"corr:{receipt_id}:cat:{spec.key}")
             )
@@ -84,13 +83,27 @@ def build_correction_keyboard(
                 row = []
         if row:
             rows.append(row)
-        rows.append([InlineKeyboardButton("⬅️ Back to Controls", callback_data=f"corr:{receipt_id}:menu:main")])
+        rows.append([InlineKeyboardButton("← Back", callback_data=f"corr:{receipt_id}:menu:controls")])
         return InlineKeyboardMarkup(rows)
 
     stream_row = [
-        InlineKeyboardButton("💼 ABN ✓" if stream == "abn" else "💼 ABN", callback_data=f"corr:{receipt_id}:stream:abn"),
-        InlineKeyboardButton("👔 PAYG ✓" if stream == "payg" else "👔 PAYG", callback_data=f"corr:{receipt_id}:stream:payg"),
-        InlineKeyboardButton("🏠 Personal ✓" if stream == "personal" else "🏠 Personal", callback_data=f"corr:{receipt_id}:stream:personal"),
+        InlineKeyboardButton("✓ ABN" if stream == "abn" else "💼 ABN", callback_data=f"corr:{receipt_id}:stream:abn"),
+        InlineKeyboardButton("✓ PAYG" if stream == "payg" else "👔 PAYG", callback_data=f"corr:{receipt_id}:stream:payg"),
+        InlineKeyboardButton("✓ Personal" if stream == "personal" else "🏠 Personal", callback_data=f"corr:{receipt_id}:stream:personal"),
+    ]
+
+    if not expanded:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("✏️ Category", callback_data=f"corr:{receipt_id}:menu:controls")],
+            stream_row,
+        ])
+
+    details_row = [InlineKeyboardButton("Details", callback_data=f"corr:{receipt_id}:menu:details")]
+    if archive_url:
+        details_row.append(InlineKeyboardButton("Open original in Google Drive", url=archive_url))
+    footer = [
+        details_row,
+        [InlineKeyboardButton("← Back", callback_data=f"corr:{receipt_id}:menu:main")],
     ]
 
     # Personal stream: hide Business % and ABN activity buttons
@@ -108,7 +121,7 @@ def build_correction_keyboard(
                 InlineKeyboardButton("📂 All Categories...", callback_data=f"corr:{receipt_id}:menu:cats"),
             ],
         ]
-        return InlineKeyboardMarkup(keyboard)
+        return InlineKeyboardMarkup(keyboard + footer)
 
     pct_row = [
         InlineKeyboardButton("100%", callback_data=f"corr:{receipt_id}:pct:100"),
@@ -133,7 +146,7 @@ def build_correction_keyboard(
                 InlineKeyboardButton("📂 All Categories...", callback_data=f"corr:{receipt_id}:menu:cats"),
             ],
         ]
-        return InlineKeyboardMarkup(keyboard)
+        return InlineKeyboardMarkup(keyboard + footer)
 
     # ABN stream: show Stream, ABN Activity, Business %, and ABN categories
     keyboard = [
@@ -155,7 +168,7 @@ def build_correction_keyboard(
             InlineKeyboardButton("📂 All Categories...", callback_data=f"corr:{receipt_id}:menu:cats"),
         ],
     ]
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(keyboard + footer)
 
 
 def parse_correction_tokens(tokens: List[str]) -> Dict[str, object]:
@@ -311,8 +324,8 @@ class TelegramReceiptBot:
             }
         return dict(row)
 
-    def _award_xp_and_emit(self, xp_gain: int = 10, event_label: str = "Receipt Logged") -> str:
-        """Awards non-punitive cumulative XP, updates companion state, and returns a celebratory status block."""
+    def _award_xp_and_emit(self, xp_gain: int = 10, event_label: str = "Receipt Logged") -> None:
+        """Update cumulative XP and notify the desk companion."""
         state = self._get_companion_state()
         old_xp = state["total_xp"]
         new_xp = old_xp + xp_gain
@@ -337,9 +350,6 @@ class TelegramReceiptBot:
         box_progress = new_xp % target
         if unlocked_now and box_progress == 0:
             box_progress = target
-        filled = int((box_progress / target) * 10)
-        bar = "█" * filled + "░" * (10 - filled)
-
         event_payload = {
             "timestamp": datetime.datetime.now().isoformat(),
             "event": event_label,
@@ -361,23 +371,6 @@ class TelegramReceiptBot:
                 json.dump(event_payload, f, indent=2)
         except Exception as e:
             logger.warning(f"Could not write companion_event.json: {e}")
-
-        lines = [
-            f"\n✨ *+{xp_gain} XP Earned!* (Lifetime XP: `{new_xp} XP` — Never Resets)",
-            f"🎁 *Reward Box* [{reward_name}]:",
-            f"`[{bar}] {box_progress}/{target} XP`",
-        ]
-        if unlocked_now:
-            lines.append(
-                f"\n🎉 *REWARD BOX UNLOCKED!* 🎉\n"
-                f"Treat unlocked: *{reward_name}* (Unconditional gift, zero guilt!)\n"
-                f"📟 *Desk Companion*: `( ★ ▽ ★ )` Victory Fanfare & Confetti Triggered!"
-            )
-        else:
-            lines.append(
-                f"📟 *Desk Companion*: `( ^ ▽ ^ )` 2-Tone Chime & Happy Dance Triggered!"
-            )
-        return "\n".join(lines)
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
@@ -478,8 +471,8 @@ class TelegramReceiptBot:
             summary = self.cos.correct_receipt(receipt_id=rec_id, **parsed_args)
             kb = build_correction_keyboard(rec_id, claim_stream=summary.claim_stream)
             await update.message.reply_text(
-                f"{summary.summary_text}\n\n✅ _Journal, GST, and ATO myTax totals recalculated without duplicate entries. Confirmed rule saved to Vendor Memory._",
-                parse_mode="Markdown",
+                format_receipt_card(summary),
+                parse_mode=None,
                 reply_markup=kb,
             )
         except Exception as e:
@@ -510,17 +503,43 @@ class TelegramReceiptBot:
         receipt_id = int(rec_id_str)
 
         if action == "menu":
-            show_all = val == "cats"
-            rec_row = self.cos.km.get_receipt(receipt_id) or {}
-            cur_stream = str(rec_row.get("claim_stream") or "abn")
-            await query.answer("Select a category" if show_all else "Main controls")
-            await query.edit_message_reply_markup(
-                reply_markup=build_correction_keyboard(
-                    receipt_id,
-                    claim_stream=cur_stream,
-                    show_all_categories=show_all,
-                )
+            rec_row = self.cos.km.get_receipt(receipt_id)
+            if not rec_row:
+                await query.answer("Receipt not found", show_alert=True)
+                return
+            if val not in ("main", "controls", "cats", "details"):
+                await query.answer("Unknown menu")
+                return
+            stream = str(rec_row.get("claim_stream") or "abn")
+            archive_url = (
+                drive_file_url(rec_row.get("gdrive_file_id")) if rec_row.get("gdrive_status") == "uploaded" else None
             )
+            await query.answer()
+            try:
+                if val in ("controls", "cats"):
+                    await query.edit_message_reply_markup(
+                        reply_markup=build_correction_keyboard(
+                            receipt_id, claim_stream=stream, show_all_categories=val == "cats",
+                            expanded=True, archive_url=archive_url,
+                        )
+                    )
+                    return
+                summary = self.cos._build_summary_from_receipt_row(rec_row)
+                if val == "details":
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("← Back", callback_data=f"corr:{receipt_id}:menu:main")],
+                    ])
+                    await query.edit_message_text(
+                        text=format_receipt_details(summary), parse_mode=None, reply_markup=keyboard,
+                    )
+                    return
+                await query.edit_message_text(
+                    text=format_receipt_card(summary), parse_mode=None,
+                    reply_markup=build_correction_keyboard(receipt_id, claim_stream=stream),
+                )
+            except BadRequest as error:
+                if "message is not modified" not in str(error).lower():
+                    raise
             return
 
         try:
@@ -538,13 +557,10 @@ class TelegramReceiptBot:
                 return
 
             summary = self.cos.correct_receipt(receipt_id=receipt_id, **kwargs)
-            await query.answer(f"Updated #{receipt_id} ({action}={val})")
+            await query.answer(f"Updated #{receipt_id}")
             await query.edit_message_text(
-                text=(
-                    f"{summary.summary_text}\n\n"
-                    f"✅ _Recalculated books, GST & myTax totals (0 duplicate entries). Confirmed rule remembered for {summary.vendor}._"
-                ),
-                parse_mode="Markdown",
+                text=format_receipt_card(summary),
+                parse_mode=None,
                 reply_markup=build_correction_keyboard(
                     receipt_id,
                     claim_stream=summary.claim_stream,
@@ -644,9 +660,9 @@ class TelegramReceiptBot:
             response = summary.summary_text
             kb = None
             if summary.receipt_id:
-                xp_block = self._award_xp_and_emit(xp_gain=10, event_label=f"Note: {summary.vendor}")
+                self._award_xp_and_emit(xp_gain=10, event_label=f"Note: {summary.vendor}")
                 kb = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
-                response = f"{response}\n{xp_block}"
+                response = format_receipt_card(summary)
         except Exception as e:
             logger.error("Error processing note: %s", e)
             await update.message.reply_text(
@@ -654,7 +670,7 @@ class TelegramReceiptBot:
             )
             return
 
-        await self._send_intake_result(update.message.reply_text, response, reply_markup=kb)
+        await update.message.reply_text(response, parse_mode=None, reply_markup=kb)
 
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
@@ -715,6 +731,7 @@ class TelegramReceiptBot:
         del downloaded
         kb = None
         archive_url = None
+        batch_summary = False
         try:
             if batch:
                 batch_res = self.cos.process_batch_or_statement(filename, user_note=caption, file_bytes=raw_bytes)
@@ -727,29 +744,40 @@ class TelegramReceiptBot:
                         f"Batch/Statement ({count} synced)"
                         if document_name is None else f"Bank Statement Sync ({count} added)"
                     )
-                    xp_block = self._award_xp_and_emit(
+                    self._award_xp_and_emit(
                         xp_gain=batch_res["xp_earned"],
                         event_label=event_label,
                     )
-                    response = f"{response}\n{xp_block}"
+                receipt_ids = batch_res.get("receipt_ids") or []
+                if batch_res.get("document_type") == "single_receipt" and len(receipt_ids) == 1:
+                    receipt = self.cos.km.get_receipt(receipt_ids[0])
+                    if receipt:
+                        summary = self.cos._build_summary_from_receipt_row(receipt)
+                        response = format_receipt_card(summary)
+                        kb = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
+                else:
+                    batch_summary = batch_res.get("status") in ("recorded", "needs_review", "duplicate") and (
+                        batch_res.get("document_type") in ("multi_receipt", "bank_statement")
+                    )
             else:
                 summary = self.cos.process_file(filename, user_note=caption, file_bytes=raw_bytes)
                 response = summary.summary_text
                 if summary.gdrive_status == "uploaded":
                     archive_url = drive_file_url(summary.gdrive_file_id)
                 if summary.receipt_id and summary.status != "archive_unavailable":
-                    xp_block = self._award_xp_and_emit(xp_gain=10, event_label=f"{receipt_label}: {summary.vendor}")
+                    self._award_xp_and_emit(xp_gain=10, event_label=f"{receipt_label}: {summary.vendor}")
                     kb = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
-                    response = f"{response}\n{xp_block}"
+                    response = format_receipt_card(summary)
         except Exception as e:
             logger.error("Error processing Telegram receipt: %s", e)
             response = "🦊 I had trouble reading that file. Could you try sending it again?"
 
-        if archive_url:
-            rows = list(kb.inline_keyboard) if kb else []
-            rows.append((InlineKeyboardButton("Open original in Google Drive", url=archive_url),))
-            kb = InlineKeyboardMarkup(rows)
-        await self._send_intake_result(progress.edit_text, response, reply_markup=kb)
+        if archive_url and kb is None:
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("Open original in Google Drive", url=archive_url)]])
+        if batch_summary:
+            await self._send_intake_result(progress.edit_text, response, reply_markup=kb)
+        else:
+            await progress.edit_text(response, parse_mode=None, reply_markup=kb)
 
     async def balance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from telegram.error import BadRequest, NetworkError
 
-from src.agents.chief_of_staff import ChiefOfStaff
+from src.agents.chief_of_staff import ChiefOfStaff, IntakeSummary
 from src.agents.finance_agent import FinanceAgent, ParsedReceipt, ReceiptItem
 from src.interfaces.cli import seed_accounts
 from src.interfaces.telegram_bot import (
@@ -33,6 +33,17 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         init_db(self.conn)
         seed_accounts(self.conn)
         self.jm = JournalManager(self.conn)
+
+    def assert_compact_receipt_keyboard(self, keyboard, receipt_id, selected):
+        rows = keyboard.inline_keyboard
+        self.assertEqual([len(row) for row in rows], [1, 3])
+        self.assertEqual(rows[0][0].text, "✏️ Category")
+        self.assertEqual(rows[0][0].callback_data, f"corr:{receipt_id}:menu:controls")
+        for button, (stream, label) in zip(rows[1], (("abn", "ABN"), ("payg", "PAYG"), ("personal", "Personal"))):
+            self.assertIn(label, button.text)
+            self.assertEqual(button.callback_data, f"corr:{receipt_id}:stream:{stream}")
+            self.assertEqual("✓" in button.text, stream == selected)
+        self.assertFalse(any(button.url for row in rows for button in row))
 
     def test_defect_1_explicit_gst_zero_preserved_on_110_aud_abn(self):
         """
@@ -253,7 +264,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertNotIn("*Activity*:", pers.summary_text)
 
         # Personal keyboard must NOT contain pct or ABN activity buttons
-        pers_kb = build_correction_keyboard(pers.receipt_id, claim_stream="personal")
+        pers_kb = build_correction_keyboard(pers.receipt_id, claim_stream="personal", expanded=True)
         pers_callbacks = [btn.callback_data for row in pers_kb.inline_keyboard for btn in row]
         self.assertFalse(any(":pct:" in cb for cb in pers_callbacks))
         self.assertFalse(any(":act:" in cb for cb in pers_callbacks))
@@ -261,10 +272,13 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertIn(f"corr:{pers.receipt_id}:cat:dining_coffee", pers_callbacks)
 
         # ABN entry keyboard MUST contain pct and ABN activity buttons
-        abn_kb = build_correction_keyboard(pers.receipt_id, claim_stream="abn")
+        abn_kb = build_correction_keyboard(pers.receipt_id, claim_stream="abn", expanded=True)
         abn_callbacks = [btn.callback_data for row in abn_kb.inline_keyboard for btn in row]
         self.assertTrue(any(":pct:50" in cb for cb in abn_callbacks))
         self.assertTrue(any(":act:dog_walking" in cb for cb in abn_callbacks))
+        self.assert_compact_receipt_keyboard(
+            build_correction_keyboard(pers.receipt_id, claim_stream="payg"), pers.receipt_id, "payg"
+        )
 
     def test_defect_6_gdrive_cli_rejects_arbitrary_non_error_output(self):
         """
@@ -436,15 +450,18 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         update.message.reply_text = AsyncMock()
         context = MagicMock()
 
+        original_xp = bot._get_companion_state()["total_xp"]
         asyncio.run(bot.handle_text(update, context))
         update.message.reply_text.assert_called_once()
-        sent_text = update.message.reply_text.call_args[0][0]
-        sent_kb = update.message.reply_text.call_args[1]["reply_markup"]
+        note_reply = update.message.reply_text.await_args
+        sent_text = note_reply.args[0]
+        sent_kb = note_reply.kwargs["reply_markup"]
         self.assertIn("55.00", sent_text)
-        self.assertIn("*Date*:", sent_text)
-        self.assertIn("*Payment*:", sent_text)
-        self.assertIn("*Items*:", sent_text)
-        self.assertIsNotNone(sent_kb)
+        self.assertIn("AUD", sent_text)
+        self.assertNotIn("+10 XP", sent_text)
+        self.assertIsNone(note_reply.kwargs.get("parse_mode"))
+        self.assertEqual(bot._get_companion_state()["total_xp"], original_xp + 10)
+        self.assert_compact_receipt_keyboard(sent_kb, 1, "abn")
 
         # 2. Callback button correction to Personal -> hides % and activity buttons
         cb_update = MagicMock()
@@ -455,10 +472,9 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
 
         asyncio.run(bot.handle_correction_callback(cb_update, context))
         cb_update.callback_query.edit_message_text.assert_called_once()
-        edited_kb = cb_update.callback_query.edit_message_text.call_args[1]["reply_markup"]
-        edited_callbacks = [btn.callback_data for row in edited_kb.inline_keyboard for btn in row]
-        self.assertFalse(any(":pct:" in cb for cb in edited_callbacks))
-        self.assertFalse(any(":act:" in cb for cb in edited_callbacks))
+        edited_reply = cb_update.callback_query.edit_message_text.await_args
+        self.assertIsNone(edited_reply.kwargs.get("parse_mode"))
+        self.assert_compact_receipt_keyboard(edited_reply.kwargs["reply_markup"], 1, "personal")
 
         # 3. Drive archive unavailable -> no new record, link or correction buttons
         photo_update = MagicMock()
@@ -489,7 +505,85 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertIn("Google Drive", photo_reply_text)
         self.assertIn("No financial record or journal entry was posted", photo_reply_text)
         self.assertIsNone(progress_edit.call_args.kwargs["reply_markup"])
+        self.assertEqual(bot._get_companion_state()["total_xp"], original_xp + 10)
         self.assertFalse(os.path.exists(os.path.join(self.tmp_dir.name, "receipts")))
+
+    def test_category_controls_keep_archive_private_and_preserve_legacy_corrections(self):
+        bot = TelegramReceiptBot(
+            bot_token="fictional_token",
+            owner_chat_id=12345,
+            db_path=self.db_path,
+            finance_agent=FinanceAgent(api_key=""),
+            load_dotenv=False,
+        )
+        self.addCleanup(bot.conn.close)
+        drive_id = "1FictionalArchivedReceipt987"
+        receipt_id = bot.cos.km.record_receipt(
+            data={
+                "vendor": "[FICTIONAL DEMO] Project_Zinc* Supplies",
+                "date": "2026-11-03",
+                "total_amount": 23.50,
+                "currency": "AUD",
+                "category": "materials_3d_printing",
+                "purpose": "business",
+                "claim_stream": "abn",
+                "business_activity": "printing_3d",
+                "business_pct": 100.0,
+                "status": "recorded",
+            },
+            gdrive_file_id=drive_id,
+            gdrive_status="uploaded",
+        )
+        prefix = f"corr:{receipt_id}"
+
+        async def tap(suffix, chat_id=12345):
+            query = MagicMock()
+            query.data = f"{prefix}:{suffix}"
+            query.answer = AsyncMock()
+            query.edit_message_reply_markup = AsyncMock()
+            query.edit_message_text = AsyncMock()
+            update = SimpleNamespace(callback_query=query, effective_chat=SimpleNamespace(id=chat_id))
+            await bot.handle_correction_callback(update, SimpleNamespace())
+            return query
+
+        with patch.object(bot.cos, "correct_receipt", wraps=bot.cos.correct_receipt) as correct:
+            denied = asyncio.run(tap("menu:controls", chat_id=54321))
+            denied.edit_message_reply_markup.assert_not_called()
+            denied.edit_message_text.assert_not_called()
+
+            controls = asyncio.run(tap("menu:controls"))
+            expanded = controls.edit_message_reply_markup.await_args.kwargs["reply_markup"]
+            control_buttons = [button for row in expanded.inline_keyboard for button in row]
+            control_actions = {button.callback_data for button in control_buttons}
+            self.assertIn(f"{prefix}:pct:80", control_actions)
+            self.assertIn(f"{prefix}:act:printing_3d", control_actions)
+            self.assertIn(f"{prefix}:menu:cats", control_actions)
+            self.assertIn(f"{prefix}:menu:main", control_actions)
+            self.assertIn(f"https://drive.google.com/open?id={drive_id}", {b.url for b in control_buttons})
+
+            unverified_row = {**bot.cos.km.get_receipt(receipt_id), "gdrive_status": "failed"}
+            with patch.object(bot.cos.km, "get_receipt", return_value=unverified_row):
+                unverified = asyncio.run(tap("menu:controls"))
+            unverified_keyboard = unverified.edit_message_reply_markup.await_args.kwargs["reply_markup"]
+            self.assertFalse(any(button.url for row in unverified_keyboard.inline_keyboard for button in row))
+
+            cats = asyncio.run(tap("menu:cats"))
+            categories = cats.edit_message_reply_markup.await_args.kwargs["reply_markup"]
+            category_actions = {button.callback_data for row in categories.inline_keyboard for button in row}
+            self.assertIn(f"{prefix}:cat:groceries", category_actions)
+            self.assertIn(f"{prefix}:menu:controls", category_actions)
+
+            back = asyncio.run(tap("menu:main"))
+            back_edit = back.edit_message_text if back.edit_message_text.await_count else back.edit_message_reply_markup
+            self.assert_compact_receipt_keyboard(back_edit.await_args.kwargs["reply_markup"], receipt_id, "abn")
+            correct.assert_not_called()
+
+            legacy = asyncio.run(tap("pct:80"))
+            correct.assert_called_once_with(receipt_id=receipt_id, business_pct=80.0)
+            mutation = legacy.edit_message_text.await_args
+            self.assertIsNone(mutation.kwargs.get("parse_mode"))
+            self.assert_compact_receipt_keyboard(mutation.kwargs["reply_markup"], receipt_id, "abn")
+            self.assertEqual(bot.cos.km.get_receipt(receipt_id)["business_pct"], 80.0)
 
     def test_media_intake_downloads_bytes_and_forwards_the_original_caption(self):
         bot = TelegramReceiptBot(
@@ -503,12 +597,13 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         raw_bytes = b"[FICTIONAL DEMO] Telegram attachment bytes"
         drive_id = "1FictionalArchivedReceipt987"
         uploads = (
-            (None, "[FICTIONAL DEMO] For Project Zinc", False),
-            (None, "[FICTIONAL DEMO] BaTcH for Project Zinc", True),
-            (r"..\outside\Invoice.PDF", "[FICTIONAL DEMO] Paid With a Voucher", False),
-            (r"../outside/Export.CSV", "[FICTIONAL DEMO] November Accounts", True),
+            (None, "[FICTIONAL DEMO] For Project Zinc", False, True),
+            (None, "[FICTIONAL DEMO] BaTcH for Project Zinc", True, False),
+            (r"..\outside\Invoice.PDF", "[FICTIONAL DEMO] Paid With a Voucher", False, True),
+            (r"../outside/Export.CSV", "[FICTIONAL DEMO] November Accounts", True, False),
+            (r"../outside/Blurry.JPG", "[FICTIONAL DEMO] Date is unclear", False, False),
         )
-        for filename, caption, batch in uploads:
+        for filename, caption, batch, saved in uploads:
             with self.subTest(filename=filename, caption=caption):
                 media = SimpleNamespace(
                     file_name=filename, file_unique_id="fictional_file", file_id="fictional_id",
@@ -528,14 +623,22 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
 
                 file = SimpleNamespace(file_size=len(raw_bytes), download_as_bytearray=AsyncMock(side_effect=download))
                 context = SimpleNamespace(bot=SimpleNamespace(get_file=AsyncMock(return_value=file)))
-                summary = SimpleNamespace(
-                    receipt_id=42,
-                    vendor="[FICTIONAL DEMO] Project Zinc Supplies",
+                summary = IntakeSummary(
+                    receipt_id=42 if saved else 0,
+                    vendor="[FICTIONAL DEMO] Zinc_* Shop",
+                    date="2026-11-03",
+                    total_amount=23.50,
+                    currency="AUD",
+                    purpose="business",
+                    category="materials_3d_printing",
+                    tax_label="Cost of sales",
                     claim_stream="abn",
-                    summary_text="Recorded receipt",
-                    status="recorded",
+                    summary_text="Detailed report" if saved else "Please confirm the receipt date.",
+                    status="recorded" if saved else "needs_review",
+                    flag_reason=None,
                     gdrive_status="uploaded",
                     gdrive_file_id=drive_id,
+                    items_summary="Nozzle kit",
                 )
                 with (
                     patch.object(bot.cos, "process_file", return_value=summary) as process_single,
@@ -555,20 +658,30 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                     expected_name = "fictional_file.jpg" if filename is None else (
                         "fictional_file_" + filename.replace("\\", "/").rsplit("/", 1)[-1]
                     )
-                    keyboard = progress.edit_text.await_args.kwargs["reply_markup"]
-                    self.assertEqual(
-                        keyboard.inline_keyboard[-1][0].url, f"https://drive.google.com/open?id={drive_id}"
-                    )
+                    reply = progress.edit_text.await_args
+                    keyboard = reply.kwargs["reply_markup"]
+                    if saved:
+                        self.assert_compact_receipt_keyboard(keyboard, 42, "abn")
+                        self.assertIn(summary.vendor, reply.args[0])
+                        self.assertIn("$23.50 AUD", reply.args[0])
+                        self.assertNotIn("Detailed report", reply.args[0])
+                        self.assertNotIn("+10 XP", reply.args[0])
+                        self.assertIsNone(reply.kwargs.get("parse_mode"))
+                        award_xp.assert_called_once()
+                    else:
+                        self.assertEqual([len(row) for row in keyboard.inline_keyboard], [1])
+                        self.assertEqual(
+                            keyboard.inline_keyboard[0][0].url, f"https://drive.google.com/open?id={drive_id}"
+                        )
+                        award_xp.assert_not_called()
                     if batch:
                         process_batch.assert_called_once_with(expected_name, user_note=caption, file_bytes=raw_bytes)
                         process_single.assert_not_called()
-                        award_xp.assert_not_called()
-                        self.assertEqual(len(keyboard.inline_keyboard), 1)
                     else:
                         process_single.assert_called_once_with(expected_name, user_note=caption, file_bytes=raw_bytes)
                         process_batch.assert_not_called()
-                        award_xp.assert_called_once()
-                        self.assertTrue(any(b.callback_data for row in keyboard.inline_keyboard for b in row))
+                        if not saved:
+                            self.assertEqual(reply.args[0], "Please confirm the receipt date.")
 
     def test_media_result_only_retries_a_markdown_parse_rejection(self):
         send = AsyncMock(side_effect=[BadRequest("Can't parse entities: Can't find end of the entity"), None])
