@@ -3,7 +3,11 @@ import os
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from telegram.error import BadRequest, NetworkError
 
 from src.agents.chief_of_staff import ChiefOfStaff
 from src.agents.finance_agent import FinanceAgent, ParsedReceipt, ReceiptItem
@@ -23,15 +27,13 @@ from src.storage.journal import JournalManager
 class TestTelegramUXAndCorrections(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
         self.db_path = os.path.join(self.tmp_dir.name, "test_ledger.db")
         self.conn = get_connection(self.db_path)
+        self.addCleanup(self.conn.close)
         init_db(self.conn)
         seed_accounts(self.conn)
         self.jm = JournalManager(self.conn)
-
-    def tearDown(self):
-        self.conn.close()
-        self.tmp_dir.cleanup()
 
     def test_defect_1_explicit_gst_zero_preserved_on_110_aud_abn(self):
         """
@@ -45,7 +47,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
 
         # Route A: Typed note with explicit GST=0
-        summary_note = cos.process_note("Fictional 3D Maker Supply nozzle kit $110.00 gst=0")
+        summary_note = cos.process_note("Fictional 3D Maker Supply nozzle kit $110.00 gst=0 today")
         self.assertEqual(summary_note.claim_stream, "abn")
         self.assertEqual(summary_note.total_amount, 110.0)
         self.assertEqual(summary_note.claimable_amount, 110.0)
@@ -87,7 +89,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
 
         # 1. Explicit GST = $2.00 on $110.00 AUD ABN receipt
-        s_exp = cos.process_note("Fictional 3D Maker Supply resin order $110.00 gst=2.00")
+        s_exp = cos.process_note("Fictional 3D Maker Supply resin order $110.00 gst=2.00 today")
         self.assertEqual(s_exp.gst_status, "explicit")
         self.assertEqual(s_exp.raw_tax_amount, 2.0)
         self.assertEqual(s_exp.tax_amount, 2.0)
@@ -111,7 +113,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertEqual(s_100.tax_amount, 2.0)
 
         # 2. Unknown GST (no GST stated in note) stays unknown ($0.00 claimed)
-        s_unk = cos.process_note("Fictional 3D Maker Supply build plate $110.00")
+        s_unk = cos.process_note("Fictional 3D Maker Supply build plate $110.00 today")
         self.assertEqual(s_unk.gst_status, "unknown")
         self.assertIsNone(s_unk.raw_tax_amount)
         self.assertEqual(s_unk.tax_amount, 0.0)
@@ -138,7 +140,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
 
         # 1. Record a confirmed/high-confidence business receipt ($55.00 AUD, GST=$5.00)
-        confirmed = cos.process_note("Fictional 3D Maker Supply nozzle $55.00 gst=5.00")
+        confirmed = cos.process_note("Fictional 3D Maker Supply nozzle $55.00 gst=5.00 today")
         self.assertEqual(confirmed.status, "recorded")
 
         # 2. Record a low-confidence / needs-review business receipt ($88.00 AUD, GST=$8.00)
@@ -207,14 +209,14 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
 
         # 1st receipt from Fictional 3D Maker Supplies (classified by heuristic, unconfirmed by owner)
-        r1 = cos.process_note("Fictional 3D Maker Supply nozzle $30.00")
+        r1 = cos.process_note("Vendor: [FICTIONAL DEMO] 3D Maker Supply; nozzle $30.00 today")
         self.assertNotEqual(r1.classification_source, "vendor_memory")
         self.assertLess(r1.confidence, 1.0)
         self.assertIsNone(cos.km.memory.lookup(r1.vendor, confirmed_only=True))
 
         # 2nd receipt from the same vendor BEFORE any owner correction:
         # Must still be an unconfirmed suggestion (NOT confidence 1.0 vendor_memory!)
-        r2 = cos.process_note("Fictional 3D Maker Supply build plate $45.00")
+        r2 = cos.process_note("Vendor: [FICTIONAL DEMO] 3D Maker Supply; build plate $45.00 today")
         self.assertNotEqual(r2.classification_source, "vendor_memory")
         self.assertLess(r2.confidence, 1.0)
         self.assertIn("AI Suggestion", r2.summary_text)
@@ -225,7 +227,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
 
         # 3rd receipt from the same vendor AFTER owner correction:
         # Now uses confirmed Vendor Memory with confidence 1.0 and 80% business_pct!
-        r3 = cos.process_note("Fictional 3D Maker Supply resin $50.00")
+        r3 = cos.process_note("Vendor: [FICTIONAL DEMO] 3D Maker Supply; resin $50.00 today")
         self.assertEqual(r3.classification_source, "vendor_memory")
         self.assertEqual(r3.confidence, 1.0)
         self.assertEqual(r3.business_pct, 80.0)
@@ -243,7 +245,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
 
         # Personal entry
-        pers = cos.process_note("Fictional Demo Cafe flat white coffee $6.50")
+        pers = cos.process_note("Fictional Demo Cafe flat white coffee $6.50 today")
         self.assertEqual(pers.claim_stream, "personal")
         self.assertIn("*Date*:", pers.summary_text)
         self.assertIn("*Payment*:", pers.summary_text)
@@ -323,10 +325,11 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
 
         self.assertEqual(res.status, "extraction_unavailable")
         self.assertEqual(res.receipt_id, 0)
-        self.assertEqual(res.total_amount, 0.0)
-        self.assertIn("Receipt OCR Extraction Unavailable", res.summary_text)
+        self.assertIsNone(res.total_amount)
+        self.assertIsNone(res.date)
+        self.assertIn("Finance could not read the receipt.", res.summary_text)
         self.assertIn("No financial record or journal entry was posted", res.summary_text)
-        self.assertIn("Google Drive Backup Failed", res.summary_text)
+        self.assertIn("Google Drive backup unavailable.", res.summary_text)
 
         # Verify ZERO rows were inserted into receipts or journal_transactions
         rec_count = self.conn.execute("SELECT COUNT(*) as c FROM receipts").fetchone()["c"]
@@ -412,6 +415,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             finance_agent=FinanceAgent(api_key=""),
             load_dotenv=False,
         )
+        self.addCleanup(bot.conn.close)
 
         parsed_cmd = parse_correction_tokens(
             ["1", "pct=50", "stream=abn", "activity=dog_walking", "category=car_fuel_maintenance", "gst=0"]
@@ -423,7 +427,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         # 1. Incoming Telegram text message (ABN)
         update = MagicMock()
         update.effective_chat.id = 12345
-        update.message.text = "Fictional 3D Maker Supply build plate $55.00 gst=5.00"
+        update.message.text = "Fictional 3D Maker Supply build plate $55.00 gst=5.00 today"
         update.message.reply_chat_action = AsyncMock()
         update.message.reply_text = AsyncMock()
         context = MagicMock()
@@ -483,10 +487,101 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 if os.path.exists(p):
                     os.remove(p)
 
-        photo_update.message.reply_text.assert_called_once()
-        photo_reply_text = photo_update.message.reply_text.call_args[0][0]
-        self.assertIn("Receipt OCR Extraction Unavailable", photo_reply_text)
+        photo_update.message.reply_text.assert_awaited_once()
+        progress_edit = photo_update.message.reply_text.return_value.edit_text
+        progress_edit.assert_awaited_once()
+        photo_reply_text = progress_edit.call_args[0][0]
+        self.assertIn("Finance could not read the receipt.", photo_reply_text)
         self.assertIn("No financial record or journal entry was posted", photo_reply_text)
+        self.assertIsNone(progress_edit.call_args.kwargs["reply_markup"])
+
+    def test_media_intake_downloads_bytes_and_forwards_the_original_caption(self):
+        bot = TelegramReceiptBot(
+            bot_token="fictional_token",
+            owner_chat_id=12345,
+            db_path=self.db_path,
+            finance_agent=FinanceAgent(api_key=""),
+            load_dotenv=False,
+        )
+        self.addCleanup(bot.conn.close)
+        uploads = (
+            (None, "[FICTIONAL DEMO] For Project Zinc", False),
+            (None, "[FICTIONAL DEMO] BaTcH for Project Zinc", True),
+            (r"..\outside\Invoice.PDF", "[FICTIONAL DEMO] Paid With a Voucher", False),
+            (r"../outside/Export.CSV", "[FICTIONAL DEMO] November Accounts", True),
+        )
+        for filename, caption, batch in uploads:
+            with self.subTest(filename=filename, caption=caption):
+                media = SimpleNamespace(file_name=filename, file_unique_id="fictional_file", file_id="fictional_id")
+                progress = SimpleNamespace(edit_text=AsyncMock())
+                message = SimpleNamespace(
+                    photo=[media],
+                    document=media,
+                    caption=caption,
+                    reply_text=AsyncMock(return_value=progress),
+                )
+                update = SimpleNamespace(message=message, effective_chat=SimpleNamespace(id=12345))
+                downloaded_paths = []
+
+                async def download(path):
+                    message.reply_text.assert_awaited_once()
+                    downloaded = Path(path)
+                    downloaded.write_bytes(b"[FICTIONAL DEMO] Telegram attachment bytes")
+                    downloaded_paths.append(downloaded)
+
+                file = SimpleNamespace(download_to_drive=AsyncMock(side_effect=download))
+                context = SimpleNamespace(bot=SimpleNamespace(get_file=AsyncMock(return_value=file)))
+                summary = SimpleNamespace(
+                    receipt_id=42,
+                    vendor="[FICTIONAL DEMO] Project Zinc Supplies",
+                    claim_stream="abn",
+                    summary_text="Recorded receipt",
+                )
+                with (
+                    patch.object(bot.cos, "process_file", return_value=summary) as process_single,
+                    patch.object(bot.cos, "process_batch_or_statement", return_value={
+                        "recorded_count": 0, "xp_earned": 0, "summary_text": "No new records",
+                    }) as process_batch,
+                    patch.object(bot, "_award_xp_and_emit", return_value="+10 XP") as award_xp,
+                ):
+                    handler = bot.handle_photo if filename is None else bot.handle_document
+                    asyncio.run(handler(update, context))
+                    context.bot.get_file.assert_awaited_once_with("fictional_id")
+                    message.reply_text.assert_awaited_once()
+                    progress.edit_text.assert_awaited_once()
+                    [downloaded] = downloaded_paths
+                    self.assertTrue(downloaded.is_relative_to(Path(self.tmp_dir.name) / "receipts"))
+                    self.assertEqual(downloaded.read_bytes(), b"[FICTIONAL DEMO] Telegram attachment bytes")
+                    expected_name = "fictional_file.jpg" if filename is None else (
+                        "fictional_file_" + filename.replace("\\", "/").rsplit("/", 1)[-1]
+                    )
+                    self.assertEqual(downloaded.name, expected_name)
+                    if batch:
+                        process_batch.assert_called_once_with(str(downloaded), user_note=caption)
+                        process_single.assert_not_called()
+                        award_xp.assert_not_called()
+                        self.assertIsNone(progress.edit_text.await_args.kwargs["reply_markup"])
+                    else:
+                        process_single.assert_called_once_with(str(downloaded), user_note=caption)
+                        process_batch.assert_not_called()
+                        award_xp.assert_called_once()
+                        self.assertIsNotNone(progress.edit_text.await_args.kwargs["reply_markup"])
+
+    def test_media_result_only_retries_a_markdown_parse_rejection(self):
+        send = AsyncMock(side_effect=[BadRequest("Can't parse entities: Can't find end of the entity"), None])
+        keyboard = build_correction_keyboard(42, claim_stream="abn")
+        asyncio.run(TelegramReceiptBot._send_intake_result(send, "[FICTIONAL DEMO] Supplier*", keyboard))
+        self.assertEqual(send.await_count, 2)
+        self.assertEqual(send.await_args_list[0].kwargs["parse_mode"], "Markdown")
+        self.assertIsNone(send.await_args_list[1].kwargs["parse_mode"])
+        self.assertIs(send.await_args_list[1].kwargs["reply_markup"], keyboard)
+
+        for error in (NetworkError("Request timed out"), BadRequest("Message is not modified")):
+            with self.subTest(error=error):
+                send = AsyncMock(side_effect=error)
+                with self.assertRaises(type(error)):
+                    asyncio.run(TelegramReceiptBot._send_intake_result(send, "[FICTIONAL DEMO] Receipt"))
+                send.assert_awaited_once()
 
     def test_defect_8_vendor_only_rename_preserves_qa_flags_and_field_uncertainty(self):
         """
@@ -607,7 +702,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
 
         # 1. Record a valid $110.00 AUD ABN receipt with explicit GST = $10.00
-        valid_summary = cos.process_note("Fictional 3D Maker Supply nozzle $110.00 gst=10.00")
+        valid_summary = cos.process_note("Fictional 3D Maker Supply nozzle $110.00 gst=10.00 today")
         self.assertEqual(valid_summary.status, "recorded")
         self.assertEqual(valid_summary.total_amount, 110.0)
         self.assertEqual(valid_summary.tax_amount, 10.0)
@@ -750,7 +845,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
 
         # 1. Record a valid $110.00 AUD ABN receipt at 80% business_pct (claimable=$88.00, GST=$8.00)
-        valid = cos.process_note("Fictional 3D Maker Supply nozzle $110.00 80% gst=10.00")
+        valid = cos.process_note("Fictional 3D Maker Supply nozzle $110.00 80% gst=10.00 today")
         rec_id = valid.receipt_id
         self.assertEqual(valid.business_pct, 80.0)
         self.assertEqual(valid.claimable_amount, 88.0)
@@ -995,6 +1090,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             finance_agent=FinanceAgent(api_key=""),
             load_dotenv=False,
         )
+        self.addCleanup(bot.conn.close)
 
         # 1. Unallocated needs-review expense: ABN with no activity/pct (e.g. from stream switch PAYG -> ABN)
         rec_id = cos.km.record_receipt(
@@ -1166,6 +1262,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             finance_agent=FinanceAgent(api_key=""),
             load_dotenv=False,
         )
+        self.addCleanup(bot.conn.close)
 
         # 1. Preserve actual income and expenses paid via payment rails
         # Income via Osko
@@ -1222,12 +1319,12 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertEqual(own_pet_leash.business_activity, "none")
         self.assertEqual(own_pet_leash.business_pct, 0.0)
 
-        repay_summary = cos.process_note("Afterpay repayment $35.50")
+        repay_summary = cos.process_note("Afterpay repayment $35.50 today")
         self.assertEqual(repay_summary.status, "needs_review")
         self.assertEqual(repay_summary.category, "transfer")
         self.assertIn("prevent double-counting", repay_summary.summary_text.lower())
 
-        ambig_summary = cos.process_note("Transfer $250.00")
+        ambig_summary = cos.process_note("Transfer $250.00 today")
         self.assertEqual(ambig_summary.status, "needs_review")
         self.assertEqual(ambig_summary.category, "transfer")
         self.assertIn("pending owner review", ambig_summary.summary_text.lower())
@@ -1495,6 +1592,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             finance_agent=FinanceAgent(api_key=""),
             load_dotenv=False,
         )
+        self.addCleanup(bot.conn.close)
 
         import datetime
         curr_month = datetime.date.today().strftime("%Y-%m")
@@ -1502,19 +1600,19 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
 
         # 1. Critical sequence reproduction:
         # Step A: $120 3D printer nozzle kit via Afterpay
-        afterpay_summary = cos.process_note("Fictional 3D Supply printer nozzle kit 120.00 via Afterpay")
+        afterpay_summary = cos.process_note("Fictional 3D Supply printer nozzle kit 120.00 via Afterpay today")
         self.assertEqual(afterpay_summary.total_amount, 120.00)
         self.assertIn("afterpay", afterpay_summary.payment_method.lower())
         self.assertEqual(afterpay_summary.category, "materials_3d_printing")
         self.assertEqual(afterpay_summary.status, "recorded")
 
         # Step B: $30 Afterpay repayment
-        repay_summary = cos.process_note("Afterpay repayment $30.00")
+        repay_summary = cos.process_note("Afterpay repayment $30.00 today")
         self.assertEqual(repay_summary.total_amount, 30.00)
         self.assertEqual(repay_summary.category, "transfer")
 
         # Step C: $500 Internal transfer between own accounts
-        transfer_summary = cos.process_note("Transfer $500.00 from own savings to own dog walking business account")
+        transfer_summary = cos.process_note("Transfer $500.00 from own savings to own dog walking business account today")
         self.assertEqual(transfer_summary.total_amount, 500.00)
         self.assertEqual(transfer_summary.category, "transfer")
 
@@ -1666,7 +1764,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
 
         # 1. Part A: Dog walking leashes via Osko starts in review, then cleanly confirmed
-        note = "Dog walking leashes 85.00 via Osko"
+        note = "Dog walking leashes 85.00 via Osko today"
         summary = cos.process_note(note)
         self.assertEqual(summary.total_amount, 85.00)
         self.assertIn("osko", summary.payment_method.lower())
@@ -1742,12 +1840,12 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertIsNone(cos.km.memory.lookup("[FICTIONAL DEMO] Future Leash Store", confirmed_only=True))
 
         # 3. Part C: Transfer / repayment card status distinguishes saved receipt from journal posting
-        tfr_summary = cos.process_note("Internal transfer to savings $500.00")
+        tfr_summary = cos.process_note("Internal transfer to savings $500.00 today")
         self.assertNotIn("Recorded #", tfr_summary.summary_text, "Transfers must not say 'Recorded'!")
         self.assertIn("Saved; journal pending linkage/account details", tfr_summary.summary_text)
         self.assertIn("(unposted to trial balance)", tfr_summary.summary_text)
 
-        repay_summary = cos.process_note("Afterpay repayment $30.00")
+        repay_summary = cos.process_note("Afterpay repayment $30.00 today")
         self.assertNotIn("Recorded #", repay_summary.summary_text, "Repayments must not say 'Recorded'!")
         self.assertIn("Saved; journal pending linkage/account details", repay_summary.summary_text)
         self.assertIn("(unposted to trial balance)", repay_summary.summary_text)
@@ -1766,6 +1864,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             finance_agent=FinanceAgent(api_key=""),
             load_dotenv=False,
         )
+        self.addCleanup(bot_unauth.conn.close)
 
         mock_update = MagicMock()
         mock_update.effective_chat.id = 12345
@@ -1782,6 +1881,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             finance_agent=FinanceAgent(api_key=""),
             load_dotenv=False,
         )
+        self.addCleanup(bot_auth.conn.close)
         self.assertFalse(bot_auth._is_authorized(mock_update))
 
         # Matching chat ID is authorized

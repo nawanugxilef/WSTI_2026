@@ -11,7 +11,9 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import math
 import os
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -35,13 +37,13 @@ from src.storage.gdrive import GDriveAdapter
 class IntakeSummary:
     receipt_id: int
     vendor: str
-    date: str
-    total_amount: float
+    date: Optional[str]
+    total_amount: Optional[float]
     currency: str
     purpose: str
     category: str
     tax_label: Optional[str]
-    status: str  # recorded, corrected, flagged, needs_review, or extraction_unavailable
+    status: str  # recorded, corrected, flagged, needs_review, duplicate, or extraction_unavailable
     flag_reason: Optional[str]
     gdrive_file_id: Optional[str]
     summary_text: str
@@ -286,6 +288,80 @@ class ChiefOfStaff:
             summary_text="\n".join(lines),
         )
 
+    @staticmethod
+    def _missing_booking_details(parsed: ParsedReceipt) -> List[str]:
+        details = []
+        if not parsed.vendor.strip():
+            details.append("vendor")
+        if not (parsed.date or "").strip():
+            details.append("transaction date")
+        total = parsed.total_amount
+        if total is None or not math.isfinite(total) or round(total, 2) <= 0:
+            details.append("positive total amount")
+        return details
+
+    def _retain_original(self, file_path: str, file_hash: str) -> str:
+        db_path = self.main_conn.execute("PRAGMA database_list").fetchone()[2] or "./data/ledger.db"
+        today = datetime.date.today()
+        folder = os.path.join(os.path.dirname(os.path.abspath(db_path)), "receipts", f"{today:%Y}", f"{today:%m}")
+        if os.path.dirname(os.path.abspath(file_path)) == folder:
+            return os.path.abspath(file_path)
+        os.makedirs(folder, exist_ok=True)
+        target = os.path.join(folder, f"{file_hash}_{os.path.basename(file_path)}")
+        if os.path.abspath(file_path) != os.path.abspath(target):
+            shutil.copy2(file_path, target)
+        return target
+
+    def _backup_original(self, file_path: str) -> tuple[Optional[str], str, Optional[str]]:
+        try:
+            file_id = self.gdrive.upload_receipt(file_path)
+            if file_id:
+                return file_id, "uploaded", None
+            status = getattr(self.gdrive, "last_status", None)
+            return None, "not_configured" if status == "not_configured" else "failed", getattr(
+                self.gdrive, "last_error", None
+            )
+        except Exception:
+            return None, "failed", "Google Drive backup unavailable."
+
+    @staticmethod
+    def _unposted_summary(
+        status: str,
+        reason: str,
+        *,
+        parsed: Optional[ParsedReceipt] = None,
+        local_path: Optional[str] = None,
+        gdrive_file_id: Optional[str] = None,
+        gdrive_status: str = "not_applicable",
+        gdrive_error: Optional[str] = None,
+    ) -> IntakeSummary:
+        message = [reason, "No financial record or journal entry was posted."]
+        if local_path:
+            message.append("The original was retained in local storage.")
+            if gdrive_status == "uploaded":
+                message.append("Google Drive backup verified.")
+            elif gdrive_status in ("failed", "not_configured"):
+                message.append("Google Drive backup unavailable.")
+        if status in ("needs_review", "extraction_unavailable"):
+            message.append("Send a clearer receipt or enter the vendor, exact date and amount as a typed note.")
+        return IntakeSummary(
+            receipt_id=0,
+            vendor=parsed.vendor if parsed else "",
+            date=parsed.date if parsed else None,
+            total_amount=parsed.total_amount if parsed else None,
+            currency="AUD",
+            purpose=parsed.purpose if parsed else "personal",
+            category=parsed.category if parsed else "unparsed",
+            tax_label=None,
+            status=status,
+            flag_reason=reason,
+            gdrive_file_id=gdrive_file_id,
+            gdrive_status=gdrive_status,
+            gdrive_error=gdrive_error,
+            local_path=local_path,
+            summary_text="\n".join(message),
+        )
+
     def process_note(self, text: str) -> IntakeSummary:
         """Processes a casual typed note without a file."""
         examples = self.km.memory.get_recent_examples(limit=10)
@@ -306,6 +382,15 @@ class ChiefOfStaff:
 
             qa_notes = qa_res.issues
             retry_count += 1
+
+        missing = self._missing_booking_details(parsed)
+        if missing or parsed.currency.strip().upper() != "AUD":
+            reason = (
+                "Only receipts in AUD can be recorded."
+                if parsed.currency.strip().upper() != "AUD"
+                else f"Please confirm the following details: {', '.join(missing)}."
+            )
+            return self._unposted_summary("needs_review", reason, parsed=parsed)
 
         receipt_id = self.km.record_receipt(
             data=parsed.model_dump(),
@@ -329,51 +414,28 @@ class ChiefOfStaff:
         Processes an image or PDF receipt document.
         Never invents amounts if multimodal OCR is offline or fails; instead reports
         extraction unavailable and requests manual details without posting to the books.
-        Retains original receipt safely in durable authorized local storage when Google Drive
-        upload fails or is unavailable; cleans up temporary staging files only after verified persistence.
+        Retains the original in local storage before attempting a Drive backup or OCR.
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
         with open(file_path, "rb") as f:
-            file_bytes = f.read()
-        file_hash = hashlib.sha256(file_bytes).hexdigest()
+            file_hash = hashlib.file_digest(f, "sha256").hexdigest()
 
-        # Upload to Google Drive first and capture honest status
-        gdrive_id = None
-        gdrive_status = "failed"
-        gdrive_error = None
-        try:
-            gdrive_id = self.gdrive.upload_receipt(file_path)
-            if gdrive_id:
-                gdrive_status = "uploaded"
-            else:
-                gdrive_status = getattr(self.gdrive, "last_status", "failed") or "failed"
-                gdrive_error = getattr(self.gdrive, "last_error", None) or "Google Drive upload returned no verified file ID"
-        except Exception as e:
-            gdrive_status = "failed"
-            gdrive_error = str(e)
+        duplicate = self.main_conn.execute(
+            "SELECT id FROM receipts WHERE file_hash = ? ORDER BY id LIMIT 1", (file_hash,)
+        ).fetchone()
+        if duplicate is not None:
+            return self._unposted_summary("duplicate", f"This exact file is already saved as receipt #{duplicate[0]}.")
 
-        # Durable local storage retention when Drive upload fails or is unavailable
-        today = datetime.date.today()
-        persisted_local_path = file_path
-        if gdrive_status != "uploaded" or not gdrive_id:
-            try:
-                cur = self.main_conn.execute("PRAGMA database_list")
-                row = cur.fetchone()
-                db_loc = row[2] if row and row[2] else "./data/ledger.db"
-            except Exception:
-                db_loc = "./data/ledger.db"
-            base_dir = os.path.dirname(os.path.abspath(db_loc))
-            durable_dir = os.path.join(base_dir, "receipts", f"{today.year}", f"{today.month:02d}")
-            os.makedirs(durable_dir, exist_ok=True)
-
-            clean_base = os.path.basename(file_path)
-            durable_path = os.path.join(durable_dir, f"{file_hash[:16]}_{clean_base}")
-            if os.path.abspath(file_path) != os.path.abspath(durable_path):
-                import shutil
-                shutil.copy2(file_path, durable_path)
-            persisted_local_path = durable_path
+        persisted_local_path = self._retain_original(file_path, file_hash)
+        gdrive_id, gdrive_status, gdrive_error = self._backup_original(file_path)
+        archive = {
+            "local_path": persisted_local_path,
+            "gdrive_file_id": gdrive_id,
+            "gdrive_status": gdrive_status,
+            "gdrive_error": gdrive_error,
+        }
 
         cursor = self.main_conn.execute("SELECT id, file_hash, vendor, total_amount, date FROM receipts")
         existing_receipts = [dict(r) for r in cursor.fetchall()]
@@ -402,42 +464,19 @@ class ChiefOfStaff:
 
                 qa_notes = qa_res.issues
                 retry_count += 1
-        except ExtractionUnavailableError as err:
-            local_name = os.path.basename(persisted_local_path)
-            drive_line = (
-                f"• ☁️ *Google Drive*: Backed up (`ID: {gdrive_id}`)"
-                if (gdrive_status == "uploaded" and gdrive_id)
-                else f"• ⚠️ *Google Drive Backup Failed*: `{gdrive_error or 'Unavailable'}` — retained in local storage (`{local_name}`)"
+        except ExtractionUnavailableError:
+            return self._unposted_summary(
+                "extraction_unavailable", "Finance could not read the receipt.", **archive
             )
-            msg_lines = [
-                f"⚠️ *Receipt OCR Extraction Unavailable*: `{os.path.basename(file_path)}`",
-                f"• *Reason*: {err}",
-            ]
-            if user_note:
-                msg_lines.append(f"• *Your Accompanying Note*: `{user_note}`")
-            msg_lines.extend([
-                "• *Books Integrity*: **No financial record or journal entry was posted** (zero invented amounts).",
-                "• *Action Required*: Reply with a typed note (e.g. `Vendor Name $Amount category`) to record exact details manually.",
-                drive_line,
-            ])
-            msg = "\n".join(msg_lines)
-            return IntakeSummary(
-                receipt_id=0,
-                vendor="Extraction Unavailable",
-                date=datetime.date.today().isoformat(),
-                total_amount=0.0,
-                currency="AUD",
-                purpose="personal",
-                category="unparsed",
-                tax_label=None,
-                status="extraction_unavailable",
-                flag_reason=str(err),
-                gdrive_file_id=gdrive_id,
-                gdrive_status=gdrive_status,
-                gdrive_error=gdrive_error,
-                local_path=persisted_local_path,
-                summary_text=msg,
+
+        missing = self._missing_booking_details(parsed)
+        if missing or parsed.currency.strip().upper() != "AUD":
+            reason = (
+                "Only receipts in AUD can be recorded."
+                if parsed.currency.strip().upper() != "AUD"
+                else f"Please confirm the following details: {', '.join(missing)}."
             )
+            return self._unposted_summary("needs_review", reason, parsed=parsed, **archive)
 
         data_dict = parsed.model_dump()
         data_dict["original_filename"] = os.path.basename(file_path)
@@ -502,25 +541,53 @@ class ChiefOfStaff:
             is_correction=True,
         )
 
-    def process_batch_or_statement(self, file_path: str) -> Dict[str, Any]:
+    def process_batch_or_statement(self, file_path: str, user_note: Optional[str] = None) -> Dict[str, Any]:
         """
         Handles multi-receipt photos/PDFs OR Bank Statement reconciliation (CSV/PDF/Image).
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        examples = self.km.memory.get_recent_examples(limit=15)
-        batch = self.finance.parse_batch_or_statement(file_path, vendor_examples=examples)
+        with open(file_path, "rb") as f:
+            file_hash = hashlib.file_digest(f, "sha256").hexdigest()
+        local_path = self._retain_original(file_path, file_hash)
 
-        if len(batch.receipts) == 1 and batch.document_type == "single_receipt" and not file_path.lower().endswith(".csv"):
-            single_res = self.process_file(file_path)
+        examples = self.km.memory.get_recent_examples(limit=15)
+        try:
+            batch = self.finance.parse_batch_or_statement(file_path, vendor_examples=examples, user_note=user_note)
+        except ExtractionUnavailableError:
+            batch = None
+
+        if batch and len(batch.receipts) == 1 and batch.document_type == "single_receipt" and not file_path.lower().endswith(".csv"):
+            single_res = self.process_file(file_path, user_note=user_note)
             return {
                 "document_type": "single_receipt",
-                "recorded_count": 1 if single_res.status != "extraction_unavailable" else 0,
+                "recorded_count": int(bool(single_res.receipt_id)),
                 "matched_count": 0,
-                "xp_earned": 10 if single_res.status != "extraction_unavailable" else 0,
+                "xp_earned": 10 if single_res.receipt_id else 0,
                 "summary_text": single_res.summary_text,
                 "receipt_ids": [single_res.receipt_id] if single_res.receipt_id else [],
+                "local_path": single_res.local_path or local_path,
+            }
+
+        gdrive_id, gdrive_status, gdrive_error = self._backup_original(file_path)
+        if not batch or not batch.receipts:
+            unavailable = self._unposted_summary(
+                "extraction_unavailable",
+                "Finance could not read any transactions from the document.",
+                local_path=local_path,
+                gdrive_file_id=gdrive_id,
+                gdrive_status=gdrive_status,
+                gdrive_error=gdrive_error,
+            )
+            return {
+                "document_type": batch.document_type if batch else "unknown",
+                "recorded_count": 0,
+                "matched_count": 0,
+                "xp_earned": 0,
+                "summary_text": unavailable.summary_text,
+                "receipt_ids": [],
+                "local_path": local_path,
             }
 
         cursor = self.main_conn.execute("SELECT id, vendor, total_amount, date FROM receipts")
@@ -531,31 +598,44 @@ class ChiefOfStaff:
         recorded_ids: List[int] = []
         recorded_count = 0
         matched_count = 0
+        held_lines: List[str] = []
 
-        for item in batch.receipts:
+        for index, item in enumerate(batch.receipts, start=1):
             item = self._apply_vendor_memory_if_known(item)
+            missing = self._missing_booking_details(item)
+            if missing or item.currency.strip().upper() != "AUD":
+                reason = "only AUD is supported" if item.currency.strip().upper() != "AUD" else f"missing {', '.join(missing)}"
+                held_lines.append(f"  • Item {index}: {reason}")
+                continue
+
             already_logged = False
             for ex in existing:
-                if abs(float(ex["total_amount"]) - float(item.total_amount)) < 0.05:
-                    if ex["date"] == item.date or ex["vendor"].lower()[:6] in item.vendor.lower():
-                        already_logged = True
-                        matched_count += 1
-                        matched_lines.append(
-                            f"  • ✅ *Matched #{ex['id']}*: {item.vendor} (${item.total_amount:.2f} AUD on {item.date}) — _Already logged, skipped duplicate_"
-                        )
-                        break
+                if (
+                    ex["date"] == item.date
+                    and ex["vendor"].strip().casefold() == item.vendor.strip().casefold()
+                    and abs(float(ex["total_amount"]) - item.total_amount) < 0.01
+                ):
+                    already_logged = True
+                    matched_count += 1
+                    matched_lines.append(
+                        f"  • ✅ *Matched #{ex['id']}*: {item.vendor} (${item.total_amount:.2f} AUD on {item.date}) — _Already logged, skipped duplicate_"
+                    )
+                    break
 
             if already_logged:
                 continue
 
             item_dict = item.model_dump()
-            qa_res = self.qa.inspect_receipt(item_dict, existing_receipts=existing, retry_count=0)
+            item_dict["original_filename"] = os.path.basename(file_path)
+            if user_note:
+                item_dict["notes"] = user_note
+            qa_res = self.qa.inspect_receipt(item_dict, existing_receipts=existing, retry_count=self.qa.max_retries)
             rec_id = self.km.record_receipt(
                 data=item_dict,
                 file_hash=None,
-                local_path=file_path,
-                gdrive_file_id=None,
-                gdrive_status="not_applicable",
+                local_path=local_path,
+                gdrive_file_id=gdrive_id,
+                gdrive_status=gdrive_status,
                 flagged=qa_res.flagged,
                 flag_reason=qa_res.flag_reason,
             )
@@ -585,6 +665,10 @@ class ChiefOfStaff:
         if matched_lines:
             summary_parts.append("\n*Already Reconciled (Skipped Duplicates):*")
             summary_parts.extend(matched_lines[:8])
+        if held_lines:
+            summary_parts.append(f"\n*Held for review ({len(held_lines)}):*")
+            summary_parts.extend(held_lines[:8])
+            summary_parts.append("Enter the missing details for these items before they can be recorded.")
 
         xp_earned = max(10, recorded_count * 10) if recorded_count > 0 else 0
         return {
@@ -594,4 +678,5 @@ class ChiefOfStaff:
             "xp_earned": xp_earned,
             "summary_text": "\n".join(summary_parts),
             "receipt_ids": recorded_ids,
+            "local_path": local_path,
         }

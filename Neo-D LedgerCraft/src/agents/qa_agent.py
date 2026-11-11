@@ -10,6 +10,7 @@ import datetime
 import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from src.storage.categories import load_category_catalog
 
@@ -71,7 +72,10 @@ class QAAgent:
         else:
             try:
                 tx_date = datetime.date.fromisoformat(str(date_str).strip())
-                today = datetime.date.today()
+                try:
+                    today = datetime.datetime.now(ZoneInfo("Australia/Sydney")).date()
+                except ZoneInfoNotFoundError:
+                    today = datetime.date.today()
                 if tx_date > today:
                     issues.append(f"Date {tx_date} is in the future.")
 

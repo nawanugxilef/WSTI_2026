@@ -22,7 +22,13 @@ class TestWebServer(unittest.TestCase):
 
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.tmp_dir.name, "test_ledger.db")
-        os.environ["LEDGER_DB_PATH"] = self.db_path
+        test_env = patch.dict(os.environ, {
+            "LEDGER_DB_PATH": self.db_path,
+            "GEMINI_API_KEY": "",
+            "GDRIVE_RECEIPTS_FOLDER_ID": "",
+        })
+        test_env.start()
+        self.addCleanup(test_env.stop)
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -112,9 +118,10 @@ class TestWebServer(unittest.TestCase):
         init_db(conn)
         seed_accounts(conn)
         cos = ChiefOfStaff(main_conn=conn)
-        summary = cos.process_note("Bunnings $50.00 tools")
+        summary = cos.process_note("[FICTIONAL DEMO] Bunnings $50.00 tools today")
         rec_id = summary.receipt_id
         conn.close()
+        self.assertGreater(rec_id, 0)
 
         handler = DashboardHandler.__new__(DashboardHandler)
         handler.headers = {}
@@ -150,7 +157,7 @@ class TestWebServer(unittest.TestCase):
         import io
         handler = DashboardHandler.__new__(DashboardHandler)
         handler.path = "/api/intake"
-        handler.rfile = io.BytesIO(json.dumps({"text": "Harbour Cafe $6.50 coffee"}).encode("utf-8"))
+        handler.rfile = io.BytesIO(json.dumps({"text": "[FICTIONAL DEMO] Harbour Cafe $6.50 coffee today"}).encode("utf-8"))
         handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
         handler.send_response = MagicMock()
         handler.send_header = MagicMock()
@@ -204,6 +211,8 @@ class TestWebServer(unittest.TestCase):
             conn = get_connection(demo_test_db)
             c = conn.execute("SELECT COUNT(*) as cnt FROM receipts").fetchone()["cnt"]
             self.assertEqual(c, 12, "Demo database should seed exactly 12 fictional receipts")
+            first = conn.execute("SELECT date, tax_amount FROM receipts ORDER BY date LIMIT 1").fetchone()
+            self.assertEqual((first["date"], first["tax_amount"]), ("2026-08-12", 4.0))
             conn.close()
 
             # Second init with reset=True resets back cleanly to 12
@@ -211,6 +220,35 @@ class TestWebServer(unittest.TestCase):
             conn = get_connection(demo_test_db)
             c2 = conn.execute("SELECT COUNT(*) as cnt FROM receipts").fetchone()["cnt"]
             self.assertEqual(c2, 12)
+            conn.close()
+
+    def test_demo_web_start_preserves_existing_receipt(self):
+        from src.interfaces.web_server import run_server
+
+        conn = get_connection(self.db_path)
+        try:
+            init_db(conn)
+            with conn:
+                conn.execute(
+                    "INSERT INTO receipts (vendor, date, total_amount, category) VALUES (?, ?, ?, ?)",
+                    ("[FICTIONAL DEMO] Already Captured Cafe", "2026-08-15", 6.50, "dining_coffee"),
+                )
+        finally:
+            conn.close()
+
+        with (
+            patch.dict(os.environ, {"DEMO_MODE": "1", "LEDGER_DB_PATH": self.db_path}),
+            patch("src.interfaces.web_server.load_config"),
+            patch("src.interfaces.web_server.ThreadingHTTPServer") as server,
+        ):
+            run_server(port=8080)
+            server.return_value.serve_forever.assert_called_once()
+
+        conn = get_connection(self.db_path)
+        try:
+            rows = conn.execute("SELECT vendor FROM receipts").fetchall()
+            self.assertEqual([row["vendor"] for row in rows], ["[FICTIONAL DEMO] Already Captured Cafe"])
+        finally:
             conn.close()
 
     def test_finding_27b_and_33_intake_rate_limiting_with_trust_proxy(self):
@@ -228,7 +266,7 @@ class TestWebServer(unittest.TestCase):
             # Client A: fake user-supplied header is 1.2.3.4, proxy appends real client IP 203.0.113.1
             handler.headers = {"X-Forwarded-For": "1.2.3.4, 203.0.113.1"}
             for i in range(_MAX_REQUESTS_PER_WINDOW):
-                handler.rfile = io.BytesIO(json.dumps({"text": f"Coffee {i} $5.00"}).encode("utf-8"))
+                handler.rfile = io.BytesIO(json.dumps({"text": f"[FICTIONAL DEMO] Coffee {i} $5.00 today"}).encode("utf-8"))
                 handler.headers["Content-Length"] = str(len(handler.rfile.getvalue()))
                 handler.send_response = MagicMock()
                 handler.send_header = MagicMock()
@@ -239,7 +277,7 @@ class TestWebServer(unittest.TestCase):
 
             # 31st note for Client A from 203.0.113.1 (even with different fake prefix) -> 429
             handler.headers["X-Forwarded-For"] = "9.9.9.9, 203.0.113.1"
-            handler.rfile = io.BytesIO(json.dumps({"text": "Coffee 31 $5.00"}).encode("utf-8"))
+            handler.rfile = io.BytesIO(json.dumps({"text": "[FICTIONAL DEMO] Coffee 31 $5.00 today"}).encode("utf-8"))
             handler.headers["Content-Length"] = str(len(handler.rfile.getvalue()))
             handler.send_response = MagicMock()
             handler.wfile = io.BytesIO()
@@ -248,7 +286,7 @@ class TestWebServer(unittest.TestCase):
 
             # Client B from different real IP 203.0.113.2 gets their own fresh budget (200 OK)
             handler.headers = {"X-Forwarded-For": "203.0.113.2"}
-            handler.rfile = io.BytesIO(json.dumps({"text": "Client B Coffee $5.00"}).encode("utf-8"))
+            handler.rfile = io.BytesIO(json.dumps({"text": "[FICTIONAL DEMO] Client B Coffee $5.00 today"}).encode("utf-8"))
             handler.headers["Content-Length"] = str(len(handler.rfile.getvalue()))
             handler.send_response = MagicMock()
             handler.wfile = io.BytesIO()
@@ -464,44 +502,46 @@ class TestWebServer(unittest.TestCase):
             _, kwargs = mock_inst.process_file.call_args
             self.assertEqual(kwargs.get("user_note"), "Bunnings nozzles for 3D printer dog walking")
 
-    def test_finding_extraction_unavailable_returns_422(self):
-        """
-        UI Issue C / Truthful Status: When OCR extraction is unavailable,
-        /api/intake returns HTTP 422 (Unprocessable Entity) instead of HTTP 200.
-        """
+    def test_unposted_uploads_return_their_own_status_and_keep_retry_inputs(self):
+        """[FICTIONAL DEMO] A held or duplicate upload cannot look like an OCR outage."""
         import base64, io
-        from unittest.mock import patch
-        handler = DashboardHandler.__new__(DashboardHandler)
-        handler.path = "/api/intake"
 
-        with patch("src.interfaces.web_server.ChiefOfStaff") as MockCOS:
-            mock_inst = MagicMock()
-            mock_inst.process_file.return_value = MagicMock(
-                receipt_id=0,
-                summary_text="⚠️ Receipt OCR Extraction Unavailable",
-                status="extraction_unavailable",
-                gdrive_status="not_configured",
-                local_path="/path/to/retained.jpg",
-            )
-            MockCOS.return_value = mock_inst
+        outcomes = (
+            ("extraction_unavailable", "Extraction unavailable", "Could not read the photo."),
+            ("needs_review", "Receipt needs review before it can be recorded", "Please confirm the date."),
+            ("duplicate", "This receipt has already been uploaded", "The original upload was retained."),
+        )
+        valid_jpg = base64.b64encode(b"\xff\xd8\xff\xe0[FICTIONAL DEMO]").decode("utf-8")
+        request_body = json.dumps({"file_data": valid_jpg, "filename": "fictional_receipt.jpg"}).encode("utf-8")
+        for status, error, summary in outcomes:
+            with self.subTest(status=status), patch("src.interfaces.web_server.ChiefOfStaff") as mock_cos:
+                mock_cos.return_value.process_file.return_value = MagicMock(
+                    receipt_id=0,
+                    summary_text=summary,
+                    status=status,
+                    gdrive_status="not_configured",
+                    local_path="/fictional-demo/retained.jpg",
+                )
+                handler = DashboardHandler.__new__(DashboardHandler)
+                handler.path = "/api/intake"
+                handler.rfile = io.BytesIO(request_body)
+                handler.headers = {"Content-Length": str(len(request_body))}
+                handler.send_response = MagicMock()
+                handler.send_header = MagicMock()
+                handler.end_headers = MagicMock()
+                handler.wfile = io.BytesIO()
 
-            valid_jpg = base64.b64encode(b"\xff\xd8\xff\xe0raw_image").decode("utf-8")
-            handler.rfile = io.BytesIO(json.dumps({
-                "file_data": valid_jpg,
-                "filename": "blurry_receipt.jpg"
-            }).encode("utf-8"))
-            handler.headers = {"Content-Length": str(len(handler.rfile.getvalue()))}
-            handler.send_response = MagicMock()
-            handler.send_header = MagicMock()
-            handler.end_headers = MagicMock()
-            handler.wfile = io.BytesIO()
+                handler.do_POST()
 
-            handler.do_POST()
-            handler.send_response.assert_called_with(422)
-            resp = json.loads(handler.wfile.getvalue().decode("utf-8"))
-            self.assertEqual(resp.get("status"), "extraction_unavailable")
-            self.assertEqual(resp.get("receipt_id"), 0)
-            self.assertIn("local_path", resp)
+                handler.send_response.assert_called_with(422)
+                self.assertEqual(json.loads(handler.wfile.getvalue()), {
+                    "error": error,
+                    "status": status,
+                    "summary_text": summary,
+                    "receipt_id": 0,
+                    "local_path": "/fictional-demo/retained.jpg",
+                    "gdrive_status": "not_configured",
+                })
 
 
 if __name__ == "__main__":

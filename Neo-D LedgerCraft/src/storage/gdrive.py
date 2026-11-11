@@ -39,10 +39,16 @@ _REJECTED_WORDS = {
 
 
 def _clean_folder_id(val: Optional[str]) -> Optional[str]:
-    if not val:
+    if not isinstance(val, str):
         return None
     cleaned = val.strip()
-    if not cleaned or cleaned.startswith("your_") or "placeholder" in cleaned.lower():
+    lowered = cleaned.lower()
+    if (
+        not _DRIVE_ID_RE.fullmatch(cleaned)
+        or lowered.startswith("your_")
+        or "placeholder" in lowered
+        or lowered in _REJECTED_WORDS
+    ):
         return None
     return cleaned
 
@@ -76,14 +82,14 @@ class GDriveAdapter:
         backups_folder_id: Optional[str] = None,
         statements_folder_id: Optional[str] = None,
     ):
-        self.receipts_folder_id = _clean_folder_id(
-            receipts_folder_id or os.environ.get("GDRIVE_RECEIPTS_FOLDER_ID")
+        self.receipts_folder_id = _clean_folder_id(receipts_folder_id) or _clean_folder_id(
+            os.environ.get("GDRIVE_RECEIPTS_FOLDER_ID")
         )
-        self.backups_folder_id = _clean_folder_id(
-            backups_folder_id or os.environ.get("GDRIVE_BACKUPS_FOLDER_ID")
+        self.backups_folder_id = _clean_folder_id(backups_folder_id) or _clean_folder_id(
+            os.environ.get("GDRIVE_BACKUPS_FOLDER_ID")
         )
-        self.statements_folder_id = _clean_folder_id(
-            statements_folder_id or os.environ.get("GDRIVE_STATEMENTS_FOLDER_ID")
+        self.statements_folder_id = _clean_folder_id(statements_folder_id) or _clean_folder_id(
+            os.environ.get("GDRIVE_STATEMENTS_FOLDER_ID")
         )
         self.last_status: str = "not_configured"
         self.last_error: Optional[str] = None
@@ -111,7 +117,7 @@ class GDriveAdapter:
         ]
 
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=20)
             output = (res.stdout or "").strip()
             file_id = extract_verified_drive_file_id(output)
 
@@ -125,6 +131,10 @@ class GDriveAdapter:
             self.last_status = "uploaded"
             self.last_error = None
             return file_id
+        except subprocess.TimeoutExpired:
+            self.last_status = "failed"
+            self.last_error = "Google Drive upload timed out. Backup could not be verified."
+            return None
         except FileNotFoundError:
             self.last_status = "failed"
             self.last_error = "gdrive CLI binary not found"

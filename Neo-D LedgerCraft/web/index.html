@@ -616,7 +616,7 @@
             <div class="text-2xl mb-2">🧾</div>
             <div class="text-sm font-semibold text-slate-800">No receipts recorded yet</div>
             <p class="text-xs text-slate-500 mt-1">
-              Send a receipt photo or type a fictional test note (e.g. <code>Fictional Demo Cafe 6.50</code>) to <strong>@neo_ledgercraft_bot</strong> on Telegram. It will appear here automatically!
+              Send a receipt photo or type a fictional test note (e.g. <code>[FICTIONAL DEMO] Cafe AUD 6.50 today</code>) to <strong>@neo_ledgercraft_bot</strong> on Telegram.
             </p>
           </div>
         `;
@@ -952,7 +952,10 @@
             const cleanMsg = rawMsg.replace(/[*`_]/g, '');
             const lines = cleanMsg.split('\n').filter(Boolean);
             const formatted = lines.map(l => escapeHtml(l)).join('<br>');
-            feedback.innerHTML = `⚠️ <strong>Extraction Issue (${res.status})</strong><br>${formatted}<div class="mt-1 font-normal text-[11px] text-amber-800">Your inputs are preserved above so you can adjust and retry.</div>`;
+            const title = err.status === 'needs_review' ? 'Details needed'
+              : err.status === 'duplicate' ? 'Already saved'
+              : err.status === 'extraction_unavailable' ? 'Could not read receipt' : 'Could not process intake';
+            feedback.innerHTML = `⚠️ <strong>${title}</strong><br>${formatted}`;
             feedback.className = 'text-xs p-2 rounded-lg bg-amber-50 text-amber-900 border border-amber-300';
             feedback.classList.remove('hidden');
           }

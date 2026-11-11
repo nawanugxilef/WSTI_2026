@@ -19,10 +19,12 @@ import tempfile
 import threading
 import time
 from collections import defaultdict
+from contextlib import closing
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from src.agents.chief_of_staff import ChiefOfStaff
+from src.agents.finance_agent import FinanceAgent
 from src.interfaces.cli import load_config, seed_accounts
 from src.storage.categories import ATO_SUGGESTION_DISCLAIMER
 from src.storage.db import get_connection, init_db
@@ -651,37 +653,33 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if note_text and len(note_text) > 300:
                     raise ValueError("Note text exceeds maximum length of 300 characters")
 
-                conn = get_connection(db_file)
-                init_db(conn)
-                seed_accounts(conn)
-                cos = ChiefOfStaff(main_conn=conn)
-
-                summary = None
                 if file_b64:
                     raw_bytes, safe_filename = validate_uploaded_file(file_b64, filename)
-                    ext = os.path.splitext(safe_filename)[1].lower()
 
-                    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_f:
-                        tmp_f.write(raw_bytes)
-                        tmp_path = tmp_f.name
+                with closing(get_connection(db_file)) as conn:
+                    init_db(conn)
+                    seed_accounts(conn)
+                    cos = ChiefOfStaff(main_conn=conn)
 
-                    try:
-                        summary = cos.process_file(
-                            tmp_path,
-                            user_note=note_text if note_text else None,
-                        )
-                    finally:
-                        # Clean up temporary staging file only if it is not the retained durable storage path
-                        if summary and summary.local_path and os.path.abspath(tmp_path) == os.path.abspath(summary.local_path):
-                            pass
-                        elif os.path.exists(tmp_path):
-                            try:
-                                os.remove(tmp_path)
-                            except OSError:
-                                pass
-                else:
-                    summary = cos.process_note(note_text)
-                conn.close()
+                    summary = None
+                    if file_b64:
+                        ext = os.path.splitext(safe_filename)[1].lower()
+                        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_f:
+                            tmp_f.write(raw_bytes)
+                            tmp_path = tmp_f.name
+
+                        try:
+                            summary = cos.process_file(tmp_path, user_note=note_text or None)
+                        finally:
+                            # Keep the staging file if it is the only retained copy.
+                            kept_path = getattr(summary, "local_path", None)
+                            if not kept_path or os.path.abspath(tmp_path) != os.path.abspath(kept_path):
+                                try:
+                                    os.remove(tmp_path)
+                                except OSError:
+                                    pass
+                    else:
+                        summary = cos.process_note(note_text)
 
                 # Safely normalize summary fields to JSON-serializable primitives
                 rec_id = int(summary.receipt_id) if hasattr(summary, "receipt_id") and isinstance(summary.receipt_id, (int, float)) else 0
@@ -691,11 +689,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 raw_local = getattr(summary, "local_path", None)
                 sum_local = str(raw_local) if isinstance(raw_local, str) and raw_local.strip() else None
 
-                # Truthful status: return HTTP 422 if OCR extraction failed/unavailable
-                if sum_status == "extraction_unavailable" or rec_id == 0:
+                # Keep the submitted file and note available in the dashboard when no receipt was created.
+                if sum_status == "extraction_unavailable" or rec_id <= 0:
+                    intake_errors = {
+                        "needs_review": "Receipt needs review before it can be recorded",
+                        "duplicate": "This receipt has already been uploaded",
+                        "extraction_unavailable": "Extraction unavailable",
+                    }
                     err_payload = {
-                        "error": "Extraction unavailable",
-                        "status": sum_status,
+                        "error": intake_errors.get(sum_status, "Receipt was not recorded"),
+                        "status": sum_status if sum_status in intake_errors else "not_recorded",
                         "summary_text": sum_text,
                         "receipt_id": rec_id,
                         "local_path": sum_local,
@@ -755,21 +758,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
 
-def init_demo_database(db_file: str, reset: bool = True) -> None:
-    """
-    If DEMO_MODE is enabled ('1', 'true', 'yes'), resets the demo database
-    (e.g. data/demo.db) and populates it with clean [FICTIONAL DEMO] records.
-    """
+def init_demo_database(db_file: str, reset: bool = False) -> None:
+    """Seed an empty demo ledger with fictional records. Reset only on explicit request."""
     if os.environ.get("DEMO_MODE", "").strip().lower() not in ("1", "true", "yes"):
         return
-    logger.info("DEMO_MODE active: initializing clean [FICTIONAL DEMO] database at %s", db_file)
+    logger.info("DEMO_MODE active: checking [FICTIONAL DEMO] database at %s", db_file)
     demo_json_path = os.path.join(PROJECT_ROOT, "config", "demo_fictional_data.json")
     if not os.path.exists(demo_json_path):
         return
     with open(demo_json_path, "r", encoding="utf-8") as f:
         demo_data = json.load(f)
 
-    # In demo mode, if reset=True or file exists, start clean to prevent public visitor contamination
+    # Server restarts preserve receipts that have already been captured.
     if reset and os.path.exists(db_file):
         try:
             os.remove(db_file)
@@ -780,7 +780,7 @@ def init_demo_database(db_file: str, reset: bool = True) -> None:
     conn = get_connection(db_file)
     init_db(conn)
     seed_accounts(conn)
-    cos = ChiefOfStaff(main_conn=conn)
+    cos = ChiefOfStaff(main_conn=conn, finance_agent=FinanceAgent(api_key=""))
 
     cur = conn.execute("SELECT COUNT(*) as c FROM receipts")
     if cur.fetchone()["c"] == 0:
@@ -788,18 +788,13 @@ def init_demo_database(db_file: str, reset: bool = True) -> None:
             vendor = item.get("vendor", "[FICTIONAL DEMO] Vendor")
             total = float(item.get("total_amount", 0.0))
             cat = item.get("category", "materials_3d_printing")
-            note_str = f"{vendor} ${total:.2f} {cat}"
+            date = item.get("date")
+            tax = item.get("tax_amount")
+            note_str = f"{vendor} ${total:.2f} {cat} {date or ''}"
+            if tax is not None:
+                note_str += f" gst={float(tax):.2f}"
             try:
-                summary = cos.process_note(note_str)
-                # Pass fixture explicit tax_amount and date if present
-                fix_tax = item.get("tax_amount")
-                fix_date = item.get("date")
-                if fix_tax is not None and summary.receipt_id:
-                    with conn:
-                        conn.execute(
-                            "UPDATE receipts SET tax_amount = ?, raw_tax_amount = ?, date = COALESCE(?, date) WHERE id = ?",
-                            (float(fix_tax), float(fix_tax), fix_date, summary.receipt_id),
-                        )
+                cos.process_note(note_str)
             except Exception as e:
                 logger.warning("Could not auto-seed demo receipt: %s", e)
     conn.close()

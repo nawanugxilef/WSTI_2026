@@ -22,6 +22,7 @@ import sys
 from typing import Dict, List, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -618,6 +619,15 @@ class TelegramReceiptBot:
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
 
+    @staticmethod
+    async def _send_intake_result(send, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None):
+        try:
+            await send(text, parse_mode="Markdown", reply_markup=reply_markup)
+        except BadRequest as error:
+            if "can't parse entities" not in str(error).lower():
+                raise
+            await send(text, parse_mode=None, reply_markup=reply_markup)
+
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             return
@@ -629,116 +639,90 @@ class TelegramReceiptBot:
         await update.message.reply_chat_action("typing")
         try:
             summary = self.cos.process_note(text)
-            xp_block = self._award_xp_and_emit(xp_gain=10, event_label=f"Note: {summary.vendor}")
-            kb = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
-            await update.message.reply_text(
-                f"{summary.summary_text}\n{xp_block}",
-                parse_mode="Markdown",
-                reply_markup=kb,
-            )
+            response = summary.summary_text
+            kb = None
+            if summary.receipt_id:
+                xp_block = self._award_xp_and_emit(xp_gain=10, event_label=f"Note: {summary.vendor}")
+                kb = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
+                response = f"{response}\n{xp_block}"
         except Exception as e:
-            logger.error(f"Error processing note: {e}")
+            logger.error("Error processing note: %s", e)
             await update.message.reply_text(
-                f"🐕 *Chief of Staff*: Oops, I had a tiny hiccup reading that note (`{e}`). Could you try sending it once more, Boss?",
-                parse_mode="Markdown",
+                "🐕 I had trouble reading that note. Could you send it again with the vendor, date and amount in AUD?",
             )
+            return
+
+        await self._send_intake_result(update.message.reply_text, response, reply_markup=kb)
 
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             return
 
-        await update.message.reply_chat_action("typing")
-        photo = update.message.photo[-1]
-        file = await context.bot.get_file(photo.file_id)
-
-        today = datetime.date.today()
-        receipt_dir = f"./data/receipts/{today.year}/{today.month:02d}"
-        os.makedirs(receipt_dir, exist_ok=True)
-        local_path = os.path.join(receipt_dir, f"{photo.file_unique_id}.jpg")
-
-        await file.download_to_drive(local_path)
-
-        try:
-            caption = (update.message.caption or "").lower()
-            if any(k in caption for k in ("batch", "multi", "statement", "sync", "bank")):
-                batch_res = self.cos.process_batch_or_statement(local_path)
-                if batch_res["recorded_count"] > 0:
-                    xp_block = self._award_xp_and_emit(
-                        xp_gain=batch_res["xp_earned"],
-                        event_label=f"Batch/Statement ({batch_res['recorded_count']} synced)",
-                    )
-                    await update.message.reply_text(f"{batch_res['summary_text']}\n{xp_block}", parse_mode="Markdown")
-                else:
-                    await update.message.reply_text(batch_res["summary_text"], parse_mode="Markdown")
-            else:
-                summary = self.cos.process_file(local_path)
-                if summary.status == "extraction_unavailable" or not summary.receipt_id:
-                    await update.message.reply_text(summary.summary_text, parse_mode="Markdown")
-                else:
-                    xp_block = self._award_xp_and_emit(xp_gain=10, event_label=f"Photo Receipt: {summary.vendor}")
-                    kb = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
-                    await update.message.reply_text(
-                        f"{summary.summary_text}\n{xp_block}",
-                        parse_mode="Markdown",
-                        reply_markup=kb,
-                    )
-        except Exception as e:
-            logger.error(f"Error processing photo: {e}")
-            await update.message.reply_text(
-                f"🦊 *Finance Agent*: Oops, my camera vision was a bit blurry (`{e}`). Could you snap or resend that receipt for me, Boss?",
-                parse_mode="Markdown",
-            )
+        await self._handle_media(update.message, context, update.message.photo[-1])
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             return
 
         doc = update.message.document
-        if not doc.file_name.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".csv")):
+        # Telegram document names are user-controlled. Retain only the basename.
+        filename = os.path.basename((doc.file_name or "").replace("\\", "/"))
+        if not filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".csv")):
             await update.message.reply_text("Please send a Receipt/Invoice (PDF/JPG/PNG) or Bank Statement (CSV/PDF).")
             return
 
-        await update.message.reply_chat_action("typing")
-        file = await context.bot.get_file(doc.file_id)
+        await self._handle_media(update.message, context, doc, document_name=filename)
 
-        today = datetime.date.today()
-        receipt_dir = f"./data/receipts/{today.year}/{today.month:02d}"
-        os.makedirs(receipt_dir, exist_ok=True)
-        local_path = os.path.join(receipt_dir, f"{doc.file_unique_id}_{doc.file_name}")
+    async def _handle_media(self, message, context, media, *, document_name: Optional[str] = None):
+        caption = message.caption
+        caption_lower = (caption or "").lower()
+        filename_lower = (document_name or "").lower()
+        batch = filename_lower.endswith(".csv") or any(
+            keyword in filename_lower or keyword in caption_lower
+            for keyword in ("statement", "bank", "sync", "batch", "multi")
+        )
+        receipt_label = "Photo Receipt" if document_name is None else "Document"
+        filename = f"{media.file_unique_id}_{document_name}" if document_name else f"{media.file_unique_id}.jpg"
 
-        await file.download_to_drive(local_path)
+        progress = await message.reply_text("📥 Got it. I’m reading your file now…")
+        kb = None
 
         try:
-            fname_lower = doc.file_name.lower()
-            caption = (update.message.caption or "").lower()
-            if fname_lower.endswith(".csv") or any(k in fname_lower or k in caption for k in ("statement", "bank", "sync", "batch", "multi")):
-                batch_res = self.cos.process_batch_or_statement(local_path)
-                if batch_res["recorded_count"] > 0:
+            file = await context.bot.get_file(media.file_id)
+            today = datetime.date.today()
+            receipt_dir = os.path.join(
+                os.path.dirname(os.path.abspath(self.db_path)), "receipts", str(today.year), f"{today.month:02d}"
+            )
+            os.makedirs(receipt_dir, exist_ok=True)
+            local_path = os.path.join(receipt_dir, filename)
+            await file.download_to_drive(local_path)
+
+            if batch:
+                batch_res = self.cos.process_batch_or_statement(local_path, user_note=caption)
+                response = batch_res["summary_text"]
+                count = batch_res["recorded_count"]
+                if count > 0:
+                    event_label = (
+                        f"Batch/Statement ({count} synced)"
+                        if document_name is None else f"Bank Statement Sync ({count} added)"
+                    )
                     xp_block = self._award_xp_and_emit(
                         xp_gain=batch_res["xp_earned"],
-                        event_label=f"Bank Statement Sync ({batch_res['recorded_count']} added)",
+                        event_label=event_label,
                     )
-                    await update.message.reply_text(f"{batch_res['summary_text']}\n{xp_block}", parse_mode="Markdown")
-                else:
-                    await update.message.reply_text(batch_res["summary_text"], parse_mode="Markdown")
+                    response = f"{response}\n{xp_block}"
             else:
-                summary = self.cos.process_file(local_path)
-                if summary.status == "extraction_unavailable" or not summary.receipt_id:
-                    await update.message.reply_text(summary.summary_text, parse_mode="Markdown")
-                else:
-                    xp_block = self._award_xp_and_emit(xp_gain=10, event_label=f"Document: {summary.vendor}")
+                summary = self.cos.process_file(local_path, user_note=caption)
+                response = summary.summary_text
+                if summary.receipt_id:
+                    xp_block = self._award_xp_and_emit(xp_gain=10, event_label=f"{receipt_label}: {summary.vendor}")
                     kb = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
-                    await update.message.reply_text(
-                        f"{summary.summary_text}\n{xp_block}",
-                        parse_mode="Markdown",
-                        reply_markup=kb,
-                    )
+                    response = f"{response}\n{xp_block}"
         except Exception as e:
-            logger.error(f"Error processing document: {e}")
-            await update.message.reply_text(
-                f"🦊 *Finance Agent*: Oops, I ran into an issue parsing that document (`{e}`).",
-                parse_mode="Markdown",
-            )
+            logger.error("Error processing Telegram receipt: %s", e)
+            response = "🦊 I had trouble reading that file. Could you try sending it again?"
+
+        await self._send_intake_result(progress.edit_text, response, reply_markup=kb)
 
     async def balance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):

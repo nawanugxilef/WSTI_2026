@@ -63,10 +63,10 @@ source .venv/bin/activate
 python -m src.interfaces.cli init
 
 # 3. Ingest a fictional personal expense note
-python -m src.interfaces.cli note "Fictional Demo Cafe coffee 6.50 today"
+python -m src.interfaces.cli note "Vendor: [FICTIONAL DEMO] Cafe | coffee AUD 6.50 today"
 
 # 4. Ingest a fictional 3D printing ABN business expense note
-python -m src.interfaces.cli note "Fictional 3D Maker Supply nozzle kit 32.99"
+python -m src.interfaces.cli note "Vendor: [FICTIONAL DEMO] 3D Maker Supply | nozzle kit AUD 32.99 today"
 
 # 5. Check double-entry trial balance
 python -m src.interfaces.cli balance
