@@ -6,12 +6,14 @@ import logging
 import os
 import re
 import sys
+from time import monotonic
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 
 DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
+AUTHORIZATION_TIMEOUT_SECONDS = 900
 
 
 class AuthorizationError(Exception):
@@ -43,19 +45,25 @@ def authorize_folder(client_secrets: Path, folder_id: str):
     ) or flow.client_config["token_uri"] != "https://oauth2.googleapis.com/token":
         raise AuthorizationError("Use the original OAuth client JSON downloaded from Google Cloud.")
 
-    credentials = flow.run_local_server(
-        host="127.0.0.1",
-        port=0,
-        timeout_seconds=300,
-        authorization_prompt_message="Select the receipt folder in the Google Picker window.",
-        success_message="Google sent the response. Return to the terminal for the verification result.",
-        access_type="offline",
-        prompt="consent",
-        trigger_onepick="true",
-        allow_folder_selection="true",
-        file_ids=folder_id,
-        mimetypes=FOLDER_MIME_TYPE,
-    )
+    started = monotonic()
+    try:
+        credentials = flow.run_local_server(
+            host="127.0.0.1",
+            port=0,
+            timeout_seconds=AUTHORIZATION_TIMEOUT_SECONDS,
+            authorization_prompt_message="Select the receipt folder in the Google Picker window.",
+            success_message="Google sent the response. Return to the terminal for the verification result.",
+            access_type="offline",
+            prompt="consent",
+            trigger_onepick="true",
+            allow_folder_selection="true",
+            file_ids=folder_id,
+            mimetypes=FOLDER_MIME_TYPE,
+        )
+    except (AttributeError, TimeoutError):
+        if monotonic() - started >= AUTHORIZATION_TIMEOUT_SECONDS - 1:
+            raise AuthorizationError("Google did not return a folder selection before the setup expired.") from None
+        raise
     scopes = credentials.granted_scopes if credentials.granted_scopes is not None else credentials.scopes
     if isinstance(scopes, str):
         scopes = scopes.split()
