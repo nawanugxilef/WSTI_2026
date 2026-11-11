@@ -978,12 +978,26 @@ class KnowledgeManager:
 
         other_receipts = None
         old_flag_reason = current.get("flag_reason") or ""
-        if current.get("file_hash") or "duplicate" in old_flag_reason.lower():
+        file_hash = current.get("file_hash")
+        if file_hash or "duplicate" in old_flag_reason.lower():
             cur_others = self.main_conn.execute(
-                "SELECT id, file_hash, vendor, total_amount, date FROM receipts WHERE id != ?",
+                "SELECT id, file_hash, vendor, total_amount, date, status, flag_reason FROM receipts WHERE id != ?",
                 (receipt_id,),
             )
-            other_receipts = [dict(r) for r in cur_others.fetchall()]
+            other_receipts = []
+            for row in cur_others:
+                # A later upload held as a possible copy must not put the original on hold.
+                if (
+                    row["id"] > receipt_id
+                    and row["status"] == "flagged"
+                    and row["file_hash"] != file_hash
+                    and any(
+                        likely_duplicate_receipt_id(clause) == receipt_id
+                        for clause in (row["flag_reason"] or "").split(";")
+                    )
+                ):
+                    continue
+                other_receipts.append(dict(row))
 
         qa_res = self.qa.inspect_receipt(
             {
@@ -994,7 +1008,7 @@ class KnowledgeManager:
                 "raw_tax_amount": new_raw_tax,
                 "currency": currency,
                 "items": items_for_qa,
-                "file_hash": current.get("file_hash"),
+                "file_hash": file_hash,
             },
             existing_receipts=other_receipts,
             retry_count=self.qa.max_retries,

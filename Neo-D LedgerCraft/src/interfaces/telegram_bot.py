@@ -132,10 +132,11 @@ def build_correction_keyboard(
     ]
 
     if not expanded:
-        rows = [
-            [InlineKeyboardButton("✏️ Category", callback_data=f"corr:{receipt_id}:menu:controls")],
-            stream_row,
-        ]
+        quick = [InlineKeyboardButton("✏️ Category", callback_data=f"corr:{receipt_id}:menu:controls")]
+        if stream in ("abn", "payg"):
+            label = "50% business" if stream == "abn" else "50% work"
+            quick.append(InlineKeyboardButton(label, callback_data=f"corr:{receipt_id}:pct:50"))
+        rows = [quick, stream_row]
         if possible_duplicate_id and possible_duplicate_id != receipt_id:
             rows.insert(0, [InlineKeyboardButton(
                 "↩️ Not a duplicate, count it",
@@ -227,20 +228,28 @@ def _receipt_keyboard(summary: IntakeSummary) -> InlineKeyboardMarkup:
     )
 
 
+def _with_receipt_navigation(
+    summary: IntakeSummary, controls: InlineKeyboardMarkup, label: str, menu: str
+) -> InlineKeyboardMarkup:
+    rows = list(controls.inline_keyboard)
+    archive_url = drive_file_url(summary.gdrive_file_id) if summary.gdrive_status == "uploaded" else None
+    if archive_url:
+        rows.append([InlineKeyboardButton("Open original in Google Drive", url=archive_url)])
+    rows.append([InlineKeyboardButton(label, callback_data=f"corr:{summary.receipt_id}:menu:{menu}")])
+    return InlineKeyboardMarkup(rows)
+
+
 def _existing_receipt_reply(
     summary: IntakeSummary, *, show_details: bool = False
 ) -> tuple[str, InlineKeyboardMarkup]:
-    prefix = f"corr:{summary.receipt_id}:menu"
+    controls = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
     if show_details:
-        rows = [[InlineKeyboardButton("← Back", callback_data=f"{prefix}:existing")]]
-        archive_url = drive_file_url(summary.gdrive_file_id) if summary.gdrive_status == "uploaded" else None
-        if archive_url:
-            rows.insert(0, [InlineKeyboardButton("Open original in Google Drive", url=archive_url)])
         card = format_receipt_details(summary)
+        keyboard = _with_receipt_navigation(summary, controls, "← Back", "existing")
     else:
-        rows = [[InlineKeyboardButton("Details", callback_data=f"{prefix}:existing_details")]]
         card = format_receipt_card(summary)
-    return f"🐾 Womby found it! Already saved as receipt #{summary.receipt_id}.\n\n{card}", InlineKeyboardMarkup(rows)
+        keyboard = _with_receipt_navigation(summary, controls, "Details", "existing_details")
+    return f"🐾 Womby found it! Already saved as receipt #{summary.receipt_id}.\n\n{card}", keyboard
 
 
 def parse_correction_tokens(tokens: List[str]) -> Dict[str, object]:
@@ -632,9 +641,7 @@ class TelegramReceiptBot:
                     await query.edit_message_text(text=text, parse_mode=None, reply_markup=keyboard)
                     return
                 if val == "details":
-                    keyboard = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("← Back", callback_data=f"corr:{receipt_id}:menu:main")],
-                    ])
+                    keyboard = _with_receipt_navigation(summary, _receipt_keyboard(summary), "← Back", "main")
                     await query.edit_message_text(
                         text=format_receipt_details(summary), parse_mode=None, reply_markup=keyboard,
                     )

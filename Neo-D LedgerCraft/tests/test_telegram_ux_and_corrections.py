@@ -38,9 +38,12 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
 
     def assert_compact_receipt_keyboard(self, keyboard, receipt_id, selected):
         rows = keyboard.inline_keyboard
-        self.assertEqual([len(row) for row in rows], [1, 3])
+        self.assertEqual([len(row) for row in rows], [1 if selected == "personal" else 2, 3])
         self.assertEqual(rows[0][0].text, "✏️ Category")
         self.assertEqual(rows[0][0].callback_data, f"corr:{receipt_id}:menu:controls")
+        if selected != "personal":
+            self.assertEqual(rows[0][1].text, "50% work" if selected == "payg" else "50% business")
+            self.assertEqual(rows[0][1].callback_data, f"corr:{receipt_id}:pct:50")
         for button, (stream, label) in zip(rows[1], (("abn", "ABN"), ("payg", "PAYG"), ("personal", "Personal"))):
             self.assertIn(label, button.text)
             self.assertEqual(button.callback_data, f"corr:{receipt_id}:stream:{stream}")
@@ -611,12 +614,17 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 self.assertIn("Already saved as receipt #1.", exact.args[0])
                 self.assertIn("$23.50 AUD", exact.args[0])
                 self.assertNotIn("Womby:", exact.args[0])
-                [read_only] = [button for row in exact.kwargs["reply_markup"].inline_keyboard for button in row]
-                details = asyncio.run(tap(read_only.callback_data))
+                buttons = [button for row in exact.kwargs["reply_markup"].inline_keyboard for button in row]
+                details = asyncio.run(tap(next(b.callback_data for b in buttons if b.text == "Details")))
                 self.assertIn("Already saved as receipt #1.", details.kwargs["text"])
-                buttons = [button for row in details.kwargs["reply_markup"].inline_keyboard for button in row]
-                self.assertIn(f"https://drive.google.com/open?id={original_drive_id}", {b.url for b in buttons})
-                self.assertFalse(any(b.callback_data and ":distinct:" in b.callback_data for b in buttons))
+                for markup in (exact.kwargs["reply_markup"], details.kwargs["reply_markup"]):
+                    buttons = [button for row in markup.inline_keyboard for button in row]
+                    actions = {b.callback_data for b in buttons if b.callback_data}
+                    self.assertIn(f"https://drive.google.com/open?id={original_drive_id}", {b.url for b in buttons})
+                    self.assertIn("corr:1:menu:controls", actions)
+                    self.assertIn("corr:1:pct:50", actions)
+                    self.assertIn("corr:1:stream:personal", actions)
+                    self.assertFalse(any(":distinct:" in action for action in actions))
             ocr.assert_called_once()
             archive.assert_called_once()
             self.assertEqual(bot._get_companion_state()["total_xp"], 10)
@@ -638,6 +646,80 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             self.assertNotIn("duplicate", remaining.lower())
             self.assertEqual(bot.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 1)
             self.assertEqual(bot._get_companion_state()["total_xp"], 20)
+
+    def test_exact_duplicate_quick_edits_recalculate_original_without_new_receipt(self):
+        """[FICTIONAL DEMO] Correction buttons on a repeated upload update the existing receipt."""
+        bot = TelegramReceiptBot(
+            bot_token="fictional_token",
+            owner_chat_id=12345,
+            db_path=self.db_path,
+            finance_agent=FinanceAgent(api_key=""),
+            load_dotenv=False,
+        )
+        self.addCleanup(bot.conn.close)
+        file_bytes = b"[FICTIONAL DEMO] Receipt with an ABN and personal share"
+        drive_id = "1FictionalSplitReceipt234"
+        parsed = ParsedReceipt(
+            vendor="[FICTIONAL DEMO] Brass Shop",
+            date=(datetime.date.today() - datetime.timedelta(days=1)).isoformat(),
+            total_amount=22.0,
+            tax_amount=2.0,
+            gst_status="explicit",
+            category="materials_3d_printing",
+            confidence=0.95,
+        )
+
+        async def tap(markup, action):
+            button = next(b for row in markup.inline_keyboard for b in row if b.callback_data == action)
+            query = SimpleNamespace(data=button.callback_data, answer=AsyncMock(), edit_message_text=AsyncMock())
+            update = SimpleNamespace(callback_query=query, effective_chat=SimpleNamespace(id=12345))
+            await bot.handle_correction_callback(update, SimpleNamespace())
+            query.edit_message_text.assert_awaited_once()
+            return query.edit_message_text.await_args.kwargs
+
+        with (
+            patch.object(bot.cos.finance, "parse_document", return_value=parsed) as ocr,
+            patch.object(bot.gdrive, "upload_receipt_bytes", return_value=drive_id) as archive,
+        ):
+            first = bot.cos.process_file("fixture.jpg", file_bytes=file_bytes)
+            receipt_id = first.receipt_id
+            prefix = f"corr:{receipt_id}"
+            original = bot.cos.km.get_receipt(receipt_id)
+            duplicate = bot.cos.process_file("fixture.jpg", file_bytes=file_bytes)
+            self.assertEqual(duplicate.exact_duplicate_of, receipt_id)
+            _, keyboard = bot._intake_reply(duplicate)
+            details = asyncio.run(tap(keyboard, f"{prefix}:menu:existing_details"))
+
+            asyncio.run(tap(details["reply_markup"], f"{prefix}:pct:50"))
+            split = bot.cos.km.get_receipt(receipt_id)
+            self.assertEqual(split["business_pct"], 50.0)
+            self.assertEqual(split["claimable_amount"], 11.0)
+            self.assertEqual(split["tax_amount"], 1.0)
+            self.assertEqual(bot.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 1)
+
+            _, keyboard = bot._intake_reply(duplicate)
+            personal_reply = asyncio.run(tap(keyboard, f"{prefix}:stream:personal"))
+            self.assert_compact_receipt_keyboard(personal_reply["reply_markup"], receipt_id, "personal")
+            personal = bot.cos.km.get_receipt(receipt_id)
+            self.assertEqual(personal["claim_stream"], "personal")
+            self.assertEqual(personal["business_pct"], 0.0)
+            self.assertEqual(personal["claimable_amount"], 0.0)
+            self.assertEqual(personal["tax_amount"], 0.0)
+            self.assertEqual(personal["raw_tax_amount"], 2.0)
+            self.assertEqual(personal["gdrive_file_id"], drive_id)
+            self.assertEqual(personal["file_hash"], original["file_hash"])
+            self.assertEqual(bot.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 1)
+            self.assertEqual(bot.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 1)
+            balances = {account["code"]: account for account in bot.jm.get_trial_balance()}
+            self.assertEqual(balances["5900"]["total_debit"], 22.0)
+
+            _, personal_duplicate_keyboard = bot._intake_reply(duplicate)
+            self.assertFalse(any(
+                b.callback_data and ":pct:" in b.callback_data
+                for row in personal_duplicate_keyboard.inline_keyboard for b in row
+            ))
+            ocr.assert_called_once()
+            archive.assert_called_once()
 
     def test_category_controls_keep_archive_private_and_preserve_legacy_corrections(self):
         bot = TelegramReceiptBot(

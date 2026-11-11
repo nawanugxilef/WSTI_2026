@@ -188,6 +188,44 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         self.assertEqual(sum(row["total_debit"] for row in balance), 22.00)
         self.assertEqual(sum(row["total_credit"] for row in balance), 22.00)
 
+    def test_correcting_original_does_not_hold_it_against_its_possible_duplicate(self):
+        self.receipt.update(
+            category="materials_3d_printing",
+            purpose="business",
+            claim_stream="abn",
+            business_activity="printing_3d",
+            business_pct=100,
+            tax_amount=1.00,
+        )
+        first, second = self._process_matching_photos()
+        self.assertEqual(first.status, "recorded")
+        self.assertEqual(second.status, "flagged")
+        self.assertIn(f"existing receipt #{first.receipt_id}", second.flag_reason)
+        reference = f"receipt:{first.receipt_id}"
+        self.assertEqual(self._journal_references(), [reference])
+
+        split = self.cos.correct_receipt(first.receipt_id, business_pct=50)
+        self.assertEqual(split.status, "corrected")
+        self.assertEqual(split.business_pct, 50)
+        self.assertEqual(split.claimable_amount, 5.50)
+        self.assertEqual(split.personal_share, 5.50)
+        self.assertEqual(split.tax_amount, 0.50)
+        self.assertEqual(split.gdrive_file_id, first.gdrive_file_id)
+        self.assertEqual(self._journal_references(), [reference])
+
+        personal = self.cos.correct_receipt(first.receipt_id, claim_stream="personal")
+        self.assertEqual(personal.status, "corrected")
+        self.assertEqual(personal.business_pct, 0)
+        self.assertEqual(personal.claimable_amount, 0)
+        self.assertEqual(personal.personal_share, 11.00)
+        self.assertEqual(personal.gdrive_file_id, first.gdrive_file_id)
+        self.assertEqual(self._journal_references(), [reference])
+        held = self.cos.km.get_receipt(second.receipt_id)
+        self.assertEqual(held["status"], "flagged")
+        self.assertEqual(held["flag_reason"], second.flag_reason)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 2)
+        self.assertEqual(self.gdrive.upload_receipt_bytes.call_count, 2)
+
     def test_journal_failure_leaves_possible_duplicate_held_and_retryable(self):
         first, second = self._process_matching_photos()
         journal = self.cos.km.journal
