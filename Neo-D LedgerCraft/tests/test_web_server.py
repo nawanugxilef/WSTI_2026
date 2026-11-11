@@ -1,10 +1,16 @@
+import csv
+import io
 import json
 import os
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
+from datetime import date
+from urllib.parse import urlparse
 from unittest.mock import MagicMock, patch
 
+from src.interfaces.dashboard_auth import DASHBOARD_ORIGIN, create_login_url
 from src.interfaces.web_server import (
     DashboardHandler,
     build_dashboard_payload,
@@ -57,6 +63,133 @@ class TestWebServer(unittest.TestCase):
         self.assertIn("mytax", payload)
         self.assertIn("companion", payload)
         self.assertEqual(payload["currency"], "AUD")
+
+    def _dashboard_request(self, method, path, *, headers=None, payload=None):
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.path = path
+        handler.headers = dict(headers or {})
+        body = b""
+        if payload is not None:
+            body = json.dumps(payload).encode("utf-8")
+            handler.headers.update({"Content-Type": "application/json", "Content-Length": str(len(body))})
+        handler.rfile = io.BytesIO(body)
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+        getattr(handler, f"do_{method}")()
+        return (
+            handler.send_response.call_args.args[0],
+            dict(call.args for call in handler.send_header.call_args_list),
+            handler.wfile.getvalue(),
+        )
+
+    def _dashboard_sign_in(self):
+        code = urlparse(create_login_url(self.db_path)).fragment.removeprefix("code=")
+        status, headers, _ = self._dashboard_request(
+            "POST", "/api/dashboard/session", headers={"Origin": DASHBOARD_ORIGIN}, payload={"code": code}
+        )
+        self.assertEqual(status, 204)
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        self.assertIn("; Secure; HttpOnly; SameSite=Strict", headers["Set-Cookie"])
+        return code, headers["Set-Cookie"].split(";", 1)[0]
+
+    def test_dashboard_routes_require_owner_session(self):
+        for route in ("/api/dashboard", "/api/export.csv", "/api/dashboard/intake", "/api/dashboard/reward"):
+            with self.subTest(route=route):
+                write = route.endswith(("/intake", "/reward"))
+                status, headers, body = self._dashboard_request(
+                    "POST" if write else "GET", route, headers={"Origin": DASHBOARD_ORIGIN}
+                )
+                self.assertEqual(status, 401)
+                self.assertEqual(headers["Cache-Control"], "no-store")
+                self.assertNotIn(b'"receipts"', body)
+
+        code, cookie = self._dashboard_sign_in()
+        status, _, _ = self._dashboard_request(
+            "POST", "/api/dashboard/session", headers={"Origin": DASHBOARD_ORIGIN}, payload={"code": code}
+        )
+        self.assertEqual(status, 401)
+        status, _, _ = self._dashboard_request(
+            "POST", "/api/dashboard/reward",
+            headers={"Cookie": cookie, "Origin": "https://example.test"},
+            payload={"reward_name": "[FICTIONAL DEMO] Reward"},
+        )
+        self.assertEqual(status, 403)
+        status, headers, body = self._dashboard_request(
+            "POST", "/api/dashboard/reward",
+            headers={"Cookie": cookie, "Origin": DASHBOARD_ORIGIN},
+            payload={"reward_name": "[FICTIONAL DEMO] Reward"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        self.assertEqual(json.loads(body)["companion"]["reward_name"], "[FICTIONAL DEMO] Reward")
+
+        status, headers, _ = self._dashboard_request(
+            "DELETE", "/api/dashboard/session", headers={"Cookie": cookie, "Origin": DASHBOARD_ORIGIN}
+        )
+        self.assertEqual(status, 204)
+        self.assertIn("Max-Age=0", headers["Set-Cookie"])
+        self.assertEqual(
+            self._dashboard_request("GET", "/api/dashboard", headers={"Cookie": cookie})[0],
+            401,
+        )
+
+    def test_dashboard_and_export_use_same_financial_year(self):
+        drive_id = "1FictionalDashboardReceipt99"
+        with closing(get_connection(self.db_path)) as conn, conn:
+            conn.executemany(
+                """
+                INSERT INTO receipts (
+                    vendor, date, total_amount, category, tax_label, status, gdrive_status,
+                    gdrive_file_id, items_json
+                ) VALUES (?, ?, ?, 'materials_3d_printing', 'Cost of sales', ?, ?, ?, ?)
+                """,
+                (
+                    ("=[FICTIONAL DEMO] Formula", "2026-07-01", 55, "recorded", "uploaded", drive_id,
+                     '[{"description":"[FICTIONAL DEMO] part","amount":55}]'),
+                    ("[FICTIONAL DEMO] Duplicate", "2026-07-02", 55, "duplicate", "not_applicable", None, None),
+                    ("[FICTIONAL DEMO] Needs review", "2026-07-03", 22, "needs_review", "not_applicable", None, None),
+                    ("[FICTIONAL DEMO] Prior year", "2026-06-30", 11, "recorded", "uploaded", "https://unsafe.test", None),
+                ),
+            )
+
+        _, cookie = self._dashboard_sign_in()
+        headers = {"Cookie": cookie}
+        with patch("src.interfaces.web_server._sydney_today", return_value=date(2026, 7, 3)):
+            status, _, body = self._dashboard_request("GET", "/api/dashboard?month=2026-07", headers=headers)
+        self.assertEqual(status, 200)
+        dashboard = json.loads(body)
+        self.assertEqual(dashboard["fy"], "FY2026-27")
+        self.assertEqual(dashboard["period"], {"start": "2026-07-01", "end": "2027-06-30"})
+        self.assertEqual(dashboard["available_fys"], [2026, 2025])
+        self.assertEqual(len(dashboard["receipts"]), 3)
+        self.assertEqual(dashboard["mytax"]["total_claimable"], 55)
+        self.assertEqual(dashboard["mytax"]["pending_review_claimable"], 22)
+        self.assertEqual(dashboard["mytax"]["by_mytax_label"][0]["gross_amount"], 55)
+        self.assertEqual(dashboard["books"]["spending"]["total_spent"], 55)
+        self.assertEqual(dashboard["books"]["spending"]["month"], "2026-07")
+        self.assertEqual(dashboard["stock"], {"configured": False, "items": []})
+        receipt = dashboard["receipts"][-1]
+        self.assertEqual(receipt["items"], [{"description": "[FICTIONAL DEMO] part", "amount": 55}])
+        self.assertEqual(receipt["gdrive_url"], f"https://drive.google.com/open?id={drive_id}")
+
+        status, response_headers, body = self._dashboard_request("GET", "/api/export.csv?fy=2026", headers=headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(response_headers["Cache-Control"], "no-store")
+        self.assertIn("FY2026-27", response_headers["Content-Disposition"])
+        rows = list(csv.DictReader(io.StringIO(body.decode("utf-8-sig"))))
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[-1]["Vendor"], "'=[FICTIONAL DEMO] Formula")
+        self.assertEqual(rows[-1]["Amount_AUD"], "55.00")
+        self.assertEqual(rows[1]["Duplicate"], "True")
+
+        status, _, body = self._dashboard_request("GET", "/api/dashboard?fy=2025", headers=headers)
+        self.assertEqual(status, 200)
+        prior = json.loads(body)
+        self.assertEqual(prior["mytax"]["total_claimable"], 11)
+        self.assertIsNone(prior["receipts"][0]["gdrive_url"])
+        self.assertEqual(self._dashboard_request("GET", "/api/dashboard?fy=2026&month=2026-06", headers=headers)[0], 400)
 
     def test_reward_update_validation(self):
         handler = DashboardHandler.__new__(DashboardHandler)

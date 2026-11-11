@@ -22,12 +22,13 @@
   .office-header { padding: 6px 16px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
   .office-header h1 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
   .office-tools { display: flex; gap: 4px; align-items: center; }
-  .office-tools > button, .office-panel button {
+  .office-tools > button, .office-tools > a, .office-panel button {
     min-height: 40px; box-sizing: border-box; border: 1px solid transparent; border-radius: 7px;
     background: transparent; color: var(--office-text); font: 600 13px/1.25 var(--office-font); cursor: pointer; padding: 0 10px;
   }
-  .office-tools > button:hover, .office-panel button:hover { background: #e8efed; }
-  .office-tools > button:focus-visible, .office-panel button:focus-visible { outline: 2px solid #297666; outline-offset: 2px; }
+  .office-tools > a { display: inline-flex; align-items: center; text-decoration: none; }
+  .office-tools > button:hover, .office-tools > a:hover, .office-panel button:hover { background: #e8efed; }
+  .office-tools > button:focus-visible, .office-tools > a:focus-visible, .office-panel button:focus-visible { outline: 2px solid #297666; outline-offset: 2px; }
   #office { flex: 1; min-height: 0; margin: 0 12px 12px; border: 1px solid var(--office-line); border-radius: 12px; overflow: hidden;
     background: radial-gradient(ellipse at 50% 35%, #f3f0ff 0%, #d9e8ff 55%, #b9cdf2 100%); }
   .office-status { position: absolute; left: 12px; top: 12px; z-index: 1; display: flex; align-items: center; gap: 6px;
@@ -56,7 +57,7 @@
   @media (max-width: 380px) {
     .office-header { padding-inline: 10px; gap: 6px; }
     .office-tools { gap: 0; }
-    .office-tools > button { padding-inline: 8px; }
+    .office-tools > button, .office-tools > a { padding-inline: 8px; }
     #office { margin-inline: 8px; }
   }
 </style>
@@ -66,6 +67,7 @@
   <h1>Neo Office</h1>
   <nav class="office-tools" data-neo-office-toolbar aria-label="Office panels">
     <button id="office-agents-launch" type="button" aria-haspopup="dialog" aria-controls="office-agents" hidden>Agents</button>
+    <a href="/dashboard">Dashboard</a>
   </nav>
 </header>
 <div id="office"></div>

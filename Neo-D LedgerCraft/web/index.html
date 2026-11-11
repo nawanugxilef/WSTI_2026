@@ -1,988 +1,186 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-AU">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Neo-D LedgerCraft — FY2026-27 (AUD)</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
-  <style>
-    body {
-      background-color: #F4F5F9;
-      color: #111827;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      -webkit-font-smoothing: antialiased;
-    }
-    .ios-card {
-      background: #FFFFFF;
-      border-radius: 16px;
-      border: 1px solid #E5E7EB;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-    }
-    .tab-btn {
-      transition: all 0.15s ease;
-    }
-    .tab-btn.active {
-      background-color: #2B5CE6;
-      color: #FFFFFF;
-      font-weight: 600;
-      box-shadow: 0 1px 3px rgba(43, 92, 230, 0.3);
-    }
-    .filter-pill {
-      transition: all 0.15s ease;
-      border: 1px solid #E5E7EB;
-      background: #FFFFFF;
-      color: #374151;
-    }
-    .filter-pill.active {
-      border: 1.5px solid #2B5CE6;
-      background: #EEF2FF;
-      color: #2B5CE6;
-      font-weight: 600;
-    }
-    .sub-pill {
-      transition: all 0.15s ease;
-      border: 1px solid #E5E7EB;
-      background: #FFFFFF;
-      color: #374151;
-    }
-    .sub-pill.active {
-      background-color: #2B5CE6;
-      border-color: #2B5CE6;
-      color: #FFFFFF;
-      font-weight: 600;
-    }
-    @keyframes mascot-bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-3px); }
-    }
-    .animate-mascot {
-      animation: mascot-bounce 1.8s infinite ease-in-out;
-    }
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f2f5f3">
+  <meta name="apple-mobile-web-app-title" content="Neo Ledger">
+  <title>Dashboard · Neo LedgerCraft</title>
+  <link rel="stylesheet" href="/dashboard.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+  <script src="/dashboard.js" defer></script>
 </head>
-<body class="min-h-screen pb-16">
-
-  <div class="max-w-xl mx-auto px-3.5 pt-4">
-
-    <!-- Top Brand Header (Matches Reference) -->
-    <header class="flex items-center justify-between mb-3">
-      <div class="flex items-center gap-2">
-        <span class="text-xl">🐶</span>
-        <span class="font-bold text-[17px] tracking-tight text-slate-900">Neo-D LedgerCraft</span>
-        <button onclick="switchMainTab('companion')" id="header-xp-badge" class="ml-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-xs font-semibold flex items-center gap-1 hover:bg-amber-200 transition" title="Open ADHD Reward Box & Desk Companion">
-          <span>🎁</span>
-          <span id="header-xp-text">0/100 XP</span>
-        </button>
-      </div>
-
-      <div class="flex items-center gap-1.5">
-        <div class="relative">
-          <select id="fy-select" class="appearance-none bg-white border border-slate-200/90 rounded-lg px-2.5 py-1 pr-6 text-xs font-medium text-slate-700 shadow-sm focus:outline-none">
-            <option value="FY2026-27">FY2026-27</option>
-          </select>
-          <span class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">⌄</span>
+<body>
+  <header class="app-header">
+    <div class="frame">
+      <div class="top-line">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <h1>Neo Dashboard</h1>
         </div>
-        <button onclick="fetchLiveDashboard(true)" class="w-7 h-7 rounded-full bg-blue-50 border border-blue-200/70 text-blue-600 flex items-center justify-center text-xs hover:bg-blue-100 transition" title="Refresh Live Data">
-          ↻
-        </button>
-      </div>
-    </header>
-
-    <!-- Top Segmented Navigation Bar (Receipts | myTax | Books | ADHD) -->
-    <nav class="bg-white p-1 rounded-xl border border-slate-200/80 shadow-sm grid grid-cols-4 gap-1 mb-4 text-xs font-medium text-slate-600">
-      <button onclick="switchMainTab('receipts')" id="tab-btn-receipts" class="tab-btn active py-2 px-1 rounded-lg flex items-center justify-center gap-1">
-        <span>🧾</span> <span>Receipts</span>
-      </button>
-      <button onclick="switchMainTab('mytax')" id="tab-btn-mytax" class="tab-btn py-2 px-1 rounded-lg flex items-center justify-center gap-1">
-        <span>📊</span> <span>myTax</span>
-      </button>
-      <button onclick="switchMainTab('books')" id="tab-btn-books" class="tab-btn py-2 px-1 rounded-lg flex items-center justify-center gap-1">
-        <span>📒</span> <span>Books</span>
-      </button>
-      <button onclick="switchMainTab('companion')" id="tab-btn-companion" class="tab-btn py-2 px-1 rounded-lg flex items-center justify-center gap-1">
-        <span>📟</span> <span>ADHD</span>
-      </button>
-    </nav>
-
-    <!-- ======================================================================= -->
-    <!-- TAB 1: RECEIPTS (Clean iOS Cards — Live from SQLite)                    -->
-    <!-- ======================================================================= -->
-    <section id="view-receipts" class="space-y-3">
-
-      <!-- Fast Intake Card (Live Pitch Night Demo) -->
-      <div class="ios-card p-3 bg-gradient-to-br from-white to-blue-50/40 border border-blue-200/80 shadow-sm">
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-            <span>⚡</span> <span>Fast Intake (Photo & Note Ingestion)</span>
-          </div>
-          <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">+10 XP</span>
-        </div>
-        <div class="space-y-2">
-          <div class="flex gap-2">
-            <input
-              type="text"
-              id="intake-note-input"
-              placeholder="Type note or choose photo below..."
-              class="flex-1 px-3 py-1.5 text-xs text-slate-800 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
-              onkeydown="if(event.key==='Enter') submitWebIntakeNote()"
-            >
-            <button
-              id="intake-submit-btn"
-              onclick="submitWebIntakeNote()"
-              class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg shadow-sm transition whitespace-nowrap flex items-center gap-1"
-            >
-              <span>Record</span> <span>↵</span>
-            </button>
-          </div>
-
-          <div class="flex items-center gap-2 pt-1 border-t border-slate-100 text-xs">
-            <label class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition shadow-2xs">
-              <span>📷</span>
-              <span id="intake-file-label">Upload Receipt Photo / PDF</span>
-              <input type="file" id="intake-file-input" accept="image/*,.pdf" class="hidden" onchange="handleIntakeFileChosen(this)">
-            </label>
-            <button id="intake-clear-file-btn" onclick="clearIntakeFile()" class="hidden text-[11px] text-slate-400 hover:text-rose-600">✕ Clear</button>
-          </div>
-
-          <div id="intake-feedback" class="hidden text-xs p-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200"></div>
+        <div class="top-actions">
+          <label class="sr-only" for="financial-year">Financial year</label>
+          <select id="financial-year" hidden></select>
+          <a class="quiet-button" href="/">Office</a>
+          <button class="icon-button" id="refresh" type="button" aria-label="Refresh dashboard" title="Refresh dashboard" hidden>↻</button>
         </div>
       </div>
+      <nav class="tabs" aria-label="Dashboard sections" hidden>
+        <button type="button" data-tab="receipts" aria-controls="receipts" aria-current="true">Receipts</button>
+        <button type="button" data-tab="mytax" aria-controls="mytax">myTax</button>
+        <button type="button" data-tab="books" aria-controls="books">Books</button>
+        <button type="button" data-tab="stock" aria-controls="stock">Stock</button>
+      </nav>
+    </div>
+  </header>
 
-      <!-- Search Box -->
-      <div class="ios-card p-2">
-        <input
-          type="text"
-          id="receipt-search"
-          oninput="renderReceipts()"
-          placeholder="Search vendor, item, category..."
-          class="w-full px-3 py-1.5 text-sm text-slate-800 placeholder-slate-400 bg-transparent focus:outline-none"
-        >
-      </div>
-
-      <!-- Filter Pills Row -->
-      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 text-xs">
-        <button onclick="setReceiptFilter('all')" id="filter-all" class="filter-pill active px-3 py-1.5 rounded-full whitespace-nowrap">
-          All
-        </button>
-        <button onclick="setReceiptFilter('check')" id="filter-check" class="filter-pill px-3 py-1.5 rounded-full whitespace-nowrap flex items-center gap-1">
-          <span>⚠️</span> <span>Check</span>
-        </button>
-        <button onclick="setReceiptFilter('abn')" id="filter-abn" class="filter-pill px-3 py-1.5 rounded-full whitespace-nowrap flex items-center gap-1">
-          <span>💼</span> <span>ABN</span>
-        </button>
-        <button onclick="setReceiptFilter('payg')" id="filter-payg" class="filter-pill px-3 py-1.5 rounded-full whitespace-nowrap flex items-center gap-1">
-          <span>👔</span> <span>PAYG</span>
-        </button>
-        <button onclick="setReceiptFilter('personal')" id="filter-personal" class="filter-pill px-3 py-1.5 rounded-full whitespace-nowrap flex items-center gap-1">
-          <span>🏠</span> <span>Personal</span>
-        </button>
-        <button onclick="setReceiptFilter('duplicate')" id="filter-duplicate" class="filter-pill px-3 py-1.5 rounded-full whitespace-nowrap flex items-center gap-1">
-          <span>🔄</span> <span>Duplicates</span>
-        </button>
-      </div>
-
-      <!-- Receipts List Container -->
-      <div id="receipts-list" class="space-y-2.5"></div>
-
+  <main class="frame">
+    <section class="card gate" id="gate" aria-labelledby="gate-title">
+      <h2 id="gate-title">Opening dashboard…</h2>
+      <p id="gate-message" class="muted" role="status"></p>
+      <a id="telegram-sign-in" class="primary-button" href="https://t.me/neo_ledgercraft_bot?start=dashboard" hidden>Open Neo in Telegram</a>
+      <button id="retry" class="primary-button" type="button" hidden>Try again</button>
+      <noscript><p>Enable JavaScript to sign in and view your ledger.</p></noscript>
     </section>
 
-    <!-- ======================================================================= -->
-    <!-- TAB 2: myTax (Strictly AUD Only — Live from SQLite)                     -->
-    <!-- ======================================================================= -->
-    <section id="view-mytax" class="hidden space-y-3.5">
-
-      <!-- Card 1: Total Claimable Hero -->
-      <div class="ios-card p-4">
-        <div class="text-xs text-slate-500 mb-1">Total claimable · FY2026-27</div>
-        <div id="mytax-total-claimable" class="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
-          $0.00
+    <div id="dashboard" hidden>
+      <p id="connection-status" class="notice" role="status" hidden></p>
+      <section id="receipts" aria-label="Receipts">
+        <label class="sr-only" for="receipt-search">Search receipts</label>
+        <input class="search" id="receipt-search" type="search" placeholder="Search vendor, item or category" autocomplete="off">
+        <div class="filters" aria-label="Filter receipts">
+          <button type="button" data-filter="all" aria-pressed="true">All</button>
+          <button type="button" data-filter="check" aria-pressed="false">Check</button>
+          <button type="button" data-filter="abn" aria-pressed="false">ABN</button>
+          <button type="button" data-filter="payg" aria-pressed="false">PAYG</button>
+          <button type="button" data-filter="personal" aria-pressed="false">Personal</button>
+          <button type="button" data-filter="duplicate" aria-pressed="false">Duplicates</button>
         </div>
-        <div class="text-xs text-slate-500">
-          <span id="mytax-receipt-count">0</span> receipts counted · 🏠 personal <span id="mytax-personal-total">$0.00</span>
-        </div>
-      </div>
+        <ul class="receipt-list" id="receipt-list"></ul>
+        <p class="card empty" id="receipt-empty" hidden></p>
+        <button class="quiet-button show-more" id="more-receipts" type="button" hidden>Show more receipts</button>
+        <details class="card utility">
+          <summary>Add a receipt</summary>
+          <form id="intake-form">
+            <label for="intake-note">Note or caption</label>
+            <input id="intake-note" name="note" type="text" placeholder="Coffee $5.50" maxlength="300">
+            <label for="intake-file">Photo or PDF</label>
+            <input id="intake-file" name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
+            <button type="submit" class="primary-button">Send to Neo</button>
+            <p class="form-status" id="intake-status" role="status" hidden></p>
+          </form>
+        </details>
+      </section>
 
-      <!-- Card 2: ABN by business -->
-      <div class="ios-card p-4">
-        <h3 class="text-sm font-bold text-slate-900 mb-3">ABN by business</h3>
-        <div class="divide-y divide-slate-100 text-sm">
-          <div class="py-2 flex items-center justify-between">
-            <span class="text-slate-800 flex items-center gap-2"><span>🐕</span> Dog walking</span>
-            <span id="abn-dog-total" class="font-medium text-slate-900">$0.00</span>
+      <section id="mytax" aria-label="myTax" hidden>
+        <article class="card overview">
+          <h2 id="tax-title">Estimated claimable expenses</h2>
+          <p class="amount" id="tax-total"></p>
+          <p class="muted" id="tax-context"></p>
+          <p class="notice" id="tax-review" hidden></p>
+        </article>
+        <article class="card">
+          <h2>ABN by business</h2>
+          <ul class="rows" id="tax-business"></ul>
+        </article>
+        <article class="card">
+          <h2>Where the money goes</h2>
+          <div class="filters spend-filters" aria-label="Spending scope">
+            <button type="button" data-scope="all" aria-pressed="true">All</button>
+            <button type="button" data-scope="business" aria-pressed="false">Business</button>
+            <button type="button" data-scope="personal" aria-pressed="false">Personal</button>
           </div>
-          <div class="py-2 flex items-center justify-between">
-            <span class="text-slate-800 flex items-center gap-2"><span>🖨️</span> 3D printing</span>
-            <span id="abn-3d-total" class="font-medium text-slate-900">$0.00</span>
+          <div class="spend-layout">
+            <div class="donut" id="spend-donut" aria-hidden="true"><div><strong id="spend-total"></strong><small>spent</small></div></div>
+            <ul class="rows" id="spend-categories"></ul>
           </div>
-        </div>
-      </div>
+        </article>
+        <article class="card">
+          <h2>By myTax label</h2>
+          <ul class="rows" id="tax-labels"></ul>
+        </article>
+        <article class="card">
+          <h2>By category</h2>
+          <ul class="rows" id="tax-categories"></ul>
+        </article>
+        <article class="card">
+          <h2>Export</h2>
+          <a class="primary-button" id="export-link" href="/api/export.csv" download>Download CSV</a>
+          <p class="muted disclaimer" id="tax-disclaimer"></p>
+        </article>
+      </section>
 
-      <!-- Card 3: Where the money goes (Strictly AUD Only) -->
-      <div class="ios-card p-4">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-bold text-slate-900">Where the money goes</h3>
-          <div class="relative">
-            <select class="appearance-none bg-white border border-slate-200 rounded-lg px-2.5 py-1 pr-6 text-xs text-slate-700">
-              <option>Whole FY2026-27</option>
-            </select>
-            <span class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">⌄</span>
+      <section id="books" aria-label="Books" hidden>
+        <article class="card overview">
+          <h2 id="books-title">Business result</h2>
+          <p class="amount" id="books-profit"></p>
+          <p class="muted" id="books-period"></p>
+        </article>
+        <article class="card">
+          <div class="card-heading">
+            <h2>Monthly spending</h2>
+            <label class="sr-only" for="spending-month">Spending month</label>
+            <select id="spending-month"></select>
           </div>
-        </div>
-
-        <!-- All / Business / Personal Filter (AUD Only) -->
-        <div class="mb-2">
-          <div class="grid grid-cols-3 gap-1.5 text-xs">
-            <button onclick="setSpendScope('all')" id="scope-all" class="sub-pill active py-1.5 rounded-lg">
-              All
-            </button>
-            <button onclick="setSpendScope('business')" id="scope-business" class="sub-pill py-1.5 rounded-lg flex items-center justify-center gap-1">
-              <span>💼</span> <span>Business</span>
-            </button>
-            <button onclick="setSpendScope('personal')" id="scope-personal" class="sub-pill py-1.5 rounded-lg flex items-center justify-center gap-1">
-              <span>🏠</span> <span>Personal</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Donut Chart + Breakdown List -->
-        <div class="grid grid-cols-12 gap-3 items-center mt-4">
-          <div class="col-span-5 flex items-center justify-center relative">
-            <svg id="donut-svg" viewBox="0 0 36 36" class="w-32 h-32 -rotate-90">
-              <circle cx="18" cy="18" r="13.5" fill="none" stroke="#E5E7EB" stroke-width="5"></circle>
-            </svg>
-            <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span id="donut-total" class="text-xs font-bold text-slate-900">$0.00</span>
-              <span class="text-[10px] text-slate-400">spent</span>
-            </div>
-          </div>
-
-          <div id="spend-legend" class="col-span-7 space-y-2 text-xs">
-            <div class="text-slate-400 italic">No expenses recorded yet.</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card 4: By myTax label -->
-      <div class="ios-card p-4">
-        <h3 class="text-sm font-bold text-slate-900 mb-2.5">By myTax label</h3>
-        <div id="mytax-labels-list" class="divide-y divide-slate-100 text-xs">
-          <div class="py-2 text-slate-400 italic">No business tax labels recorded yet.</div>
-        </div>
-      </div>
-
-      <!-- Card 5: By category -->
-      <div class="ios-card p-4">
-        <h3 class="text-sm font-bold text-slate-900 mb-2.5">By category</h3>
-        <div id="mytax-categories-list" class="divide-y divide-slate-100 text-xs">
-          <div class="py-2 text-slate-400 italic">No business categories recorded yet.</div>
-        </div>
-      </div>
-
-      <!-- Card 6: Export -->
-      <div class="ios-card p-4">
-        <h3 class="text-sm font-bold text-slate-900 mb-2">Export</h3>
-        <div class="text-xs text-slate-500 mb-1.5">Period</div>
-        <div class="relative mb-3">
-          <select class="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800">
-            <option>Whole FY2026-27</option>
-          </select>
-          <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">⌄</span>
-        </div>
-        <div class="flex items-center gap-2 mb-2.5">
-          <a href="/api/export.csv" class="px-3.5 py-1.5 rounded-lg bg-[#2B5CE6] hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 shadow-sm transition">
-            <span>⬇️</span> <span>Excel</span>
-          </a>
-          <a href="/api/export.csv" class="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1 transition">
-            <span>⬇️</span> <span>CSV</span>
-          </a>
-        </div>
-        <p class="text-[11px] text-slate-400">
-          Duplicates are left out of the totals. Suggestions only, not tax advice.
-        </p>
-      </div>
-
-    </section>
-
-    <!-- ======================================================================= -->
-    <!-- TAB 3: BOOKS (Live Double-Entry Books from SQLite)                      -->
-    <!-- ======================================================================= -->
-    <section id="view-books" class="hidden space-y-3.5">
-
-      <!-- Card 1: Business Profit/Loss & Net Worth Hero -->
-      <div class="ios-card p-4">
-        <div class="text-xs text-slate-500 mb-1">Business net position · FY2026-27</div>
-        <div id="books-net-profit" class="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
-          $0.00
-        </div>
-        <div class="text-xs text-slate-500">
-          Net worth (all accounts, minus what you owe): <strong id="books-net-worth" class="text-slate-700">$0.00</strong>
-        </div>
-      </div>
-
-      <!-- Card 2: Dog walking Profit & Loss -->
-      <div class="ios-card p-4">
-        <h3 class="text-sm font-bold text-slate-900 mb-2.5 flex items-center gap-1.5">
-          <span>🐕</span> <span>Dog walking</span> <span class="font-normal text-slate-400 text-xs">· Profit &amp; Loss</span>
-        </h3>
-        <div class="divide-y divide-slate-100 text-xs">
-          <div class="py-2 flex justify-between">
-            <span class="text-slate-700">+ Dog walking income</span>
-            <span id="dog-income" class="text-slate-900">$0.00</span>
-          </div>
-          <div class="py-2 flex justify-between">
-            <span class="text-slate-700">– Business expenses</span>
-            <span id="dog-expenses" class="text-slate-900">$0.00</span>
-          </div>
-          <div class="pt-2.5 pb-1 flex justify-between font-bold text-slate-900">
-            <span>= net</span>
-            <span id="dog-net">$0.00</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card 3: 3D printing Profit & Loss -->
-      <div class="ios-card p-4">
-        <h3 class="text-sm font-bold text-slate-900 mb-2.5 flex items-center gap-1.5">
-          <span>🖨️</span> <span>3D printing</span> <span class="font-normal text-slate-400 text-xs">· Profit &amp; Loss</span>
-        </h3>
-        <div class="divide-y divide-slate-100 text-xs">
-          <div class="py-2 flex justify-between">
-            <span class="text-slate-700">+ 3D printing income</span>
-            <span id="print-income" class="text-slate-900">$0.00</span>
-          </div>
-          <div class="py-2 flex justify-between">
-            <span class="text-slate-700">– Business expenses</span>
-            <span id="print-expenses" class="text-slate-900">$0.00</span>
-          </div>
-          <div class="pt-2.5 pb-1 flex justify-between font-bold text-slate-900">
-            <span>= net</span>
-            <span id="print-net">$0.00</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card 4: Business balance sheet -->
-      <div class="ios-card p-4">
-        <h3 class="text-sm font-bold text-slate-900 mb-2.5">Business balance sheet</h3>
-        <div id="balance-sheet-lines" class="divide-y divide-slate-100 text-xs">
-          <div class="py-2 flex justify-between">
-            <span class="text-slate-700">Profit / (Loss)</span>
-            <span id="bs-profit" class="text-slate-900">$0.00</span>
-          </div>
-        </div>
-        <div class="mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-400">
-          ✓ Assets = capital – drawings + profit
-        </div>
-      </div>
-
-      <!-- Card 5: Bank accounts & Owed / clearing -->
-      <div class="ios-card p-4">
-        <h3 class="text-sm font-bold text-slate-900 mb-2.5">
-          Bank accounts <span class="font-normal text-slate-400 text-xs">· double-entry ledger</span>
-        </h3>
-        <div id="bank-accounts-list" class="divide-y divide-slate-100 text-xs"></div>
-
-        <h4 class="text-sm font-bold text-slate-900 mt-4 mb-2">Owed / clearing</h4>
-        <div id="liabilities-list" class="divide-y divide-slate-100 text-xs"></div>
-      </div>
-
-    </section>
-
-    <!-- ======================================================================= -->
-    <!-- TAB 4: ADHD DESK COMPANION & REWARD BOX (Live from companion_state)     -->
-    <!-- ======================================================================= -->
-    <section id="view-companion" class="hidden space-y-3.5">
-
-      <!-- Reward Box Card -->
-      <div class="ios-card p-4">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
-            🎁 Autonomous Reward Box (100% Non-Punitive)
-          </span>
-          <span class="text-xs text-slate-400">Zero Streak Resets</span>
-        </div>
-
-        <div class="flex items-center gap-3 my-3">
-          <div class="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-2xl">
-            🍜
-          </div>
-          <div class="flex-1">
-            <div id="reward-title-display" class="text-sm font-bold text-slate-900">2 Packs of Indomie Goreng 🍜</div>
-            <div class="text-xs text-slate-500">Unlocks every 100 XP · Effort is rewarded unconditionally</div>
-          </div>
-        </div>
-
-        <div class="space-y-1.5 mt-2">
-          <div class="flex justify-between text-xs">
-            <span class="text-slate-500">Cumulative Progress</span>
-            <span id="companion-xp-label" class="font-bold text-blue-600">0 / 100 XP</span>
-          </div>
-          <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-            <div id="companion-xp-bar" class="h-full bg-[#2B5CE6] transition-all duration-500" style="width: 0%"></div>
-          </div>
-        </div>
-
-        <div id="companion-unlock-alert" class="hidden mt-3 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold text-center">
-          🎉 REWARD BOX UNLOCKED! Enjoy your treat guilt-free!
-        </div>
-
-        <!-- Customize Reward Box Input Form -->
-        <div class="mt-4 pt-3.5 border-t border-slate-100">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-bold text-slate-800">✏️ Set / Change Your Reward</span>
-            <span id="reward-save-status" class="text-[11px] font-medium text-emerald-600 hidden">✓ Saved!</span>
-          </div>
-
-          <div class="grid grid-cols-12 gap-2 mb-2">
-            <div class="col-span-8">
-              <label class="block text-[10px] text-slate-400 mb-0.5">Reward / Treat Name</label>
-              <input
-                type="text"
-                id="input-reward-name"
-                placeholder="e.g. 2 Packs of Indomie Goreng 🍜"
-                class="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-              >
-            </div>
-            <div class="col-span-4">
-              <label class="block text-[10px] text-slate-400 mb-0.5">Target XP</label>
-              <input
-                type="number"
-                id="input-reward-xp"
-                min="10"
-                step="10"
-                value="100"
-                class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-              >
-            </div>
-          </div>
-
-          <!-- Quick 1-Tap Presets -->
-          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1.5 mb-2 text-[11px]">
-            <button onclick="applyRewardPreset('2 Packs of Indomie Goreng 🍜', 100)" class="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition">
-              🍜 Indomie (100 XP)
-            </button>
-            <button onclick="applyRewardPreset('30 Mins Gaming Break 🎮', 50)" class="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition">
-              🎮 Gaming 30m (50 XP)
-            </button>
-            <button onclick="applyRewardPreset('Iced Matcha Latte 🍵', 60)" class="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition">
-              🍵 Matcha (60 XP)
-            </button>
-            <button onclick="applyRewardPreset('Guilt-Free Movie Night 🎬', 150)" class="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition">
-              🎬 Movie (150 XP)
-            </button>
-          </div>
-
-          <button onclick="saveCustomReward()" class="w-full py-2 rounded-xl bg-[#2B5CE6] hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition">
-            Save Reward Box Settings
-          </button>
-        </div>
-      </div>
-
-      <!-- Virtual ESP32-C3 + OLED Desk Companion Preview -->
-      <div class="ios-card p-5 flex flex-col items-center text-center">
-        <div class="w-full flex items-center justify-between text-xs text-slate-400 mb-3">
-          <span>ESP32-C3 SuperMini + 0.96" OLED</span>
-          <span class="text-emerald-600 font-medium">● Synced with @neo_ledgercraft_bot</span>
-        </div>
-
-        <div class="w-56 p-4 rounded-3xl bg-slate-800 border-4 border-slate-700 shadow-lg relative my-2">
-          <div class="absolute -top-3 left-5 w-6 h-4 bg-slate-700 rounded-t-lg -skew-x-12"></div>
-          <div class="absolute -top-3 right-5 w-6 h-4 bg-slate-700 rounded-t-lg skew-x-12"></div>
-
-          <div class="w-full h-28 bg-black rounded-xl border border-slate-900 p-2.5 flex flex-col justify-between text-white font-mono">
-            <div class="flex justify-between text-[8px] text-cyan-400">
-              <span>WIFI: OK</span>
-              <span id="oled-xp">XP: 0</span>
-            </div>
-            <div id="oled-face" class="text-amber-400 text-xl font-bold animate-mascot">( - . - )</div>
-            <div id="oled-msg" class="text-[8px] text-emerald-400">WAITING FOR RECEIPT</div>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2 mt-4">
-          <a href="https://t.me/neo_ledgercraft_bot" target="_blank" class="px-4 py-2 rounded-xl bg-[#2B5CE6] hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition">
-            📲 Open @neo_ledgercraft_bot
-          </a>
-          <a href="/docs/assembly_guide_3d.html" target="_blank" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-semibold transition">
-            🛠️ 3D Kit Card Manual
-          </a>
-        </div>
-      </div>
-
-    </section>
-
-  </div>
-
-  <!-- ================= JAVASCRIPT LIVE API SYNC ================= -->
-  <script>
-    let dashboardData = {
-      receipts: [],
-      mytax: {
-        total_claimable: 0,
-        receipt_count: 0,
-        personal_total: 0,
-        abn_by_business: { dog_walking: 0, printing_3d: 0 },
-        where_money_goes: {
-          all: { total: 0, items: [] },
-          business: { total: 0, items: [] },
-          personal: { total: 0, items: [] }
-        },
-        by_mytax_label: [],
-        by_category: []
-      },
-      books: {
-        net_profit: 0,
-        net_worth: 0,
-        dog_walking_pl: { income: 0, expenses: 0, net: 0 },
-        printing_3d_pl: { income: 0, expenses: 0, net: 0 },
-        bank_accounts: [],
-        liabilities: [],
-        equity: []
-      },
-      companion: {
-        total_xp: 0,
-        reward_name: "2 Packs of Indomie Goreng 🍜",
-        reward_target_xp: 100,
-        boxes_unlocked: 0,
-        last_anim: "idle"
-      }
-    };
-
-    let activeReceiptFilter = 'all';
-    let activeSpendScope = 'all';
-    let lastKnownXP = 0;
-    const COLORS = ['#3B82F6', '#F97316', '#10B981', '#F59E0B', '#EC4899', '#9CA3AF'];
-
-    function escapeHtml(str) {
-      if (str === null || str === undefined) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    }
-
-    function fmtAUD(val) {
-      const num = Number(val || 0);
-      if (num < 0) {
-        return `$-${Math.abs(num).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      }
-      return `$${num.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    }
-
-    async function fetchLiveDashboard(manual = false) {
-      try {
-        const res = await fetch('/api/dashboard', { cache: 'no-store' });
-        if (!res.ok) return;
-        dashboardData = await res.json();
-        renderAll();
-      } catch (e) {
-        // Fallback when opened via file:// protocol
-        renderAll();
-      }
-    }
-
-    function renderAll() {
-      renderReceipts();
-      renderMyTax();
-      renderBooks();
-      renderCompanion();
-    }
-
-    function renderReceipts() {
-      const query = (document.getElementById('receipt-search').value || '').toLowerCase().trim();
-      const listEl = document.getElementById('receipts-list');
-      listEl.innerHTML = '';
-
-      const filtered = (dashboardData.receipts || []).filter(r => {
-        if (activeReceiptFilter === 'check' && !r.check) return false;
-        if (activeReceiptFilter === 'abn' && r.scope !== 'abn') return false;
-        if (activeReceiptFilter === 'payg' && r.scope !== 'payg') return false;
-        if (activeReceiptFilter === 'personal' && r.scope !== 'personal') return false;
-        if (activeReceiptFilter === 'duplicate' && !r.duplicate) return false;
-        if (query) {
-          const hay = `${r.vendor} ${r.category} #${r.id}`.toLowerCase();
-          if (!hay.includes(query)) return false;
-        }
-        return true;
-      });
-
-      if (filtered.length === 0) {
-        listEl.innerHTML = `
-          <div class="ios-card p-8 text-center">
-            <div class="text-2xl mb-2">🧾</div>
-            <div class="text-sm font-semibold text-slate-800">No receipts recorded yet</div>
-            <p class="text-xs text-slate-500 mt-1">
-              Send a receipt photo or type a fictional test note (e.g. <code>[FICTIONAL DEMO] Cafe AUD 6.50 today</code>) to <strong>@neo_ledgercraft_bot</strong> on Telegram.
-            </p>
-          </div>
-        `;
-        return;
-      }
-
-      filtered.forEach(r => {
-        const card = document.createElement('div');
-        card.className = 'ios-card px-4 py-3 transition hover:border-slate-300';
-        const pctText = (r.business_pct !== undefined && r.business_pct !== null) ? `${Math.round(r.business_pct)}%` : (r.scope === 'personal' ? '0%' : '100%');
-        const actLabel = r.business_activity === 'dog_walking' ? '🐕 Dog walking' : (r.business_activity === 'printing_3d' ? '🖨️ 3D printing' : (r.business_activity === 'payg_work' ? '👔 PAYG work' : ''));
-        const srcBadge = r.classification_source === 'owner_correction'
-          ? '✏️ Owner Verified'
-          : (r.classification_source === 'vendor_memory' ? '🧠 Vendor Memory' : '🤖 AI Suggestion');
-        card.innerHTML = `
-          <div class="flex items-baseline justify-between">
-            <div class="font-bold text-[15px] text-slate-900 truncate pr-2">${escapeHtml(r.vendor)}</div>
-            <div class="font-bold text-[15px] text-slate-900 shrink-0">${fmtAUD(r.amount)}</div>
-          </div>
-          <div class="flex items-center justify-between text-xs text-slate-500 mt-0.5">
-            <div class="truncate">#${escapeHtml(r.id)} · ${escapeHtml(r.date)} · ${escapeHtml(r.icon)} ${escapeHtml((r.claim_stream || r.scope || '').toUpperCase())}${actLabel ? ' · ' + escapeHtml(actLabel) : ''} · ${escapeHtml(r.category)} (${escapeHtml(pctText)})</div>
-            ${r.claim > 0 ? `<div class="text-slate-600 font-medium shrink-0 ml-2">claim ${fmtAUD(r.claim)}</div>` : ''}
-          </div>
-          <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-            <span>${srcBadge}</span>
-            ${r.tax_label ? `<span>Suggested myTax: ${escapeHtml(r.tax_label)}</span>` : '<span>Non-deductible (Personal)</span>'}
-          </div>
-          ${r.duplicate ? `
-            <div class="mt-1.5">
-              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-medium">
-                <span>🔄</span> Duplicate
-              </span>
-            </div>
-          ` : ''}
-          ${r.check ? `
-            <div class="mt-1.5">
-              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-medium">
-                <span>⚠️</span> Check (${escapeHtml(r.flag_reason || 'Review')})
-              </span>
-            </div>
-          ` : ''}
-        `;
-        listEl.appendChild(card);
-      });
-    }
-
-    function renderMyTax() {
-      const mt = dashboardData.mytax;
-      document.getElementById('mytax-total-claimable').textContent = fmtAUD(mt.total_claimable);
-      document.getElementById('mytax-receipt-count').textContent = mt.receipt_count;
-      document.getElementById('mytax-personal-total').textContent = fmtAUD(mt.personal_total);
-      document.getElementById('abn-dog-total').textContent = fmtAUD(mt.abn_by_business.dog_walking);
-      document.getElementById('abn-3d-total').textContent = fmtAUD(mt.abn_by_business.printing_3d);
-
-      // Donut & Legend
-      const scopeData = mt.where_money_goes[activeSpendScope] || { total: 0, items: [] };
-      document.getElementById('donut-total').textContent = fmtAUD(scopeData.total);
-
-      const svg = document.getElementById('donut-svg');
-      const legend = document.getElementById('spend-legend');
-      if (!scopeData.items || scopeData.items.length === 0) {
-        svg.innerHTML = `<circle cx="18" cy="18" r="13.5" fill="none" stroke="#E5E7EB" stroke-width="5"></circle>`;
-        legend.innerHTML = `<div class="text-slate-400 italic">No expenses recorded yet.</div>`;
-      } else {
-        let offset = 0;
-        let circles = '';
-        let legendHtml = '';
-        scopeData.items.slice(0, 6).forEach((item, idx) => {
-          const color = COLORS[idx % COLORS.length];
-          const dash = item.pct;
-          circles += `<circle cx="18" cy="18" r="13.5" fill="none" stroke="${color}" stroke-width="5" stroke-dasharray="${dash} ${100 - dash}" stroke-dashoffset="-${offset}"></circle>`;
-          offset += dash;
-          legendHtml += `
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-1.5 truncate">
-                <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${color}"></span>
-                <span class="text-slate-700 truncate">${escapeHtml(item.category)}</span>
-              </div>
-              <div class="flex items-center gap-2 shrink-0">
-                <span class="font-bold text-slate-900">${fmtAUD(item.amount)}</span>
-                <span class="text-slate-400 w-7 text-right">${escapeHtml(item.pct)}%</span>
-              </div>
-            </div>
-          `;
-        });
-        svg.innerHTML = circles;
-        legend.innerHTML = legendHtml;
-      }
-
-      // By myTax label
-      const labelsEl = document.getElementById('mytax-labels-list');
-      if (!mt.by_mytax_label || mt.by_mytax_label.length === 0) {
-        labelsEl.innerHTML = `<div class="py-2 text-slate-400 italic">No business tax labels recorded yet.</div>`;
-      } else {
-        labelsEl.innerHTML = mt.by_mytax_label.map(l => `
-          <div class="py-2.5 flex items-center justify-between">
-            <span class="text-slate-800">${escapeHtml(l.tax_label)}</span>
-            <span class="font-medium text-slate-900">${fmtAUD(l.gross_amount)}</span>
-          </div>
-        `).join('');
-      }
-
-      // By category
-      const catEl = document.getElementById('mytax-categories-list');
-      if (!mt.by_category || mt.by_category.length === 0) {
-        catEl.innerHTML = `<div class="py-2 text-slate-400 italic">No business categories recorded yet.</div>`;
-      } else {
-        catEl.innerHTML = mt.by_category.map(c => `
-          <div class="py-2.5 flex items-center justify-between">
-            <span class="text-slate-800">ABN · ${escapeHtml(c.category)}</span>
-            <span class="font-medium text-slate-900">${fmtAUD(c.amount)}</span>
-          </div>
-        `).join('');
-      }
-    }
-
-    function renderBooks() {
-      const b = dashboardData.books;
-      const profitEl = document.getElementById('books-net-profit');
-      profitEl.textContent = fmtAUD(b.net_profit);
-      profitEl.className = `text-2xl font-extrabold tracking-tight mb-1 ${b.net_profit < 0 ? 'text-[#C93B2B]' : 'text-slate-900'}`;
-      document.getElementById('books-net-worth').textContent = fmtAUD(b.net_worth);
-
-      document.getElementById('dog-income').textContent = fmtAUD(b.dog_walking_pl.income);
-      document.getElementById('dog-expenses').textContent = fmtAUD(b.dog_walking_pl.expenses);
-      document.getElementById('dog-net').textContent = fmtAUD(b.dog_walking_pl.net);
-
-      document.getElementById('print-income').textContent = fmtAUD(b.printing_3d_pl.income);
-      document.getElementById('print-expenses').textContent = fmtAUD(b.printing_3d_pl.expenses);
-      document.getElementById('print-net').textContent = fmtAUD(b.printing_3d_pl.net);
-      document.getElementById('bs-profit').textContent = fmtAUD(b.net_profit);
-
-      const banksEl = document.getElementById('bank-accounts-list');
-      banksEl.innerHTML = (b.bank_accounts || []).map(acc => `
-        <div class="py-2.5 flex justify-between items-start">
-          <div>
-            <div class="text-slate-800">✓ ${escapeHtml(acc.name)}</div>
-            <div class="text-[11px] text-slate-400">Account ${escapeHtml(acc.code)}</div>
-          </div>
-          <span class="font-medium text-slate-900">${fmtAUD(acc.net_balance)}</span>
-        </div>
-      `).join('');
-
-      const liabEl = document.getElementById('liabilities-list');
-      liabEl.innerHTML = (b.liabilities || []).map(acc => `
-        <div class="py-2 flex justify-between">
-          <span class="text-slate-700">${escapeHtml(acc.name)}</span>
-          <span class="text-slate-900">${fmtAUD(acc.net_balance)}</span>
-        </div>
-      `).join('');
-    }
-
-    function renderCompanion() {
-      const c = dashboardData.companion;
-      const target = c.reward_target_xp || 100;
-      const progress = c.total_xp % target;
-      const pct = Math.min(100, Math.round((progress / target) * 100));
-
-      document.getElementById('header-xp-text').textContent = `${progress}/${target} XP`;
-      document.getElementById('reward-title-display').textContent = c.reward_name;
-      document.getElementById('companion-xp-label').textContent = `${progress} / ${target} XP (Lifetime: ${c.total_xp} XP)`;
-      document.getElementById('companion-xp-bar').style.width = `${pct}%`;
-      document.getElementById('oled-xp').textContent = `XP: ${c.total_xp}`;
-
-      const nameInput = document.getElementById('input-reward-name');
-      const xpInput = document.getElementById('input-reward-xp');
-      if (nameInput && document.activeElement !== nameInput) {
-        nameInput.value = c.reward_name;
-      }
-      if (xpInput && document.activeElement !== xpInput) {
-        xpInput.value = target;
-      }
-
-      if (c.total_xp > 0) {
-        document.getElementById('oled-face').textContent = c.boxes_unlocked > 0 && progress === 0 ? '( ★ ▽ ★ )' : '( ^ ▽ ^ )';
-        document.getElementById('oled-msg').textContent = `ACTIVE // ${c.total_xp} XP`;
-      } else {
-        document.getElementById('oled-face').textContent = '( - . - )';
-        document.getElementById('oled-msg').textContent = 'WAITING FOR RECEIPT';
-      }
-
-      document.getElementById('companion-unlock-alert').classList.toggle('hidden', c.boxes_unlocked === 0);
-    }
-
-    async function applyRewardPreset(name, xp) {
-      document.getElementById('input-reward-name').value = name;
-      document.getElementById('input-reward-xp').value = xp;
-      await saveCustomReward();
-    }
-
-    async function saveCustomReward() {
-      const rewardName = document.getElementById('input-reward-name').value.trim();
-      const targetXP = parseInt(document.getElementById('input-reward-xp').value || '100', 10);
-      if (!rewardName) return;
-
-      try {
-        const res = await fetch('/api/reward', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reward_name: rewardName, reward_target_xp: targetXP })
-        });
-        if (res.ok) {
-          dashboardData = await res.json();
-          renderAll();
-          const badge = document.getElementById('reward-save-status');
-          badge.classList.remove('hidden');
-          setTimeout(() => badge.classList.add('hidden'), 2000);
-        }
-      } catch (e) {
-        dashboardData.companion.reward_name = rewardName;
-        dashboardData.companion.reward_target_xp = targetXP;
-        renderAll();
-      }
-    }
-
-    function setReceiptFilter(filter) {
-      activeReceiptFilter = filter;
-      ['all', 'check', 'abn', 'payg', 'personal', 'duplicate'].forEach(f => {
-        const btn = document.getElementById(`filter-${f}`);
-        if (btn) btn.classList.toggle('active', f === filter);
-      });
-      renderReceipts();
-    }
-
-    function setSpendScope(scope) {
-      activeSpendScope = scope;
-      ['all', 'business', 'personal'].forEach(s => {
-        document.getElementById(`scope-${s}`).classList.toggle('active', s === scope);
-      });
-      renderMyTax();
-    }
-
-    function switchMainTab(tab) {
-      ['receipts', 'mytax', 'books', 'companion'].forEach(t => {
-        document.getElementById(`view-${t}`).classList.toggle('hidden', t !== tab);
-        document.getElementById(`tab-btn-${t}`).classList.toggle('active', t === tab);
-      });
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    let fileReadGen = 0;
-    let activeFileReader = null;
-    let chosenFileBase64 = null;
-    let chosenFileName = null;
-
-    function handleIntakeFileChosen(fileInput) {
-      const file = fileInput.files && fileInput.files[0];
-      if (!file) return;
-      if (file.size > 5 * 1024 * 1024) {
-        alert('File size exceeds 5 MB limit');
-        fileInput.value = '';
-        return;
-      }
-      const currentGen = ++fileReadGen;
-      if (activeFileReader) {
-        try { activeFileReader.abort(); } catch (e) {}
-      }
-      chosenFileName = file.name;
-      const reader = new FileReader();
-      activeFileReader = reader;
-      reader.onload = function(e) {
-        if (currentGen !== fileReadGen) return; // Invalidate stale FileReader callback
-        const result = e.target.result;
-        chosenFileBase64 = result.split(',')[1] || result;
-        const lbl = document.getElementById('intake-file-label');
-        if (lbl) lbl.textContent = `📎 ${file.name} (${Math.round(file.size / 1024)} KB)`;
-        const clearBtn = document.getElementById('intake-clear-file-btn');
-        if (clearBtn) clearBtn.classList.remove('hidden');
-      };
-      reader.readAsDataURL(file);
-    }
-
-    function clearIntakeFile() {
-      fileReadGen++; // Invalidate any in-flight FileReader callbacks
-      if (activeFileReader) {
-        try { activeFileReader.abort(); } catch (e) {}
-        activeFileReader = null;
-      }
-      chosenFileBase64 = null;
-      chosenFileName = null;
-      const fileInput = document.getElementById('intake-file-input');
-      if (fileInput) fileInput.value = '';
-      const lbl = document.getElementById('intake-file-label');
-      if (lbl) lbl.textContent = 'Upload Receipt Photo / PDF';
-      const clearBtn = document.getElementById('intake-clear-file-btn');
-      if (clearBtn) clearBtn.classList.add('hidden');
-    }
-
-    function intakeDriveLink(url) {
-      if (typeof url !== 'string' || !/^https:\/\/drive\.google\.com\/open\?id=[A-Za-z0-9_-]{10,64}$/.test(url)) {
-        return '';
-      }
-      return `<br><a class="underline" href="${url}" target="_blank" rel="noopener noreferrer">Open original in Google Drive</a>`;
-    }
-
-    async function submitWebIntakeNote() {
-      const input = document.getElementById('intake-note-input');
-      const text = (input ? input.value : '').trim();
-      if (!text && !chosenFileBase64) return;
-
-      const feedback = document.getElementById('intake-feedback');
-      const btn = document.getElementById('intake-submit-btn');
-      if (btn) btn.disabled = true;
-
-      const payload = {};
-      if (text) payload.text = text;
-      if (chosenFileBase64) {
-        payload.file_data = chosenFileBase64;
-        payload.filename = chosenFileName || 'receipt.jpg';
-      }
-
-      try {
-        const res = await fetch('/api/intake', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-          dashboardData = await res.json();
-          renderAll();
-          if (input) input.value = '';
-          clearIntakeFile();
-          if (feedback) {
-            const summary = dashboardData.intake_summary;
-            let cleanSummary = summary ? summary.summary_text : 'Expense recorded successfully.';
-            cleanSummary = cleanSummary.replace(/[*`_]/g, '');
-            const lines = cleanSummary.split('\n').filter(Boolean);
-            const formatted = lines.map(l => escapeHtml(l)).join('<br>');
-            feedback.innerHTML = `<strong>✓ Processed!</strong><br>${formatted}${intakeDriveLink(summary?.gdrive_url)}`;
-            feedback.className = 'text-xs p-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200';
-            feedback.classList.remove('hidden');
-            setTimeout(() => feedback.classList.add('hidden'), 5000);
-          }
-        } else {
-          // On HTTP 422 or error, do NOT wipe selected file or typed note
-          // Retain state so user can adjust notes or retry without losing inputs
-          const err = await res.json().catch(() => ({}));
-          if (feedback) {
-            const rawMsg = err.summary_text || err.error || 'Failed to process intake';
-            const cleanMsg = rawMsg.replace(/[*`_]/g, '');
-            const lines = cleanMsg.split('\n').filter(Boolean);
-            const formatted = lines.map(l => escapeHtml(l)).join('<br>');
-            const title = err.status === 'needs_review' ? 'Details needed'
-              : err.status === 'duplicate' ? 'Already saved'
-              : err.status === 'archive_unavailable' ? 'Google Drive unavailable'
-              : err.status === 'extraction_unavailable' ? 'Could not read receipt' : 'Could not process intake';
-            feedback.innerHTML = `⚠️ <strong>${title}</strong><br>${formatted}${intakeDriveLink(err.gdrive_url)}`;
-            feedback.className = 'text-xs p-2 rounded-lg bg-amber-50 text-amber-900 border border-amber-300';
-            feedback.classList.remove('hidden');
-          }
-        }
-      } catch (e) {
-        if (feedback) {
-          feedback.textContent = `⚠️ Network error: ${e.message}`;
-          feedback.className = 'text-xs p-2 rounded-lg bg-rose-50 text-rose-800 border border-rose-200';
-          feedback.classList.remove('hidden');
-          setTimeout(() => feedback.classList.add('hidden'), 5000);
-        }
-      } finally {
-        if (btn) btn.disabled = false;
-      }
-    }
-
-    // Fetch live data on load & poll every 3 seconds
-    fetchLiveDashboard();
-    setInterval(() => fetchLiveDashboard(false), 3000);
-  </script>
+          <p id="books-spending" class="metric"></p>
+          <p id="books-spending-context" class="muted"></p>
+          <ul class="bars" id="books-categories"></ul>
+          <p class="muted disclaimer">Budget limits and savings goals are unset in Neo.</p>
+        </article>
+        <article class="card">
+          <h2>Business activity</h2>
+          <ul class="rows" id="books-activity"></ul>
+        </article>
+        <article class="card">
+          <h2>Ledger balances</h2>
+          <p class="muted" id="books-net-worth"></p>
+          <ul class="rows" id="books-accounts"></ul>
+        </article>
+      </section>
+
+      <section id="stock" aria-label="Stock" hidden>
+        <article class="card">
+          <h2>On hand</h2>
+          <p class="muted" id="stock-status"></p>
+          <ul class="rows" id="stock-items"></ul>
+        </article>
+        <article class="card">
+          <h2>3D printing material purchases</h2>
+          <ul class="rows" id="stock-purchases"></ul>
+        </article>
+      </section>
+
+      <footer class="footer">
+        <button class="quiet-button" id="open-companion" type="button">Womby</button>
+        <button class="quiet-button" id="sign-out" type="button">Sign out</button>
+      </footer>
+    </div>
+  </main>
+
+  <dialog id="receipt-dialog" aria-labelledby="receipt-title">
+    <div class="dialog-heading">
+      <h2 id="receipt-title">Receipt details</h2>
+      <form method="dialog"><button class="quiet-button" type="submit">Close</button></form>
+    </div>
+    <dl class="receipt-details" id="receipt-details"></dl>
+    <ul class="rows" id="receipt-items"></ul>
+    <a class="quiet-button drive-link" id="receipt-original" target="_blank" rel="noopener noreferrer" hidden>Open original in Google Drive ↗</a>
+  </dialog>
+
+  <dialog id="companion-dialog" aria-labelledby="companion-title">
+    <div class="dialog-heading">
+      <h2 id="companion-title">Womby</h2>
+      <form method="dialog"><button class="quiet-button" type="submit">Close</button></form>
+    </div>
+    <p id="companion-summary" class="muted"></p>
+    <form id="reward-form">
+      <label for="reward-name">Reward</label>
+      <input id="reward-name" type="text" maxlength="40" required>
+      <label for="reward-target">XP target</label>
+      <input id="reward-target" type="number" min="10" max="10000" required>
+      <button class="primary-button" type="submit">Save reward</button>
+      <p class="form-status" id="reward-status" role="status" hidden></p>
+    </form>
+  </dialog>
 </body>
 </html>

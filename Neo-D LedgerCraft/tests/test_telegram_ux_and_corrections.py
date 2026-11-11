@@ -152,7 +152,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
 
         # 1. Record a confirmed/high-confidence business receipt ($55.00 AUD, GST=$5.00)
-        confirmed = cos.process_note("Fictional 3D Maker Supply nozzle $55.00 gst=5.00 today")
+        confirmed = cos.process_note("Fictional 3D Maker Supply nozzle $55.00 gst=5.00 19/10/2026")
         self.assertEqual(confirmed.status, "recorded")
 
         # 2. Record a low-confidence / needs-review business receipt ($88.00 AUD, GST=$8.00)
@@ -188,7 +188,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertEqual(review_mytax[0]["review_state"], "needs_review")
 
         # Verify dashboard payload segregates total_claimable ($55.00) vs pending_review_claimable ($88.00)
-        dash = build_dashboard_payload(self.db_path)
+        dash = build_dashboard_payload(self.db_path, fy_start_year=2026)
         self.assertEqual(dash["mytax"]["total_claimable"], 55.0)
         self.assertEqual(dash["mytax"]["pending_review_claimable"], 88.0)
         self.assertEqual(dash["mytax"]["needs_review_count"], 1)
@@ -196,7 +196,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         # 3. Once owner confirms the complete classification (category, activity, business_pct), it moves into confirmed claimable totals
         # Category correction alone on a needs-review receipt does NOT confirm unrelated activity/pct fields
         cos.correct_receipt(receipt_id=needs_review_id, category="tools_equipment")
-        dash_cat_only = build_dashboard_payload(self.db_path)
+        dash_cat_only = build_dashboard_payload(self.db_path, fy_start_year=2026)
         self.assertEqual(dash_cat_only["mytax"]["total_claimable"], 55.0)
 
         # Confirming activity and pct completes confirmation and moves into confirmed claimable totals
@@ -205,7 +205,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             business_activity="printing_3d",
             business_pct=100.0,
         )
-        dash_after = build_dashboard_payload(self.db_path)
+        dash_after = build_dashboard_payload(self.db_path, fy_start_year=2026)
         self.assertEqual(dash_after["mytax"]["total_claimable"], 143.0)  # 55.0 + 88.0
         self.assertEqual(dash_after["mytax"]["pending_review_claimable"], 0.0)
 
@@ -932,7 +932,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         review_rows = self.jm.get_mytax_review_summary("2026-01-01", "2027-12-31")
         self.assertEqual(len(review_rows), 1)
         self.assertEqual(review_rows[0]["gross_amount"], 110.0)
-        dash = build_dashboard_payload(self.db_path)
+        dash = build_dashboard_payload(self.db_path, fy_start_year=2026)
         self.assertEqual(dash["mytax"]["total_claimable"], 0.0)
         self.assertEqual(dash["mytax"]["pending_review_claimable"], 110.0)
 

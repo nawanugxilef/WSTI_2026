@@ -67,6 +67,14 @@ The Google Drive folder settings are:
 
 ---
 
+## Mobile dashboard
+
+Open [Neo Dashboard](https://neo.madewithfelix.app/dashboard) and choose **Open Neo in Telegram**, or send `/dashboard` in the owner's private chat with Neo. Open the one-time link within five minutes.
+
+Receipts, myTax, and Books use the Neo ledger. Stock shows recorded material purchases and whether an inventory source is connected.
+
+---
+
 ## 🚀 Quick Start (CLI — Fictional Examples)
 
 ```bash

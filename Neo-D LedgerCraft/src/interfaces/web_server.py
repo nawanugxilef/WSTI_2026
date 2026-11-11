@@ -14,18 +14,24 @@ import hmac
 import io
 import json
 import logging
+import math
 import os
+import re
+import sqlite3
 import threading
 import time
 from collections import defaultdict
 from contextlib import closing
-from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
-from urllib.parse import urlparse
+from datetime import date, datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from src.agents.chief_of_staff import ChiefOfStaff
 from src.agents.finance_agent import FinanceAgent
 from src.agents.receipt_progress import read_receipt_progress
 from src.interfaces.cli import load_config, seed_accounts
+from src.interfaces.dashboard_auth import DASHBOARD_ORIGIN, clear_session, get_session, issue_session
 from src.storage.categories import ATO_SUGGESTION_DISCLAIMER
 from src.storage.db import get_connection, init_db
 from src.storage.gdrive import drive_file_url
@@ -114,13 +120,97 @@ def get_default_db_path() -> str:
     return os.environ.get("LEDGER_DB_PATH", DEFAULT_DB_PATH)
 
 
-def build_dashboard_payload(db_path: str | None = None) -> dict:
+def _sydney_today() -> date:
+    try:
+        return datetime.now(ZoneInfo("Australia/Sydney")).date()
+    except ZoneInfoNotFoundError:
+        return date.today()
+
+
+def _financial_year(day: date) -> int:
+    return day.year if day.month >= 7 else day.year - 1
+
+
+def _parse_dashboard_filters(query: str) -> tuple[int | None, str | None]:
+    params = parse_qs(query, keep_blank_values=True, max_num_fields=10)
+    years = params.get("fy", [])
+    months = params.get("month", [])
+    if len(years) > 1 or (years and not re.fullmatch(r"[0-9]{4}", years[0])):
+        raise ValueError("Choose a financial year using its four-digit starting year.")
+    if len(months) > 1 or (months and not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", months[0])):
+        raise ValueError("Choose a month in YYYY-MM format.")
+    year = int(years[0]) if years else None
+    if year is not None and not 1 <= year <= 9998:
+        raise ValueError("Choose a valid financial year.")
+    month = months[0] if months else None
+    if month and _financial_year(date.fromisoformat(f"{month}-01")) != (year or _financial_year(_sydney_today())):
+        raise ValueError("Choose a month within the selected financial year.")
+    return year, month
+
+
+def _safe_csv_text(value: str) -> str:
+    """Keep receipt text from becoming a spreadsheet formula."""
+    if value.startswith(("\t", "\r", "\n")) or value.lstrip().startswith(("=", "+", "-", "@", "＝", "＋", "－", "＠")):
+        return "'" + value
+    return value
+
+
+def _receipt_items(raw_items: str | None) -> list[dict]:
+    if not raw_items:
+        return []
+    try:
+        items = json.loads(raw_items)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(items, list):
+        return []
+    output = []
+    for item in items:
+        if not isinstance(item, dict) or not isinstance(item.get("description"), str):
+            continue
+        description = item["description"].strip()
+        amount = item.get("amount")
+        if description and type(amount) in (float, int) and math.isfinite(amount):
+            output.append({"description": description, "amount": round(amount, 2)})
+    return output
+
+
+def build_dashboard_payload(
+    db_path: str | None = None,
+    fy_start_year: int | None = None,
+    month: str | None = None,
+    *,
+    include_drive_links: bool = False,
+) -> dict:
+    today = _sydney_today()
+    current_year = _financial_year(today)
+    year = fy_start_year if fy_start_year is not None else current_year
+    period_start = date(year, 7, 1).isoformat()
+    period_end = date(year + 1, 6, 30).isoformat()
+    available_months = [
+        f"{year + 1:04d}-{number:02d}" for number in range(6, 0, -1)
+    ] + [
+        f"{year:04d}-{number:02d}" for number in range(12, 6, -1)
+    ]
+    if month is not None and month not in available_months:
+        raise ValueError("Choose a month within the selected financial year.")
+    fy = f"FY{year:04d}-{(year + 1) % 100:02d}"
+
     target_db = db_path or get_default_db_path()
     conn = get_connection(target_db)
     init_db(conn)
     seed_accounts(conn)
 
     jm = JournalManager(conn)
+    available_fys = {current_year, year}
+    for row in conn.execute("SELECT DISTINCT SUBSTR(date, 1, 7) AS month FROM receipts"):
+        try:
+            receipt_month = date.fromisoformat(f"{row['month']}-01")
+        except ValueError:
+            continue
+        receipt_year = _financial_year(receipt_month)
+        if 1 <= receipt_year <= 9998:
+            available_fys.add(receipt_year)
 
     # 1. Receipts (Ordered newest first)
     cur = conn.execute(
@@ -128,18 +218,21 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
         SELECT id, vendor, date, total_amount, tax_amount, raw_tax_amount, gst_status,
                currency, category, purpose, claim_stream, business_activity, business_pct,
                claimable_amount, tax_label, payment_method, items_json,
-               confidence, classification_source, gdrive_status, status, flag_reason
+               confidence, classification_source, gdrive_file_id, gdrive_status, status, flag_reason
         FROM receipts
+        WHERE date BETWEEN ? AND ?
         ORDER BY id DESC
-        """
+        """,
+        (period_start, period_end),
     )
     raw_receipts = [dict(r) for r in cur.fetchall()]
     receipts_out = []
     for r in raw_receipts:
-        is_dup = bool(r.get("flag_reason") and "duplicate" in r["flag_reason"].lower())
+        status = (r.get("status") or "recorded").strip().lower()
+        is_dup = status == "duplicate" or bool(r.get("flag_reason") and "duplicate" in r["flag_reason"].lower())
         has_flag = bool((r.get("flag_reason") or "").strip()) and not is_dup
-        low_conf = float(r.get("confidence") if r.get("confidence") is not None else 0.85) < 0.80
-        is_needs_review = (r.get("status") in ("flagged", "needs_review") or has_flag or low_conf) and not is_dup
+        confidence = float(r["confidence"] if r.get("confidence") is not None else 0.85)
+        is_needs_review = (status not in ("recorded", "confirmed", "corrected") or has_flag or confidence < 0.80) and not is_dup
         purpose = r.get("purpose") or "business"
         stream = r.get("claim_stream") or ("abn" if purpose == "business" else "personal")
         activity = r.get("business_activity") or ("printing_3d" if stream == "abn" else "none")
@@ -173,10 +266,16 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
                 "payment_method": r.get("payment_method") or "Bank Account (1000)",
                 "claim": claim,
                 "personal_share": personal_share,
-                "confidence": round(float(r.get("confidence") or 0.85), 2),
+                "items": _receipt_items(r.get("items_json")),
+                "confidence": round(confidence, 2),
                 "classification_source": r.get("classification_source") or "ai_suggestion",
                 "gdrive_status": r.get("gdrive_status") or "not_applicable",
-                "status": r.get("status") or "recorded",
+                "gdrive_url": (
+                    drive_file_url(r.get("gdrive_file_id"))
+                    if include_drive_links and r.get("gdrive_status") == "uploaded"
+                    else None
+                ),
+                "status": status,
                 "duplicate": is_dup,
                 "check": is_needs_review,
                 "flag_reason": r.get("flag_reason"),
@@ -186,7 +285,7 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
     valid_receipts = [r for r in receipts_out if not r["duplicate"]]
     expense_receipts = [
         r for r in valid_receipts
-        if not any(k in (r["category"] or "").lower() for k in ("income", "revenue", "sales"))
+        if not any(k in (r["category"] or "").lower() for k in ("income", "revenue", "sales", "transfer", "repayment"))
     ]
     confirmed_expenses = [r for r in expense_receipts if not r["check"]]
     review_expenses = [r for r in expense_receipts if r["check"]]
@@ -208,7 +307,9 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
         sum(
             r["claim"]
             for r in confirmed_expenses
-            if r["claim"] > 0 and (r["business_activity"] == "dog_walking" or "dog" in (r["category"] or "").lower())
+            if r["claim"] > 0
+            and r["claim_stream"] == "abn"
+            and (r["business_activity"] == "dog_walking" or "dog" in (r["category"] or "").lower())
         ),
         2,
     )
@@ -228,11 +329,20 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
         2,
     )
 
+    business_income = [r for r in income_receipts if not r["check"] and r["claim_stream"] == "abn"]
     dog_walking_inc = round(
-        sum(r["amount"] for r in income_receipts if not r["check"] and (r["business_activity"] == "dog_walking" or "dog" in (r["category"] or "").lower())), 2
+        sum(
+            r["amount"] for r in business_income
+            if r["business_activity"] == "dog_walking" or "dog" in (r["category"] or "").lower()
+        ),
+        2,
     )
     printing_inc = round(
-        sum(r["amount"] for r in income_receipts if not r["check"] and r["business_activity"] != "dog_walking" and "dog" not in (r["category"] or "").lower()), 2
+        sum(
+            r["amount"] for r in business_income
+            if r["business_activity"] != "dog_walking" and "dog" not in (r["category"] or "").lower()
+        ),
+        2,
     )
 
     def group_by_category(items, amount_key="amount"):
@@ -257,8 +367,8 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
         "personal": group_by_category(confirmed_expenses, "personal_share"),
     }
 
-    mytax_rows = jm.get_mytax_summary("2026-07-01", "2027-06-30")
-    mytax_review_rows = jm.get_mytax_review_summary("2026-07-01", "2027-06-30")
+    mytax_rows = jm.get_mytax_summary(period_start, period_end)
+    mytax_review_rows = jm.get_mytax_review_summary(period_start, period_end)
     by_category_abn = group_by_category(confirmed_expenses, "claim")["items"]
 
     # 3. Books (Trial Balance & P&L)
@@ -271,8 +381,14 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
     printing_net = round(printing_inc - printing_exp, 2)
     net_profit = round(dog_net + printing_net, 2)
     net_worth = round(
-        sum(b["net_balance"] for b in bank_accounts) - sum(abs(l["net_balance"]) for l in liability_accounts), 2
+        sum(b["net_balance"] for b in bank_accounts) + sum(l["net_balance"] for l in liability_accounts), 2
     )
+    if month is None:
+        month = today.strftime("%Y-%m") if year == current_year else max(
+            (r["date"][:7] for r in receipts_out if r["date"][:7] in available_months),
+            default=available_months[-1],
+        )
+    spending = jm.get_spending_summary(month)
 
     # 4. Companion State
     comp_cur = conn.execute(
@@ -294,7 +410,10 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
     conn.close()
 
     return {
-        "fy": "FY2026-27",
+        "fy": fy,
+        "fy_start_year": year,
+        "available_fys": sorted(available_fys, reverse=True),
+        "period": {"start": period_start, "end": period_end},
         "currency": "AUD",
         "suggestion_disclaimer": ATO_SUGGESTION_DISCLAIMER,
         "receipts": receipts_out,
@@ -333,7 +452,10 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
             "liabilities": liability_accounts,
             "equity": equity_accounts,
             "trial_balance": tb,
+            "available_months": available_months,
+            "spending": spending,
         },
+        "stock": {"configured": False, "items": []},
         "companion": companion,
     }
 
@@ -341,6 +463,63 @@ def build_dashboard_payload(db_path: str | None = None) -> dict:
 class DashboardHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
+
+    def _dashboard_session(self) -> bool:
+        return get_session(get_default_db_path(), self.headers.get("Cookie", ""))
+
+    def _dashboard_json(self, status: int, payload: dict) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _dashboard_exchange(self) -> None:
+        if self.headers.get("Origin") != DASHBOARD_ORIGIN:
+            self._dashboard_json(403, {"error": "Invalid request origin."})
+            return
+        if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+            self._dashboard_json(415, {"error": "Expected a JSON request."})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 1 <= length <= 1024:
+                raise ValueError("Invalid request length")
+            body = json.loads(self.rfile.read(length))
+        except ValueError:
+            self._dashboard_json(400, {"error": "Invalid login request."})
+            return
+        code = body.get("code") if isinstance(body, dict) else None
+        if not isinstance(code, str) or not code:
+            self._dashboard_json(400, {"error": "Missing login code."})
+            return
+        cookie = issue_session(get_default_db_path(), code)
+        if cookie is None:
+            self._dashboard_json(401, {"error": "This login link is invalid or has expired."})
+            return
+        self._finish_dashboard_session(cookie)
+
+    def _finish_dashboard_session(self, cookie: str) -> None:
+        self.send_response(204)
+        self.send_header("Set-Cookie", cookie)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def do_DELETE(self):
+        if urlparse(self.path).path != "/api/dashboard/session":
+            self.send_response(404)
+            self.end_headers()
+            return
+        if self.headers.get("Origin") != DASHBOARD_ORIGIN:
+            self._dashboard_json(403, {"error": "Invalid request origin."})
+            return
+        try:
+            cookie = clear_session(get_default_db_path(), self.headers.get("Cookie", ""))
+        except sqlite3.Error:
+            self._dashboard_json(503, {"error": "Could not sign out. Please try again."})
+            return
+        self._finish_dashboard_session(cookie)
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -365,18 +544,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_file(os.path.join(OFFICE_STATIC_DIR, path[1:]), "text/javascript; charset=utf-8")
             return
 
-        if path == "/api/dashboard":
-            payload = build_dashboard_payload()
-            body = json.dumps(payload).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
-        if path == "/api/export.csv":
-            payload = build_dashboard_payload()
+        if path in ("/api/dashboard", "/api/export.csv"):
+            if not self._dashboard_session():
+                self._dashboard_json(401, {"error": "Sign in to open the dashboard."})
+                return
+            try:
+                year, month = _parse_dashboard_filters(parsed.query)
+                payload = build_dashboard_payload(
+                    fy_start_year=year, month=month, include_drive_links=path == "/api/dashboard"
+                )
+            except ValueError as error:
+                self._dashboard_json(400, {"error": str(error)})
+                return
+            except sqlite3.Error:
+                self._dashboard_json(503, {"error": "Could not load the ledger. Please try again."})
+                return
+            if path == "/api/dashboard":
+                self._dashboard_json(200, payload)
+                return
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(
@@ -403,33 +588,39 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     [
                         r["id"],
                         r["date"],
-                        r["vendor"],
-                        r["status"],
-                        r["claim_stream"].upper(),
-                        r["business_activity"],
-                        r["category"],
+                        _safe_csv_text(r["vendor"]),
+                        _safe_csv_text(r["status"]),
+                        _safe_csv_text(r["claim_stream"].upper()),
+                        _safe_csv_text(r["business_activity"]),
+                        _safe_csv_text(r["category"]),
                         f"{r['business_pct']:.0f}%",
-                        r["gst_status"],
+                        _safe_csv_text(r["gst_status"]),
                         f"{r['tax_amount']:.2f}",
-                        r.get("tax_label") or "",
+                        _safe_csv_text(r.get("tax_label") or ""),
                         f"{r['amount']:.2f}",
                         f"{r['claim']:.2f}",
                         f"{r['personal_share']:.2f}",
                         r["duplicate"],
                     ]
                 )
-            csv_bytes = output.getvalue().encode("utf-8")
+            csv_bytes = output.getvalue().encode("utf-8-sig")
             self.send_response(200)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Disposition", 'attachment; filename="Neo-D_LedgerCraft_FY2026-27_AUD.csv"')
+            self.send_header("Content-Disposition", f'attachment; filename="Neo-D_LedgerCraft_{payload["fy"]}_AUD.csv"')
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(csv_bytes)
             return
 
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-        if path in ("/", "/web", "/web/", "/index.html", "/web/index.html"):
+        if path in ("/", "/web", "/web/", "/index.html", "/web/index.html", "/dashboard", "/dashboard/"):
             file_path = os.path.join(base_dir, "web", "index.html")
             self._serve_file(file_path, "text/html; charset=utf-8")
+            return
+
+        if path in ("/dashboard.css", "/dashboard.js"):
+            content_type = "text/css" if path.endswith(".css") else "text/javascript"
+            self._serve_file(os.path.join(base_dir, "web", path[1:]), f"{content_type}; charset=utf-8")
             return
 
         if path in ("/docs/assembly_guide_3d.html", "/assembly_guide_3d.html"):
@@ -440,11 +631,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
-    def _check_admin_auth(self) -> bool:
-        """Checks Authorization: Bearer <WEB_ADMIN_TOKEN> if WEB_ADMIN_TOKEN is configured."""
+    def _check_admin_auth(self, *, required: bool = False) -> bool:
+        """Check the configured bearer token, with optional legacy tokenless access."""
         token = os.environ.get("WEB_ADMIN_TOKEN", "").strip()
         if not token:
-            return True
+            return not required
         auth_header = self.headers.get("Authorization", "").strip()
         expected = f"Bearer {token}"
         return hmac.compare_digest(auth_header, expected)
@@ -452,14 +643,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        if path == "/api/dashboard/session":
+            self._dashboard_exchange()
+            return
 
-        # Protect mutation endpoints with optional admin token
-        if path in ("/api/reward", "/api/correct", "/api/intake"):
-            if not self._check_admin_auth():
-                self.send_response(401)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Unauthorized"}).encode("utf-8"))
+        dashboard_action = path in ("/api/dashboard/reward", "/api/dashboard/intake")
+        if dashboard_action:
+            if self.headers.get("Origin") != DASHBOARD_ORIGIN:
+                self._dashboard_json(403, {"error": "Invalid request origin."})
+                return
+            if not self._dashboard_session():
+                self._dashboard_json(401, {"error": "Sign in to use the dashboard."})
+                return
+            path = "/api/" + path.rsplit("/", 1)[-1]
+        elif path in ("/api/reward", "/api/correct", "/api/intake"):
+            origin = self.headers.get("Origin")
+            has_browser_headers = origin is not None or self.headers.get("Cookie") is not None
+            if not self._check_admin_auth(required=has_browser_headers):
+                self._dashboard_json(401, {"error": "Unauthorized"})
                 return
 
         cl_header = self.headers.get("Content-Length", "0")
@@ -482,10 +683,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Request entity too large (max 10 MB)"}).encode("utf-8"))
             return
 
-        raw_body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
         try:
-            data = json.loads(raw_body)
-        except Exception:
+            data = json.loads(self.rfile.read(content_len)) if content_len > 0 else {}
+            if not isinstance(data, dict):
+                raise ValueError("Expected a JSON object.")
+        except ValueError:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -544,12 +746,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     tax_amount=tax_val,
                 )
                 conn.close()
-                payload = build_dashboard_payload(db_file)
-                body = json.dumps(payload).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(body)
+                self._dashboard_json(200, build_dashboard_payload(db_file))
                 return
             except ValueError as e:
                 err_body = json.dumps({"error": str(e)}).encode("utf-8")
@@ -598,12 +795,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         )
                 conn.close()
 
-                payload = build_dashboard_payload(db_file)
-                body = json.dumps(payload).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(body)
+                self._dashboard_json(200, build_dashboard_payload(db_file))
                 return
             except ValueError as e:
                 err_body = json.dumps({"error": str(e)}).encode("utf-8")
@@ -698,7 +890,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "local_path": None,
                 }
                 # The intake endpoint permits demo traffic when no admin token is configured.
-                if sum_gdrive == "uploaded" and os.environ.get("WEB_ADMIN_TOKEN", "").strip():
+                if sum_gdrive == "uploaded" and (dashboard_action or os.environ.get("WEB_ADMIN_TOKEN", "").strip()):
                     archive_url = drive_file_url(getattr(summary, "gdrive_file_id", None))
                     if archive_url:
                         intake_summary["gdrive_url"] = archive_url
@@ -716,20 +908,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "error": intake_errors.get(sum_status, "Receipt was not recorded"),
                         "status": sum_status if sum_status in intake_errors else "not_recorded",
                     }
-                    body = json.dumps(err_payload).encode("utf-8")
-                    self.send_response(503 if sum_status == "archive_unavailable" else 422)
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(body)
+                    self._dashboard_json(503 if sum_status == "archive_unavailable" else 422, err_payload)
                     return
 
                 payload = build_dashboard_payload(db_file)
                 payload["intake_summary"] = intake_summary
-                body = json.dumps(payload).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(body)
+                self._dashboard_json(200, payload)
                 return
             except ValueError as e:
                 err_body = json.dumps({"error": str(e)}).encode("utf-8")

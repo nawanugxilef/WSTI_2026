@@ -13,17 +13,19 @@ Restricted to owner only. Strictly English and AUD ($ AUD).
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import logging
 import os
 import shlex
+import sqlite3
 import sys
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import FileSizeLimit
+from telegram.constants import ChatType, FileSizeLimit
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
     Application,
@@ -39,6 +41,7 @@ from src.agents.finance_agent import FinanceAgent
 from src.agents.qa_agent import likely_duplicate_receipt_id
 from src.agents.receipt_progress import ReceiptProgress
 from src.interfaces.cli import load_config, seed_accounts
+from src.interfaces.dashboard_auth import LOGIN_SECONDS, create_login_url
 from src.interfaces.telegram_receipt import CATEGORY_LABELS, format_receipt_card, format_receipt_details
 from src.storage.categories import (
     ATO_SUGGESTION_DISCLAIMER,
@@ -447,6 +450,9 @@ class TelegramReceiptBot:
         return reward
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if context and context.args == ["dashboard"]:
+            await self.dashboard_command(update, context)
+            return
         if not self._is_authorized(update):
             await update.message.reply_text("⛔ Unauthorized user.")
             return
@@ -466,6 +472,7 @@ class TelegramReceiptBot:
             f"• 🎛️ *Conditional 1-Tap Inline Buttons*: Adjust *Stream* (`ABN`/`PAYG`/`Personal`), *Activity* (`Dog Walking`/`3D Printing`), *Business %* (`100%`/`80%`/`50%`/`30%`/`0%`), or *Category* — books & tax totals recalculate instantly and Vendor Memory remembers your confirmed fix!\n"
             f"• `/correct <id> ...` — Command-based correction (e.g. `/correct 1 pct=50 stream=abn activity=dog_walking gst=0`)\n"
             f"• `/recent` — List recent receipts and allocations\n"
+            f"• `/dashboard` — Open your private finance dashboard\n"
             f"• `/categories` — View all ABN, PAYG, and Personal categories\n"
             f"• `/balance` — View Double-Entry Trial Balance\n"
             f"• `/mytax` (or `/total`) — View Confirmed vs Needs-Review ATO myTax Summary\n"
@@ -476,6 +483,23 @@ class TelegramReceiptBot:
             f"• `/backup` — Snapshot database to Google Drive"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
+
+    async def dashboard_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update) or update.effective_chat.type != ChatType.PRIVATE:
+            return
+        if not update.effective_user or update.effective_user.id != self.owner_chat_id:
+            return
+        try:
+            url = await asyncio.to_thread(create_login_url, self.db_path)
+        except (OSError, sqlite3.Error):
+            logger.exception("Dashboard login storage is unavailable")
+            await update.message.reply_text("Dashboard sign-in is temporarily unavailable. Try again shortly.")
+            return
+        await update.message.reply_text(
+            f"Your private dashboard link expires in {LOGIN_SECONDS // 60} minutes.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Open Dashboard", url=url)]]),
+            protect_content=True,
+        )
 
     async def recent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
@@ -1081,6 +1105,7 @@ class TelegramReceiptBot:
 
         app = Application.builder().token(self.bot_token).build()
         app.add_handler(CommandHandler("start", self.start_command))
+        app.add_handler(CommandHandler("dashboard", self.dashboard_command))
         app.add_handler(CommandHandler("recent", self.recent_command))
         app.add_handler(CommandHandler("categories", self.categories_command))
         app.add_handler(CommandHandler("correct", self.correct_command))
