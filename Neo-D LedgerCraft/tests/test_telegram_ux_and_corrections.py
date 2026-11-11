@@ -510,7 +510,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.tmp_dir.name, "receipts")))
 
     def test_terse_telegram_note_uses_sydney_capture_day_and_one_companion_line(self):
-        """[FICTIONAL DEMO] A short expense uses the Sydney day the owner sent it."""
+        """[FICTIONAL DEMO] A failed typing indicator does not drop a short expense."""
         bot = TelegramReceiptBot(
             bot_token="fictional_token",
             owner_chat_id=12345,
@@ -530,7 +530,8 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         )
         message = SimpleNamespace(
             text="coffe 6.50", date=utc_sent,
-            reply_chat_action=AsyncMock(), reply_text=AsyncMock(),
+            reply_chat_action=AsyncMock(side_effect=NetworkError("Fictional typing notice failure")),
+            reply_text=AsyncMock(),
         )
         update = SimpleNamespace(message=message, effective_chat=SimpleNamespace(id=12345))
         # Use a fixed Sydney summer offset in the Windows test environment.
@@ -539,6 +540,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
             asyncio.run(bot.handle_text(update, SimpleNamespace()))
 
         timezone_lookup.assert_called_once_with("Australia/Sydney")
+        message.reply_chat_action.assert_awaited_once_with("typing")
         receipt = bot.cos.km.get_receipt(1)
         self.assertEqual(receipt["date"], sydney_day.isoformat())
         self.assertEqual(receipt["total_amount"], 6.50)

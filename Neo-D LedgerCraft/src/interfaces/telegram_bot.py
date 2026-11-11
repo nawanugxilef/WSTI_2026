@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import FileSizeLimit
-from telegram.error import BadRequest
+from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -710,7 +710,11 @@ class TelegramReceiptBot:
         if not text or text.startswith("/"):
             return
 
-        await update.message.reply_chat_action("typing")
+        try:
+            await update.message.reply_chat_action("typing")
+        except TelegramError as error:
+            logger.warning("Telegram typing notice failed (%s)", type(error).__name__)
+
         try:
             captured = getattr(update.message, "date", None)
             if not isinstance(captured, datetime.datetime):

@@ -17,8 +17,8 @@ from src.storage.journal import JournalManager
 CAPTURE_DATE = date(2026, 11, 11)
 
 
-@pytest.mark.parametrize("description", ["coffee", "coffe"])
-def test_short_manual_expense_is_recorded_with_the_telegram_capture_date(description):
+@pytest.mark.parametrize("text", ["coffee 5.5", "coffe 5.5", "cofee 5,5"])
+def test_short_manual_expense_is_recorded_with_the_telegram_capture_date(text):
     with closing(sqlite3.connect(":memory:")) as conn:
         conn.row_factory = sqlite3.Row
         init_db(conn)
@@ -26,7 +26,7 @@ def test_short_manual_expense_is_recorded_with_the_telegram_capture_date(descrip
         cos = ChiefOfStaff(main_conn=conn, finance_agent=FinanceAgent(api_key=""))
 
         # [FICTIONAL DEMO] Match the terse owner input exactly.
-        result = cos.process_note(f"{description} 5.5", capture_date=CAPTURE_DATE)
+        result = cos.process_note(text, capture_date=CAPTURE_DATE)
 
         assert result.status == "recorded"
         assert result.receipt_id > 0
@@ -67,17 +67,50 @@ def test_manual_note_preserves_explicit_date_and_non_telegram_default():
 def test_configured_model_cannot_replace_manual_capture_date_or_amount():
     finance = FinanceAgent(api_key="")
     generate = Mock(return_value=SimpleNamespace(text=json.dumps({
-        "vendor": "[FICTIONAL DEMO] coffee",
+        "vendor": "[FICTIONAL DEMO] parking",
         "date": "2026-11-01",
         "total_amount": 0.25,
-        "category": "dining_coffee",
+        "category": "travel_parking",
     })))
     finance._client = SimpleNamespace(models=SimpleNamespace(generate_content=generate))
 
-    result = finance.parse_note("[FICTIONAL DEMO] coffee 5.5", capture_date=CAPTURE_DATE)
+    result = finance.parse_note("[FICTIONAL DEMO] parking 5.5", capture_date=CAPTURE_DATE)
 
     generate.assert_called_once()
-    instruction = generate.call_args.kwargs["config"].system_instruction
-    assert "verified the entry date as 2026-11-11 in Australia/Sydney" in instruction
+    config = generate.call_args.kwargs["config"]
+    assert "verified the entry date as 2026-11-11 in Australia/Sydney" in config.system_instruction
+    assert config.http_options.timeout == 8_000
+    assert config.http_options.retry_options.attempts == 1
     assert result.date == CAPTURE_DATE.isoformat()
     assert result.total_amount == 5.50
+
+
+@pytest.mark.parametrize("text", ["cofee 5,5", "coffee 5,50", "coffe $5,5"])
+def test_known_short_coffee_entry_does_not_wait_for_a_configured_model(text):
+    finance = FinanceAgent(api_key="")
+    generate = Mock(side_effect=AssertionError("known short coffee notes must be local"))
+    finance._client = SimpleNamespace(models=SimpleNamespace(generate_content=generate))
+
+    # [FICTIONAL DEMO] Exercise the exact punctuation and spelling of terse Telegram input.
+    result = finance.parse_note(text, capture_date=CAPTURE_DATE)
+
+    generate.assert_not_called()
+    assert result.date == CAPTURE_DATE.isoformat()
+    assert result.total_amount == 5.50
+    assert result.category == "dining_coffee"
+    assert result.claim_stream == "personal"
+    assert result.classification_source == "rule_heuristic"
+
+
+@pytest.mark.parametrize(("amount", "expected"), [
+    ("$1,234.50", 1234.50),
+    ("1,234.50", 1234.50),
+    ("$1,234", 1234.0),
+    ("1,234", None),
+    ("1,234,5", None),
+    ("$1,234,5", None),
+])
+def test_manual_note_distinguishes_decimal_commas_and_thousands(amount, expected):
+    result = FinanceAgent(api_key="").parse_note(f"[FICTIONAL DEMO] coffee {amount}", capture_date=CAPTURE_DATE)
+    assert result.total_amount == expected
+    assert result.date == (CAPTURE_DATE.isoformat() if expected is not None else None)

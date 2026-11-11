@@ -129,12 +129,19 @@ BATCH_SYSTEM_PROMPT = SYSTEM_PROMPT + "\nReturn one JSON object matching this sc
 
 # Remove dates before scanning for amounts so a day or year cannot become a dollar value.
 NOTE_DATE_PATTERN = re.compile(r"(?<!\w)(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{2,4}|today|yesterday)(?!\w)", re.IGNORECASE)
-NUMBER_PATTERN = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2}|,\d{2})?"
+NUMBER_PATTERN = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
+_BARE_NOTE_AMOUNT = re.compile(
+    r"(?<![\w.,/$€£¥-])((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{1,2}|\d+,\d{1,2})(?![\w.,/-])"
+)
+_DEMO_PREFIX = r"(?:\[FICTIONAL DEMO\][ \t]+)?"
 _NOTE_WORD = r"(?:3d|[^\W\d_][^\W\d_]*(?:[.'’&-][^\W\d_]*)*)"
+_NOTE_AMOUNT_TAIL = rf"[ \t]+(?:AUD[ \t]*\$?|A\$|\$)?[ \t]*{NUMBER_PATTERN}"
+_COFFEE_WORD = r"(?:coffee|coffe|cofee)"
 _TERSE_EXPENSE_NOTE = re.compile(
-    rf"(?:\[FICTIONAL DEMO\][ \t]+)?{_NOTE_WORD}(?:[ \t]+{_NOTE_WORD}){{0,5}}"
-    rf"[ \t]+(?:AUD[ \t]*\$?|A\$|\$)?[ \t]*{NUMBER_PATTERN}",
-    re.IGNORECASE,
+    rf"{_DEMO_PREFIX}{_NOTE_WORD}(?:[ \t]+{_NOTE_WORD}){{0,5}}{_NOTE_AMOUNT_TAIL}", re.IGNORECASE
+)
+_TERSE_COFFEE_NOTE = re.compile(
+    rf"{_DEMO_PREFIX}{_COFFEE_WORD}{_NOTE_AMOUNT_TAIL}", re.IGNORECASE
 )
 _OTHER_DATE_CUE = re.compile(
     r"\b(?:tomorrow|yday|yest|last|next|ago|date|days?|weeks?|months?|years?|"
@@ -157,7 +164,7 @@ def _calendar_date(value: str) -> Optional[str]:
 
 
 def _amount_value(value: str) -> Optional[float]:
-    if "." not in value and re.fullmatch(r"\d+,\d{2}", value):
+    if "." not in value and re.fullmatch(r"\d+,\d{1,2}", value):
         amount = float(value.replace(",", "."))
     else:
         amount = float(value.replace(",", ""))
@@ -422,11 +429,13 @@ class FinanceAgent:
         capture_date: Optional[datetime.date] = None,
     ) -> ParsedReceipt:
         """Invokes Gemini model for text extraction with fallback models."""
-        from google.genai import types
-
         evidence = self._heuristic_parse_text(text, capture_date=capture_date)
         if evidence.date is None or evidence.total_amount is None:
             return evidence
+        if capture_date is not None and _TERSE_COFFEE_NOTE.fullmatch(text.strip()):
+            return evidence
+
+        from google.genai import types
 
         system_instruction = RECEIPT_SYSTEM_PROMPT
         if capture_date is not None and not NOTE_DATE_PATTERN.search(text):
@@ -460,6 +469,10 @@ class FinanceAgent:
                         system_instruction=system_instruction,
                         response_mime_type="application/json",
                         temperature=0.0,
+                        http_options=types.HttpOptions(
+                            timeout=8_000,
+                            retry_options=types.HttpRetryOptions(attempts=1),
+                        ),
                     ),
                 )
                 data = json.loads(response.text)
@@ -591,10 +604,7 @@ class FinanceAgent:
             re.IGNORECASE,
         ))
         if not amount_matches:
-            amount_matches = list(re.finditer(
-                r"(?<![\w./$€£¥-])(\d+(?:,\d{3})*\.\d{1,2}|\d+,\d{2})(?![\w.,/-])",
-                text_without_dates,
-            ))
+            amount_matches = list(_BARE_NOTE_AMOUNT.finditer(text_without_dates))
         amounts = {_amount_value(match.group(1)) for match in amount_matches}
         total = next(iter(amounts)) if len(amounts) == 1 else None
         vendor_source = text_without_dates[:amount_matches[0].start()] if amount_matches else text_without_dates
@@ -621,7 +631,7 @@ class FinanceAgent:
         )
 
         lower = text.lower()
-        is_coffee = any(word in lower for word in ("coffee", "cafe", "latte")) or bool(re.search(r"\bcoffe\b", lower))
+        is_coffee = any(word in lower for word in ("coffee", "cafe", "latte")) or bool(re.search(rf"\b{_COFFEE_WORD}\b", lower))
         if "afterpay" in lower or "pay in 4" in lower or "zippay" in lower or "zip pay" in lower:
             payment_method = "Afterpay / BNPL (2200)"
         elif "osko" in lower:
