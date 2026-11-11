@@ -166,7 +166,7 @@ Never expose the plain HTTP port 8080 directly to `0.0.0.0/0`.
 
 - `neo.service` serves the dashboard on loopback. `neo-bot.service` issues private one-time links. Both units must resolve the same ledger file and run with access to the session database alongside it.
 - `edge/neo-office.mjs` uses `NEO_OFFICE_ORIGIN` for the public Office and its sanitised activity feed. Set `NEO_DASHBOARD_ORIGIN` to the HTTPS hostname of the dedicated Cloudflare Tunnel. The dashboard proxy refuses a plaintext origin.
-- The tunnel forwards the dashboard page, assets, and allowlisted dashboard APIs to `127.0.0.1:8080`. Keep its token in a root-only file outside the repository and pass it to cloudflared with `--token-file`.
+- The tunnel forwards the dashboard page, assets, and allowlisted dashboard APIs to `127.0.0.1:8080`. Include the manifest, app icons, and service worker in the public asset allowlist. The service worker does not cache ledger data. Keep the tunnel token in a root-only file outside the repository and pass it to cloudflared with `--token-file`.
 - On the public HTTP listener, block `/api/dashboard`, everything under `/api/dashboard/`, `/api/export.csv`, and the legacy `/api/intake`, `/api/reward`, and `/api/correct` routes. The public Office assets and activity feed remain available.
 - Verify that the public dashboard loads, anonymous dashboard and export requests return 401, the HTTP origin returns 404 for those APIs, and the bot issues links only in the owner's private chat. Stop the tunnel before rolling back to an origin that predates dashboard authentication.
 

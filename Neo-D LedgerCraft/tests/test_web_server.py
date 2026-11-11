@@ -94,6 +94,23 @@ class TestWebServer(unittest.TestCase):
         self.assertIn("; Secure; HttpOnly; SameSite=Strict", headers["Set-Cookie"])
         return code, headers["Set-Cookie"].split(";", 1)[0]
 
+    def test_dashboard_install_assets_are_public(self):
+        assets = {
+            "/dashboard.webmanifest": "application/manifest+json",
+            "/dashboard-icon-192.png": "image/png",
+            "/dashboard-icon-512.png": "image/png",
+            "/dashboard-apple-touch-icon.png": "image/png",
+            "/dashboard-sw.js": "text/javascript",
+        }
+        for path, content_type in assets.items():
+            with self.subTest(path=path):
+                status, headers, body = self._dashboard_request("GET", path)
+                self.assertEqual(status, 200)
+                self.assertEqual(headers["Content-Type"].split(";")[0], content_type)
+                self.assertTrue(body)
+                if content_type == "image/png":
+                    self.assertTrue(body.startswith(b"\x89PNG\r\n\x1a\n"))
+
     def test_dashboard_routes_require_owner_session(self):
         for route in ("/api/dashboard", "/api/export.csv", "/api/dashboard/intake", "/api/dashboard/reward"):
             with self.subTest(route=route):
@@ -169,7 +186,7 @@ class TestWebServer(unittest.TestCase):
         self.assertEqual(dashboard["mytax"]["by_mytax_label"][0]["gross_amount"], 55)
         self.assertEqual(dashboard["books"]["spending"]["total_spent"], 55)
         self.assertEqual(dashboard["books"]["spending"]["month"], "2026-07")
-        self.assertEqual(dashboard["stock"], {"configured": False, "items": []})
+        self.assertNotIn("stock", dashboard)
         receipt = dashboard["receipts"][-1]
         self.assertEqual(receipt["items"], [{"description": "[FICTIONAL DEMO] part", "amount": 55}])
         self.assertEqual(receipt["gdrive_url"], f"https://drive.google.com/open?id={drive_id}")

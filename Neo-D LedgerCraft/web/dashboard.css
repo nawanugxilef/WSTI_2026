@@ -69,7 +69,7 @@ ul { padding: 0; list-style: none; }
   background: white;
   box-shadow: 8px 0 0 white;
 }
-.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding-bottom: 8px; }
+.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding-bottom: 8px; }
 .tabs button, .filters button, .quiet-button, .icon-button, .primary-button, select {
   border: 1px solid var(--line);
   background: var(--paper);
@@ -105,6 +105,12 @@ main.frame { padding-block: 12px 16px; }
 .gate { margin-top: 8px; padding: 22px; }
 .gate h2 { font-size: 1.23rem; }
 .gate .primary-button { margin-top: 12px; }
+.install-entry { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.install-entry button { min-height: 36px; }
+.sign-in-code { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
+.sign-in-code summary { cursor: pointer; font-weight: 600; }
+.sign-in-code form, .install-guide { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 8px; }
+.sign-in-code .primary-button, .install-guide button { justify-self: start; margin-top: 0; }
 .search, input:not([type=file]) {
   width: 100%;
   min-height: 42px;

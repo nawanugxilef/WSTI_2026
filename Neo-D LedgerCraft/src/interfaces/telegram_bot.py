@@ -22,6 +22,7 @@ import shlex
 import sqlite3
 import sys
 from typing import Dict, List, Optional
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -495,9 +496,13 @@ class TelegramReceiptBot:
             logger.exception("Dashboard login storage is unavailable")
             await update.message.reply_text("Dashboard sign-in is temporarily unavailable. Try again shortly.")
             return
+        code = urlsplit(url).fragment.removeprefix("code=")
+        # Pass the Bot API field through for compatibility with PTB versions before 21.7.
+        copy_code = InlineKeyboardButton("Copy sign-in code", api_kwargs={"copy_text": {"text": code}})
         await update.message.reply_text(
-            f"Your private dashboard link expires in {LOGIN_SECONDS // 60} minutes.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Open Dashboard", url=url)]]),
+            "Open Dashboard here or copy the code to sign in from the app on your Home Screen. "
+            f"The link and code work once and expire in {LOGIN_SECONDS // 60} minutes.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Open Dashboard", url=url)], [copy_code]]),
             protect_content=True,
         )
 

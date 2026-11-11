@@ -236,23 +236,16 @@ function renderBooks() {
   byId("books-accounts").hidden = !accounts.length;
 }
 
-function renderStock() {
-  byId("stock-status").textContent = data.stock.configured
-    ? (data.stock.items.length ? "" : "No stock recorded.") : "Stock quantities are unavailable. No inventory source is connected.";
-  byId("stock-items").replaceChildren(...data.stock.items.map((item) => row(item.name, item.quantity + " " + (item.unit || ""))));
-  const purchases = data.receipts.filter((receipt) => receipt.category === "materials_3d_printing" && !receipt.duplicate && !receipt.check);
-  fillList("stock-purchases", purchases.map((receipt) => row(receipt.vendor, money(receipt.amount), dateLabel(receipt.date))), "No confirmed material purchases this financial year.");
-}
-
 function gate(title, message, signIn = false, retry = false) {
   byId("gate-title").textContent = title;
   byId("gate-message").textContent = message;
   byId("gate").hidden = false;
   byId("telegram-sign-in").hidden = !signIn;
+  byId("sign-in-code").hidden = !signIn;
   byId("retry").hidden = !retry;
 }
 
-function requireSignIn(message = "Open Neo in Telegram and use /dashboard to get your sign-in link.") {
+function requireSignIn(message = "Use /dashboard in Neo’s Telegram chat to get a one-time link or code.") {
   if (data) {
     location.replace("/dashboard");
     return;
@@ -295,7 +288,6 @@ async function loadDashboard(year = fiscalYear.value, month = spendingMonth.valu
       renderReceipts();
       renderMyTax();
       renderBooks();
-      renderStock();
     }
     if (firstLoad) showTab(selectedTab, false);
     [dashboard, tabs, fiscalYear, byId("refresh")].forEach((node) => { node.hidden = false; });
@@ -316,6 +308,18 @@ async function loadDashboard(year = fiscalYear.value, month = spendingMonth.valu
   }
 }
 
+async function exchangeLoginCode(code) {
+  gate("Signing in…", "");
+  try {
+    const response = await fetch("/api/dashboard/session", requestOptions("POST", { code }));
+    if (response.ok) await loadDashboard();
+    else if (response.status === 401) requireSignIn("This sign-in code expired or was already used. Request a fresh one in Telegram.");
+    else throw new Error("Sign-in unavailable");
+  } catch {
+    gate("Sign-in unavailable", "Request a fresh sign-in code in Telegram and try again.", true);
+  }
+}
+
 async function begin() {
   const code = new URLSearchParams(location.hash.slice(1)).get("code");
   if (!code) {
@@ -323,15 +327,7 @@ async function begin() {
     return;
   }
   history.replaceState(null, "", location.pathname + location.search);
-  gate("Signing in…", "");
-  try {
-    const response = await fetch("/api/dashboard/session", requestOptions("POST", { code }));
-    if (response.ok) await loadDashboard();
-    else if (response.status === 401) requireSignIn("This link expired or was already used. Request a fresh link in Telegram.");
-    else throw new Error("Sign-in unavailable");
-  } catch {
-    gate("Sign-in unavailable", "Try opening a new link from Telegram.", true, true);
-  }
+  await exchangeLoginCode(code);
 }
 
 function showFormStatus(id, message) {
@@ -420,6 +416,19 @@ spendingMonth.addEventListener("change", () => loadDashboard());
 byId("refresh").addEventListener("click", () => loadDashboard());
 byId("retry").addEventListener("click", () => loadDashboard());
 
+byId("sign-in-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = byId("login-code");
+  const code = input.value.trim();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(code)) {
+    showFormStatus("code-status", "Paste the sign-in code copied from Telegram.");
+    return;
+  }
+  input.value = "";
+  showFormStatus("code-status", "");
+  await exchangeLoginCode(code);
+});
+
 byId("intake-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -481,4 +490,52 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("hashchange", () => {
   if (location.hash) begin();
 });
+
+const standaloneMode = window.matchMedia("(display-mode: standalone)");
+const installEntry = byId("install-entry");
+const installDialog = byId("install-dialog");
+const updateInstallEntry = () => { installEntry.hidden = standaloneMode.matches || navigator.standalone === true; };
+let installPrompt;
+updateInstallEntry();
+standaloneMode.addEventListener?.("change", updateInstallEntry);
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  installPrompt = event;
+});
+window.addEventListener("appinstalled", () => {
+  installPrompt = null;
+  installEntry.hidden = true;
+});
+byId("install-open").addEventListener("click", async () => {
+  if (installPrompt) {
+    const prompt = installPrompt;
+    installPrompt = null;
+    try {
+      await prompt.prompt();
+      return;
+    } catch {
+      // The browser may withdraw a prompt after it has been queued.
+    }
+  }
+  installDialog.showModal();
+});
+byId("copy-dashboard-link").addEventListener("click", async () => {
+  const address = new URL("/dashboard", location.origin).href;
+  try {
+    await navigator.clipboard.writeText(address);
+    showFormStatus("copy-link-status", "Link copied.");
+  } catch {
+    const field = byId("dashboard-address");
+    field.value = address;
+    field.hidden = false;
+    field.focus();
+    field.select();
+    showFormStatus("copy-link-status", "Copy the selected link.");
+  }
+});
+
+if ("serviceWorker" in navigator && /^\/dashboard\/?$/.test(location.pathname)) {
+  navigator.serviceWorker.register("/dashboard-sw.js", { scope: "/dashboard" }).catch(() => {});
+}
 begin();

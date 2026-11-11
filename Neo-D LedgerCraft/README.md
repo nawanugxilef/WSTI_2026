@@ -71,7 +71,9 @@ The Google Drive folder settings are:
 
 Open [Neo Dashboard](https://neo.madewithfelix.app/dashboard) and choose **Open Neo in Telegram**, or send `/dashboard` in the owner's private chat with Neo. Open the one-time link within five minutes.
 
-Receipts, myTax, and Books use the Neo ledger. Stock shows recorded material purchases and whether an inventory source is connected.
+Receipts, myTax, and Books use the Neo ledger.
+
+To install the dashboard, open it in Safari on iPhone or Chrome on Android. In Safari, tap **Share**, then **Add to Home Screen**, and turn on **Open as Web App** if shown. In Chrome, open the menu and select **Install app**. To sign in from the Home Screen app, copy the one-time code from Neo's `/dashboard` reply and paste it into the dashboard's sign-in form.
 
 ---
 

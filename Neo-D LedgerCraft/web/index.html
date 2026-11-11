@@ -6,6 +6,9 @@
   <meta name="theme-color" content="#f2f5f3">
   <meta name="apple-mobile-web-app-title" content="Neo Ledger">
   <title>Dashboard · Neo LedgerCraft</title>
+  <link rel="manifest" href="/dashboard.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/dashboard-icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/dashboard-apple-touch-icon.png">
   <link rel="stylesheet" href="/dashboard.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
   <script src="/dashboard.js" defer></script>
@@ -29,17 +32,29 @@
         <button type="button" data-tab="receipts" aria-controls="receipts" aria-current="true">Receipts</button>
         <button type="button" data-tab="mytax" aria-controls="mytax">myTax</button>
         <button type="button" data-tab="books" aria-controls="books">Books</button>
-        <button type="button" data-tab="stock" aria-controls="stock">Stock</button>
       </nav>
     </div>
   </header>
 
   <main class="frame">
+    <div class="install-entry" id="install-entry" hidden>
+      <button class="quiet-button" id="install-open" type="button">Add to Home Screen</button>
+    </div>
     <section class="card gate" id="gate" aria-labelledby="gate-title">
       <h2 id="gate-title">Opening dashboard…</h2>
       <p id="gate-message" class="muted" role="status"></p>
       <a id="telegram-sign-in" class="primary-button" href="https://t.me/neo_ledgercraft_bot?start=dashboard" hidden>Open Neo in Telegram</a>
       <button id="retry" class="primary-button" type="button" hidden>Try again</button>
+      <details class="sign-in-code" id="sign-in-code" hidden>
+        <summary>Enter a sign-in code</summary>
+        <form id="sign-in-form">
+          <p class="muted">Send /dashboard to Neo in Telegram and tap Copy sign-in code.</p>
+          <label class="sr-only" for="login-code">One-time sign-in code</label>
+          <input id="login-code" type="text" placeholder="Paste sign-in code" autocomplete="one-time-code" spellcheck="false" autocapitalize="off" required>
+          <button class="primary-button" type="submit">Sign in</button>
+          <p class="form-status" id="code-status" role="status" hidden></p>
+        </form>
+      </details>
       <noscript><p>Enable JavaScript to sign in and view your ledger.</p></noscript>
     </section>
 
@@ -138,24 +153,28 @@
         </article>
       </section>
 
-      <section id="stock" aria-label="Stock" hidden>
-        <article class="card">
-          <h2>On hand</h2>
-          <p class="muted" id="stock-status"></p>
-          <ul class="rows" id="stock-items"></ul>
-        </article>
-        <article class="card">
-          <h2>3D printing material purchases</h2>
-          <ul class="rows" id="stock-purchases"></ul>
-        </article>
-      </section>
-
       <footer class="footer">
         <button class="quiet-button" id="open-companion" type="button">Womby</button>
         <button class="quiet-button" id="sign-out" type="button">Sign out</button>
       </footer>
     </div>
   </main>
+
+  <dialog id="install-dialog" aria-labelledby="install-title">
+    <div class="dialog-heading">
+      <h2 id="install-title">Add Neo Dashboard to Home Screen</h2>
+      <form method="dialog"><button class="quiet-button" type="submit">Close</button></form>
+    </div>
+    <div class="install-guide">
+      <p>If you’re in Telegram, copy the dashboard link and open it in your phone’s browser.</p>
+      <p><strong>iPhone</strong> · In Safari, tap Share, then Add to Home Screen. Turn on Open as Web App if shown, then tap Add.</p>
+      <p><strong>Android</strong> · In Chrome, tap ⋮, then Add to Home screen or Install app.</p>
+      <button class="quiet-button" id="copy-dashboard-link" type="button">Copy dashboard link</button>
+      <label class="sr-only" for="dashboard-address">Dashboard link</label>
+      <input id="dashboard-address" type="url" readonly hidden>
+      <p class="muted" id="copy-link-status" role="status" hidden></p>
+    </div>
+  </dialog>
 
   <dialog id="receipt-dialog" aria-labelledby="receipt-title">
     <div class="dialog-heading">

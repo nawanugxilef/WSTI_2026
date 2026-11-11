@@ -6,6 +6,11 @@ const DASHBOARD_ROUTES = new Map([
   ["/dashboard/", { type: "text/html", methods: READ }],
   ["/dashboard.css", { type: "text/css", methods: READ }],
   ["/dashboard.js", { type: "text/javascript", methods: READ }],
+  ["/dashboard.webmanifest", { type: "application/manifest+json", methods: READ }],
+  ["/dashboard-icon-192.png", { type: "image/png", methods: READ }],
+  ["/dashboard-icon-512.png", { type: "image/png", methods: READ }],
+  ["/dashboard-apple-touch-icon.png", { type: "image/png", methods: READ }],
+  ["/dashboard-sw.js", { type: "text/javascript", methods: READ }],
   ["/api/dashboard", { type: "application/json", methods: READ, session: true }],
   ["/api/export.csv", { type: "text/csv", methods: READ, session: true }],
   ["/api/dashboard/session", { type: "application/json", methods: ["POST", "DELETE"], maxBytes: 1024, login: true }],
@@ -35,6 +40,8 @@ const CONTENT_SECURITY_POLICY = [
 const DASHBOARD_CSP = [
   "default-src 'none'",
   "script-src 'self'",
+  "worker-src 'self'",
+  "manifest-src 'self'",
   "style-src 'self' https://fonts.googleapis.com",
   "font-src https://fonts.gstatic.com",
   "connect-src 'self'",
@@ -109,7 +116,7 @@ async function serveDashboard(request, url, route, env) {
       return dashboardError(502, "Dashboard connection is unavailable.", head);
     }
     const responseHeaders = dashboardHeaders();
-    if (upstream.status !== 204) responseHeaders.set("Content-Type", type + "; charset=utf-8");
+    if (upstream.status !== 204) responseHeaders.set("Content-Type", type.startsWith("image/") ? type : type + "; charset=utf-8");
     for (const key of ["Content-Disposition", "Retry-After"]) {
       if (upstream.headers.has(key)) responseHeaders.set(key, upstream.headers.get(key));
     }

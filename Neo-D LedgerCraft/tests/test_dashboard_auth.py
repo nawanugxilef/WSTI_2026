@@ -108,7 +108,10 @@ def test_telegram_dashboard_command_only_issues_in_owner_private_chat(
         return
     reply_text.assert_awaited_once()
     reply = reply_text.await_args.kwargs
-    button = reply["reply_markup"].inline_keyboard[0][0]
+    buttons = reply["reply_markup"].to_dict()["inline_keyboard"]
+    code = _login_code(buttons[0][0]["url"])
     assert reply["protect_content"] is True
-    assert button.text == "Open Dashboard"
-    assert auth.issue_session(bot.db_path, _login_code(button.url))
+    assert buttons[0][0]["text"] == "Open Dashboard"
+    assert buttons[1][0] == {"text": "Copy sign-in code", "copy_text": {"text": code}}
+    assert auth.issue_session(bot.db_path, buttons[1][0]["copy_text"]["text"])
+    assert auth.issue_session(bot.db_path, code) is None

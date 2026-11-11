@@ -111,6 +111,15 @@ def validate_uploaded_file(file_b64: str, filename: str) -> tuple[bytes, str]:
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 DEFAULT_DB_PATH = os.path.join(PROJECT_ROOT, "data", "ledger.db")
 OFFICE_STATIC_DIR = os.path.join(os.path.dirname(os.path.realpath(PROJECT_ROOT)), "static")
+DASHBOARD_ASSETS = {
+    "/dashboard.css": "text/css; charset=utf-8",
+    "/dashboard.js": "text/javascript; charset=utf-8",
+    "/dashboard.webmanifest": "application/manifest+json",
+    "/dashboard-icon-192.png": "image/png",
+    "/dashboard-icon-512.png": "image/png",
+    "/dashboard-apple-touch-icon.png": "image/png",
+    "/dashboard-sw.js": "text/javascript; charset=utf-8",
+}
 
 
 def get_default_db_path() -> str:
@@ -455,7 +464,6 @@ def build_dashboard_payload(
             "available_months": available_months,
             "spending": spending,
         },
-        "stock": {"configured": False, "items": []},
         "companion": companion,
     }
 
@@ -618,9 +626,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_file(file_path, "text/html; charset=utf-8")
             return
 
-        if path in ("/dashboard.css", "/dashboard.js"):
-            content_type = "text/css" if path.endswith(".css") else "text/javascript"
-            self._serve_file(os.path.join(base_dir, "web", path[1:]), f"{content_type}; charset=utf-8")
+        if path in DASHBOARD_ASSETS:
+            self._serve_file(os.path.join(base_dir, "web", path[1:]), DASHBOARD_ASSETS[path])
             return
 
         if path in ("/docs/assembly_guide_3d.html", "/assembly_guide_3d.html"):
