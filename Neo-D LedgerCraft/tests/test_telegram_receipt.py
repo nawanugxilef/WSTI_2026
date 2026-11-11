@@ -36,7 +36,7 @@ def test_saved_personal_photo_is_compact_and_uses_gross_gst():
         "$6.50 AUD · GST $0.60 · Card",
         "Item: [FICTIONAL DEMO] Flat white (large)",
         "Personal · Dining & coffee",
-        "Source: 🦊 AI suggestion",
+        "Source: 🐶 Corgi · AI suggestion",
         "Status: Recorded · Drive saved",
     ]
     assert "fictional_receipt_identifier" not in card

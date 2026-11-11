@@ -3,28 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Felix Inc — Four Agent Office · Offline Demo</title>
+<title>Neo Agent Office</title>
+<script defer src="./office-calendar.js"></script>
 <style>
   :root { --bg: #0f1427; --text: #e8ebf2; --muted: #98a1b3; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px 'Nunito', system-ui, sans-serif; }
   header { padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   #office { height: calc(100dvh - 60px); margin: 0 16px 16px; border-radius: 16px; overflow: hidden;
     background: radial-gradient(ellipse at 50% 35%, #f3f0ff 0%, #d9e8ff 55%, #b9cdf2 100%); }
-  select { font: inherit; padding: 4px 8px; border-radius: 8px; }
   .muted { color: var(--muted); }
 </style>
 </head>
 <body>
-<!-- Standalone export from original FelixSandbox office-preview.html. Original files unchanged. Four agents plus Felix the lion. Demo states only; no live system connection. -->
 <header>
   <b>🏢 Neo Agent Office</b>
-  <label>Source
-    <select id="src">
-      <option value="/api/status">🟢 Live from Neo Server</option>
-      <option value="demo">Offline demo (simulated states)</option>
-      </select>
-  </label>
-  <span class="muted">Four agents + Felix the lion. Tap an agent to say hi. Offline demo only.</span>
+  <span class="muted">Four agents + Felix the lion. Tap an agent to say hi.</span>
 </header>
 <div id="office"></div>
 
@@ -3685,10 +3678,10 @@ THREE.DefaultLoadingManager.setURLModifier(function(url){const normalized=decode
 // nudged: after 3+ taps in a row
 
 window.OFFICE_PERSONALITIES = {
-  chief_of_staff:    { name: 'ORCA',   role: 'Receives every task and hands it to the right agent', intro: 'Hey! I am ORCA 🐋, Chief of Staff. I coordinate everything — just tell me what you need.' },
-  finance:           { name: 'CORGI',  role: 'Reads receipts and sorts them for tax time', intro: 'Hi! I am CORGI 🐕, Finance agent. I read receipts, categorise expenses, and get everything ready for tax time.' },
-  qa:                { name: 'BEAR',   role: "Checks everyone's work before it reaches Felix", intro: 'Hey! I am BEAR 🐻, QA agent. I review everything before it goes to Felix — no mistakes slip past me.' },
-  knowledge_manager: { name: 'GIRAFFE', role: 'Posts balanced journals and remembers past vendors', intro: 'Hello! I am GIRAFFE 🦒, Knowledge Manager. I keep the journals and remember every vendor.' },
+  chief_of_staff:    { name: 'Neo', role: 'Chief of Finance', intro: 'Hey! I am Neo 🤖, Chief of Finance. I coordinate the finance team and send each task to the right agent.' },
+  finance:           { name: 'Corgi', role: 'Finance', intro: 'Hi! I am Corgi 🐕 from Finance. I read receipts, categorise expenses, and get everything ready for tax time.' },
+  qa:                { name: 'Bear', role: 'QA', intro: 'Hey! I am Bear 🐻 from QA. I check the receipts and flag anything that needs a second look.' },
+  knowledge_manager: { name: 'Girraffe', role: 'Knowledge Manager', intro: 'Hello! I am Girraffe 🦒, Knowledge Manager. I balance the journals and remember past vendors.' },
   boss:              { name: 'Felix',  role: 'The Boss 🦁' }
 };
 
@@ -3710,6 +3703,26 @@ window.OFFICE_PERSONALITIES = {
   'use strict';
 
   const AGENT_IDS = ['chief_of_staff', 'finance', 'qa', 'knowledge_manager'];
+  const STATUS_IDS = {
+    NEO: 'chief_of_staff', ORCA: 'chief_of_staff', CHIEF_OF_STAFF: 'chief_of_staff', CHIEF_OF_FINANCE: 'chief_of_staff',
+    CORGI: 'finance', COLLIE: 'finance', FINANCE: 'finance',
+    BEAR: 'qa', BEAVER: 'qa', QA: 'qa',
+    GIRRAFFE: 'knowledge_manager', GIRAFFE: 'knowledge_manager', PANDA: 'knowledge_manager', KNOWLEDGE_MANAGER: 'knowledge_manager',
+  };
+  const RECEIPT_PROGRESS_URL = '/api/office/receipt-progress';
+  const RECEIPT_STAGES = {
+    neo_intake: ['chief_of_staff', 'working', 'Receiving a receipt', 'Neo received a receipt'],
+    corgi_reading: ['finance', 'working', 'Reading a receipt', 'Corgi started reading'],
+    bear_checking: ['qa', 'review', 'Checking a receipt', 'Bear started checking'],
+    girraffe_filing: ['knowledge_manager', 'working', 'Filing a receipt', 'Girraffe started filing'],
+  };
+  const RECEIPT_OUTCOMES = {
+    recorded: 'Receipt recorded', needs_review: 'Receipt needs review', duplicate: 'Duplicate skipped',
+    extraction_unavailable: 'Receipt could not be read', archive_unavailable: 'Receipt archive unavailable',
+    error: 'Receipt processing stopped',
+  };
+  const RECEIPT_STEP_MS = 950;
+  const RECEIPT_POLL_MS = 2500;
   const POLL_MS = 15000;
   const CAMERA_TILT_DEG = 26;           // camera angle above the floor; lower = more eye-level
   const CAMERA_TILT_DEG_PORTRAIT = 40;
@@ -3731,6 +3744,35 @@ window.OFFICE_PERSONALITIES = {
   function targetFor(id, state) {
     if (state === 'needs_boss') return BOSS[AGENT_IDS.indexOf(id)];
     return DESK[id];
+  }
+
+  function orderedReceiptEvents(snapshot) {
+    if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.events)) {
+      throw new Error('Unsupported receipt progress');
+    }
+    const byRun = new Map();
+    for (const event of snapshot.events) {
+      if (!event || typeof event.run_id !== 'string' || !/^[0-9a-f]{32}$/i.test(event.run_id)) continue;
+      if (!Number.isSafeInteger(event.seq) || event.seq < 0) continue;
+      if (event.stage !== 'terminal' && !Object.prototype.hasOwnProperty.call(RECEIPT_STAGES, event.stage)) continue;
+      if (typeof event.at !== 'string' || !/(?:Z|\+00:00)$/.test(event.at) || !Number.isFinite(Date.parse(event.at))) continue;
+      const run_id = event.run_id.toLowerCase();
+      const clean = { run_id, seq: event.seq, stage: event.stage, at: event.at };
+      if (event.stage === 'terminal' && Object.prototype.hasOwnProperty.call(RECEIPT_OUTCOMES, event.outcome)) {
+        clean.outcome = event.outcome;
+      }
+      if (!byRun.has(run_id)) byRun.set(run_id, []);
+      byRun.get(run_id).push(clean);
+    }
+    const ordered = [];
+    for (const run of byRun.values()) {
+      let sortTime = 0;
+      for (const event of run.sort((a, b) => a.seq - b.seq)) {
+        sortTime = Math.max(sortTime, Date.parse(event.at));
+        ordered.push({ sortTime, event });
+      }
+    }
+    return ordered.sort((a, b) => a.sortTime - b.sortTime).map(item => item.event);
   }
 
   // ---------- small helpers ----------
@@ -3986,10 +4028,60 @@ window.OFFICE_PERSONALITIES = {
     return g;
   }
 
+  function makeNeoRobot() {
+    const robot = new THREE.Group();
+    robot.name = 'Neo robot';
+    const shell = new THREE.MeshStandardMaterial({ color: '#efebe3', roughness: 0.75 });
+    const teal = new THREE.MeshStandardMaterial({ color: '#35a9a0', roughness: 0.65 });
+    const dark = new THREE.MeshStandardMaterial({ color: '#23364a', roughness: 0.72 });
+    const light = new THREE.MeshBasicMaterial({ color: '#8dffe3' });
+
+    function part(geometry, material, x, y, z) {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = material !== light;
+      mesh.receiveShadow = material !== light;
+      robot.add(mesh);
+      return mesh;
+    }
+    function caseGeometry(width, height, depth, radius, bevel = 0.018) {
+      const geometry = new THREE.ExtrudeGeometry(roundedRect(width, height, radius), {
+        depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 5,
+      });
+      return geometry.translate(0, 0, -depth / 2);
+    }
+
+    // Broad screen face, side receivers and a short antenna give Neo a robot silhouette at any angle.
+    part(caseGeometry(0.58, 0.4, 0.34, 0.055), shell, 0, 0.48, 0);
+    part(new THREE.CylinderGeometry(0.1, 0.1, 0.11, 12), dark, 0, 0.71, 0);
+    part(caseGeometry(0.64, 0.36, 0.41, 0.065), shell, 0, 0.93, 0);
+    part(caseGeometry(0.51, 0.23, 0.025, 0.048, 0.01), dark, 0, 0.93, 0.223);
+    const eye = caseGeometry(0.055, 0.07, 0.01, 0.014, 0.004);
+    part(eye, light, -0.12, 0.955, 0.252);
+    part(eye, light, 0.12, 0.955, 0.252);
+    part(caseGeometry(0.075, 0.018, 0.01, 0.008, 0.003), light, 0, 0.875, 0.252);
+    part(caseGeometry(0.18, 0.1, 0.022, 0.025, 0.009), teal, 0, 0.48, 0.189);
+    part(caseGeometry(0.2, 0.043, 0.012, 0.016, 0.008), teal, 0, 0.94, -0.226);
+    part(new THREE.CylinderGeometry(0.026, 0.035, 0.135, 10), dark, 0.12, 1.17, 0);
+    part(new THREE.SphereGeometry(0.044, 10, 8), teal, 0.12, 1.247, 0);
+
+    const receiver = new THREE.CylinderGeometry(0.077, 0.077, 0.065, 12);
+    const arm = caseGeometry(0.1, 0.2, 0.12, 0.036, 0.012);
+    const leg = new THREE.CylinderGeometry(0.061, 0.066, 0.18, 10);
+    const boot = caseGeometry(0.17, 0.1, 0.24, 0.03, 0.014);
+    for (const side of [-1, 1]) {
+      part(receiver, teal, side * 0.348, 0.936, 0).rotation.z = Math.PI / 2;
+      part(arm, teal, side * 0.357, 0.464, 0).rotation.z = side * 0.1;
+      part(leg, dark, side * 0.17, 0.225, 0);
+      part(boot, teal, side * 0.17, 0.065, 0.055);
+    }
+    return robot;
+  }
+
   function makeAgent(id, scene, personality) {
     const root = new THREE.Group();
     const bodyHolder = new THREE.Group();
-    bodyHolder.add(placeholderBody(personality.color || '#2dd4bf'));
+    bodyHolder.add(id === 'chief_of_staff' ? makeNeoRobot() : placeholderBody(personality.color || '#2dd4bf'));
     root.add(bodyHolder);
     root.add(blobShadow(0.75));
 
@@ -4025,7 +4117,6 @@ window.OFFICE_PERSONALITIES = {
   // static, idle, walk, run, eat, dance, gesture-positive, gesture-negative.
   const PET_CLIPS = { idle: 'idle', walk: 'walk', work: 'eat', wave: 'gesture-positive', grumpy: 'gesture-negative' };
   const DEFAULT_MODELS = {
-    chief_of_staff: 'animal-fox.glb',
     finance: 'animal-dog.glb',
     qa: 'animal-polar.glb',
     knowledge_manager: 'animal-giraffe.glb',
@@ -4091,6 +4182,7 @@ window.OFFICE_PERSONALITIES = {
   function mount(container, opts = {}) {
     if (!window.THREE) throw new Error('AgentOffice needs THREE');
     const people = window.OFFICE_PERSONALITIES || {};
+    const receiptMode = opts.statusUrl === RECEIPT_PROGRESS_URL;
     if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -4131,7 +4223,8 @@ window.OFFICE_PERSONALITIES = {
     // HUD + speech bubble (plain HTML on top of the canvas)
     const hud = document.createElement('div');
     hud.style.cssText = 'position:absolute;left:10px;top:10px;padding:6px 10px;border-radius:10px;' +
-      'background:rgba(38,33,74,.72);color:#fff;font:600 12px/1.3 ' + LABEL_FONT + ';pointer-events:none';
+      'max-width:calc(100% - 40px);background:rgba(38,33,74,.72);color:#fff;font:600 12px/1.3 ' + LABEL_FONT + ';pointer-events:none';
+    hud.setAttribute('role', 'status');
     container.appendChild(hud);
     const bubble = document.createElement('div');
     bubble.style.cssText = 'position:absolute;max-width:230px;padding:8px 11px;border-radius:12px;background:#fff;' +
@@ -4185,6 +4278,10 @@ window.OFFICE_PERSONALITIES = {
 
     // ----- status -----
     let lastUpdate = null, live = false, demoStep = 0, firstApply = true;
+    let activeRequest = null, destroyed = false;
+    const lastSequenceByRun = new Map(), activeReceiptStages = new Map();
+    const queuedReceiptEvents = [];
+    let progressInitialised = false, receiptTimer = 0, recentReceiptEvent = null;
     // Announces what an agent just started doing (e.g. "Reading a receipt") the
     // moment the status feed says so — not only when a visitor taps them. Reuses
     // the same bubble as taps; no new animation clips needed for this (the Kenney
@@ -4202,30 +4299,15 @@ window.OFFICE_PERSONALITIES = {
       bubbleAgent = agent;
       bubbleUntil = now + 3200;
     }
-    function apply(snapshot) {
+    function apply(snapshot, statusLabel) {
       let list = [];
       if (Array.isArray(snapshot.agents)) {
         list = snapshot.agents;
       } else if (snapshot && typeof snapshot === 'object') {
-        const idMap = {
-          ORCA: 'chief_of_staff',
-          CORGI: 'finance',
-          COLLIE: 'finance',
-          BEAR: 'qa',
-          BEAVER: 'qa',
-          GIRAFFE: 'knowledge_manager',
-          PANDA: 'knowledge_manager',
-          chief_of_staff: 'chief_of_staff',
-          finance: 'finance',
-          knowledge_manager: 'knowledge_manager',
-          qa: 'qa',
-          boss: 'boss'
-        };
-        for (const [k, val] of Object.entries(snapshot)) {
-          const targetId = idMap[k.toUpperCase()] || idMap[k.toLowerCase()] || k.toLowerCase();
-          if (agents[targetId]) {
+        for (const [id, val] of Object.entries(snapshot)) {
+          if (val && typeof val === 'object') {
             list.push({
-              id: targetId,
+              id,
               state: val.state || 'idle',
               activity: val.task || val.role || ''
             });
@@ -4234,12 +4316,13 @@ window.OFFICE_PERSONALITIES = {
       }
 
       for (const a of list) {
-        const agent = agents[a.id];
+        const id = STATUS_IDS[String(a.id || '').trim().toUpperCase().replace(/\s+/g, '_')];
+        const agent = agents[id];
         if (!agent) continue;
         const activityChanged = !firstApply && a.activity && a.activity !== agent.activity && a.state !== 'idle';
         agent.state = a.state;
         agent.activity = a.activity;
-        const [x, z] = targetFor(a.id, a.state);
+        const [x, z] = targetFor(id, a.state);
         agent.home.set(x, 0, z);
         agent.target.copy(agent.home);
         agent.alert.visible = a.state === 'error';
@@ -4247,8 +4330,63 @@ window.OFFICE_PERSONALITIES = {
       }
       firstApply = false;
       const tasks = snapshot.stats ? snapshot.stats.tasks_this_week : 0;
-      hud.textContent = (live ? '🟢 Live from Neo Server' : '🟡 Demo') + (tasks ? ` · ${tasks} tasks this week` : '');
+      const label = statusLabel || (live ? '🟢 Live from Neo Server' : '🟡 Demo') + (tasks ? ` · ${tasks} tasks this week` : '');
+      if (hud.textContent !== label) hud.textContent = label;
     }
+
+    function rememberReceiptEvent(event) {
+      if (event.stage === 'terminal') activeReceiptStages.delete(event.run_id);
+      else activeReceiptStages.set(event.run_id, event.stage);
+      recentReceiptEvent = event;
+    }
+    function renderReceiptProgress() {
+      const byAgent = new Map();
+      for (const stage of activeReceiptStages.values()) {
+        const [id, state, activity] = RECEIPT_STAGES[stage];
+        byAgent.set(id, { id, state, activity });
+      }
+      const agents = AGENT_IDS.map(id => byAgent.get(id) || { id, state: 'idle', activity: '' });
+      let label = '🟢 Live · Waiting for receipt activity';
+      if (recentReceiptEvent) {
+        const event = recentReceiptEvent;
+        const summary = event.stage === 'terminal'
+          ? RECEIPT_OUTCOMES[event.outcome] || 'Receipt processing finished'
+          : RECEIPT_STAGES[event.stage][3];
+        const time = new Date(event.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        label = `🟢 Live · Recent: ${summary} · ${time}`;
+      }
+      apply({ agents }, label);
+    }
+    function advanceReceiptProgress() {
+      if (!live || receiptTimer || !queuedReceiptEvents.length) return;
+      rememberReceiptEvent(queuedReceiptEvents.shift());
+      renderReceiptProgress();
+      receiptTimer = setTimeout(() => {
+        receiptTimer = 0;
+        advanceReceiptProgress();
+      }, RECEIPT_STEP_MS);
+    }
+    function updateOfficeCalendar(events) {
+      try {
+        window.NeoOfficeCalendar?.update?.(events);
+      } catch (error) {
+        console.warn('[office] Calendar update unavailable');
+      }
+    }
+    function acceptReceiptProgress(events) {
+      const replayFrom = Date.now() - 90_000;
+      for (const event of events) {
+        if (event.seq <= (lastSequenceByRun.get(event.run_id) ?? -1)) continue;
+        lastSequenceByRun.set(event.run_id, event.seq);
+        if (!progressInitialised && Date.parse(event.at) < replayFrom) rememberReceiptEvent(event);
+        else queuedReceiptEvents.push(event);
+      }
+      progressInitialised = true;
+      renderReceiptProgress();
+      advanceReceiptProgress();
+      updateOfficeCalendar(events);
+    }
+
     async function poll() {
       if (opts.statusUrl === 'demo' || !opts.statusUrl) {
         live = false;
@@ -4262,19 +4400,39 @@ window.OFFICE_PERSONALITIES = {
         apply(snap);
         return;
       }
+      if (activeRequest) return;
+      const controller = new AbortController();
+      activeRequest = controller;
+      const timeout = setTimeout(() => controller.abort(), 5000);
       try {
-        const res = await fetch(opts.statusUrl, { cache: 'no-store' });
+        const res = await fetch(opts.statusUrl, { cache: 'no-store', signal: controller.signal });
         if (!res.ok) throw new Error(res.status);
+        const snapshot = await res.json();
+        if (destroyed) return;
+        const events = receiptMode ? orderedReceiptEvents(snapshot) : null;
         live = true;
         lastUpdate = Date.now();
-        apply(await res.json());
+        if (receiptMode) acceptReceiptProgress(events);
+        else apply(snapshot);
       } catch (e) {
+        if (destroyed) return;
+        if (receiptMode && live) {
+          clearTimeout(receiptTimer);
+          receiptTimer = 0;
+          bubble.style.display = 'none';
+          bubbleAgent = null;
+          apply({ agents: AGENT_IDS.map(id => ({ id, state: 'idle', activity: '' })) }, '⚪ Live receipt status unavailable');
+        }
         live = false;
-        hud.textContent = '⚪ Office offline right now';
+        hud.textContent = receiptMode ? '⚪ Live receipt status unavailable' : '⚪ Office offline right now';
+        if (receiptMode) updateOfficeCalendar(null);
+      } finally {
+        clearTimeout(timeout);
+        activeRequest = null;
       }
     }
     poll();
-    const pollTimer = setInterval(poll, opts.statusUrl === 'demo' || !opts.statusUrl ? 4000 : POLL_MS);
+    const pollTimer = setInterval(poll, receiptMode ? RECEIPT_POLL_MS : opts.statusUrl === 'demo' || !opts.statusUrl ? 4000 : POLL_MS);
 
     // ----- taps -----
     const raycaster = new THREE.Raycaster();
@@ -4336,9 +4494,10 @@ window.OFFICE_PERSONALITIES = {
       bubble.style.display = 'block';
       bubbleAgent = agent;
 
-      if (agent.pokeCount === 1) {
-        // Perubahan 3: Klik pertama tampilkan intro dari OFFICE_PERSONALITIES[key].intro
-        say.textContent = agent.personality.intro || `Hello! I am ${agent.personality.name}.`;
+      if (agent.pokeCount === 1 || receiptMode) {
+        say.textContent = receiptMode && live && agent.state !== 'idle' && agent.activity
+          ? agent.activity
+          : agent.personality.intro || `Hello! I am ${agent.personality.name}.`;
         bubbleUntil = now + 5000;
         playOnce(agent, 'wave');
       } else {
@@ -4527,8 +4686,11 @@ window.OFFICE_PERSONALITIES = {
 
     return {
       destroy() {
+        destroyed = true;
+        if (activeRequest) activeRequest.abort();
         cancelAnimationFrame(raf);
         clearInterval(pollTimer);
+        clearTimeout(receiptTimer);
         ro.disconnect(); io.disconnect();
         renderer.domElement.removeEventListener('pointerdown', onTap);
         renderer.domElement.removeEventListener('pointermove', onMove);
@@ -4544,13 +4706,11 @@ window.OFFICE_PERSONALITIES = {
 
 </script>
 <script>
-  let office;
-  function start() {
-    if (office) office.destroy();
-    office = AgentOffice.mount(document.getElementById('office'), { statusUrl: document.getElementById('src').value });
-  }
-  document.getElementById('src').onchange = start;
-  start();
+  document.addEventListener('DOMContentLoaded', () => {
+    AgentOffice.mount(document.getElementById('office'), {
+      statusUrl: location.protocol === 'file:' ? 'demo' : '/api/office/receipt-progress',
+    });
+  }, { once: true });
 </script>
 <script type="application/json" id="asset-license-notices">{"Asset/office/kenney/License.txt":"\t\r\n\r\n\tFurniture Kit (2.0)\r\n\r\n\tCreated/distributed by Kenney (www.kenney.nl)\r\n\tCreation date: 20-10-2018 16:21\r\n\r\n\t\t\t------------------------------\r\n\r\n\tLicense: (Creative Commons Zero, CC0)\r\n\thttp://creativecommons.org/publicdomain/zero/1.0/\r\n\r\n\tThis content is free to use in personal, educational and commercial projects.\r\r\n\tSupport us by crediting Kenney or www.kenney.nl (this is not mandatory)\r\n\r\n\t\t\t------------------------------\r\n\r\n\tDonate:   http://support.kenney.nl\r\n\tRequest:  http://request.kenney.nl\r\n\tPatreon:  http://patreon.com/kenney/\r\n\r\n\tFollow on Twitter for updates:\r\n\thttp://twitter.com/KenneyNL","Asset/office/pets/License.txt":"\t\r\n\r\n\tCube Pets (2.0)\r\n\r\n\tCreated/distributed by Kenney (www.kenney.nl)\r\n\tCreation date: 26-03-2026 11:16\r\n\t\r\n\t\t\t------------------------------\r\n\r\n\tLicense: (Creative Commons Zero, CC0)\r\n\thttp://creativecommons.org/publicdomain/zero/1.0/\r\n\r\n\tYou can use this content for personal, educational, and commercial purposes.\r\n\r\n\tSupport by crediting 'Kenney' or 'www.kenney.nl' (this is not a requirement)\r\n\r\n\t\t\t------------------------------\r\n\r\n\t• Website : www.kenney.nl\r\n\t• Donate  : www.kenney.nl/donate\r\n\r\n\t• Patreon : patreon.com/kenney\r\n\t\r\n\tFollow on social media for updates:\r\n\r\n\t• Twitter:\t twitter.com/KenneyNL\r\n\t• BlueSky:\t kenney.bsky.social\r\n\t• Instagram: instagram.com/kenney_nl"}</script>
 </body>

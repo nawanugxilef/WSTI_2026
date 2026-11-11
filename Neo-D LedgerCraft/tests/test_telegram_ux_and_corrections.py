@@ -5,12 +5,13 @@ import subprocess
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from telegram.error import BadRequest, NetworkError
 
 from src.agents.chief_of_staff import ChiefOfStaff, IntakeSummary
 from src.agents.finance_agent import FinanceAgent, ParsedReceipt, ReceiptItem
+from src.agents.receipt_progress import read_receipt_progress
 from src.interfaces.cli import seed_accounts
 from src.interfaces.telegram_bot import (
     TelegramReceiptBot,
@@ -806,10 +807,14 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                         self.assertNotIn("Womby:", reply.args[0])
                         award_xp.assert_not_called()
                     if batch:
-                        process_batch.assert_called_once_with(expected_name, user_note=caption, file_bytes=raw_bytes)
+                        process_batch.assert_called_once_with(
+                            expected_name, user_note=caption, file_bytes=raw_bytes, progress=ANY,
+                        )
                         process_single.assert_not_called()
                     else:
-                        process_single.assert_called_once_with(expected_name, user_note=caption, file_bytes=raw_bytes)
+                        process_single.assert_called_once_with(
+                            expected_name, user_note=caption, file_bytes=raw_bytes, progress=ANY,
+                        )
                         process_batch.assert_not_called()
                         if not saved:
                             self.assertEqual(reply.args[0].splitlines(), [
@@ -866,6 +871,9 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 process.assert_not_called()
                 reply = progress.edit_text if fetches else message.reply_text
                 self.assertIn(expected, reply.await_args.args[0])
+                events = read_receipt_progress(self.db_path)["events"][-2:]
+                self.assertEqual([event["stage"] for event in events], ["neo_intake", "terminal"])
+                self.assertEqual(events[-1]["outcome"], "extraction_unavailable")
 
     def test_defect_8_vendor_only_rename_preserves_qa_flags_and_field_uncertainty(self):
         """

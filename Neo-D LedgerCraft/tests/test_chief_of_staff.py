@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 from src.agents.chief_of_staff import ChiefOfStaff
 from src.agents.finance_agent import FinanceAgent
+from src.agents.receipt_progress import read_receipt_progress
 from src.storage.db import get_connection, init_db
 from src.storage.journal import JournalManager
 
@@ -140,6 +141,21 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         balance = JournalManager(self.conn).get_trial_balance()
         self.assertEqual(sum(row["total_debit"] for row in balance), 11.00)
         self.assertEqual(sum(row["total_credit"] for row in balance), 11.00)
+        state = read_receipt_progress(self.root / "fictional-demo.db")
+        events = state["events"]
+        self.assertEqual([event["stage"] for event in events], [
+            "neo_intake", "corgi_reading", "bear_checking", "girraffe_filing", "terminal",
+            "neo_intake", "terminal",
+        ])
+        self.assertEqual([event["seq"] for event in events], [1, 2, 3, 4, 5, 1, 2])
+        self.assertEqual([event["outcome"] for event in events if event["stage"] == "terminal"], [
+            "recorded", "duplicate",
+        ])
+        self.assertEqual(len({event["run_id"] for event in events}), 2)
+        snapshot = (self.root / "receipt_progress.json").read_text(encoding="utf-8")
+        self.assertEqual(json.loads(snapshot), state)
+        for private_value in (caption, self.receipt["merchant"], "1FictionalDemoBackupId", self.photo):
+            self.assertNotIn(private_value, snapshot)
 
     def test_confirming_possible_duplicate_posts_once_and_survives_later_correction(self):
         first, second = self._process_matching_photos()
@@ -220,6 +236,11 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         self.assertEqual(result.gdrive_file_id, "1FictionalDemoBackupId")
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 0)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 0)
+        progress = read_receipt_progress(self.root / "fictional-demo.db")["events"]
+        self.assertEqual([event["stage"] for event in progress], [
+            "neo_intake", "corgi_reading", "bear_checking", "terminal",
+        ])
+        self.assertEqual(progress[-1]["outcome"], "needs_review")
 
     def test_partial_batch_posts_only_complete_aud_item(self):
         generate = self._mock_ocr({
@@ -254,6 +275,11 @@ class TestReceiptPhotoPipeline(unittest.TestCase):
         generate.assert_not_called()
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0], 0)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM journal_transactions").fetchone()[0], 0)
+        progress = read_receipt_progress(self.root / "fictional-demo.db")["events"]
+        self.assertEqual([event["stage"] for event in progress], ["neo_intake", "terminal"] * 2)
+        self.assertEqual([event["outcome"] for event in progress if event["stage"] == "terminal"], [
+            "archive_unavailable", "archive_unavailable",
+        ])
 
     def test_resending_older_local_receipt_attaches_drive_without_duplicate_journal(self):
         generate = self._mock_ocr(self.receipt)

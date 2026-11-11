@@ -24,6 +24,7 @@ from urllib.parse import urlparse
 
 from src.agents.chief_of_staff import ChiefOfStaff
 from src.agents.finance_agent import FinanceAgent
+from src.agents.receipt_progress import read_receipt_progress
 from src.interfaces.cli import load_config, seed_accounts
 from src.storage.categories import ATO_SUGGESTION_DISCLAIMER
 from src.storage.db import get_connection, init_db
@@ -103,6 +104,7 @@ def validate_uploaded_file(file_b64: str, filename: str) -> tuple[bytes, str]:
 # Absolute path resolution relative to project root
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 DEFAULT_DB_PATH = os.path.join(PROJECT_ROOT, "data", "ledger.db")
+OFFICE_STATIC_DIR = os.path.join(os.path.dirname(os.path.realpath(PROJECT_ROOT)), "static")
 
 
 def get_default_db_path() -> str:
@@ -343,6 +345,25 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path == "/api/office/receipt-progress":
+            payload = read_receipt_progress(get_default_db_path())
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/office-public":
+            self._serve_file(os.path.join(OFFICE_STATIC_DIR, "index.html"), "text/html; charset=utf-8")
+            return
+
+        if path == "/office-calendar.js":
+            self._serve_file(os.path.join(OFFICE_STATIC_DIR, "office-calendar.js"), "text/javascript; charset=utf-8")
+            return
 
         if path == "/api/dashboard":
             payload = build_dashboard_payload()

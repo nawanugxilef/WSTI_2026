@@ -23,6 +23,7 @@ from src.agents.finance_agent import (
 )
 from src.agents.knowledge_manager import KnowledgeManager
 from src.agents.qa_agent import QAAgent
+from src.agents.receipt_progress import ReceiptProgress
 from src.storage.categories import (
     ATO_SUGGESTION_DISCLAIMER,
     format_activity_badge,
@@ -353,8 +354,22 @@ class ChiefOfStaff:
             summary_text="\n".join(message),
         )
 
-    def process_note(self, text: str, *, capture_date: Optional[datetime.date] = None) -> IntakeSummary:
+    def start_receipt_progress(self) -> ReceiptProgress:
+        return ReceiptProgress.for_connection(self.main_conn)
+
+    def process_note(
+        self, text: str, *, capture_date: Optional[datetime.date] = None,
+        progress: Optional[ReceiptProgress] = None,
+    ) -> IntakeSummary:
         """Processes a casual typed note without a file."""
+        with (progress or self.start_receipt_progress()) as trace:
+            summary = self._process_note(text, capture_date, trace)
+            trace.finish(summary.status)
+            return summary
+
+    def _process_note(
+        self, text: str, capture_date: Optional[datetime.date], trace: ReceiptProgress,
+    ) -> IntakeSummary:
         examples = self.km.memory.get_recent_examples(limit=10)
         note_context = {"capture_date": capture_date} if capture_date is not None else {}
 
@@ -363,10 +378,12 @@ class ChiefOfStaff:
         parsed = None
         qa_res = None
 
+        trace.advance("corgi_reading")
         while retry_count <= self.qa.max_retries:
             parsed = self.finance.parse_note(text, qa_notes=qa_notes, vendor_examples=examples, **note_context)
             parsed = self._apply_vendor_memory_if_known(parsed)
             parsed_dict = parsed.model_dump()
+            trace.advance("bear_checking")
             qa_res = self.qa.inspect_receipt(parsed_dict, retry_count=retry_count)
 
             if qa_res.passed or qa_res.flagged:
@@ -384,6 +401,7 @@ class ChiefOfStaff:
             )
             return self._unposted_summary("needs_review", reason, parsed=parsed)
 
+        trace.advance("girraffe_filing")
         receipt_id = self.km.record_receipt(
             data=parsed.model_dump(),
             file_hash=None,
@@ -402,9 +420,18 @@ class ChiefOfStaff:
         )
 
     def process_file(
-        self, file_path: str, user_note: Optional[str] = None, *, file_bytes: Optional[bytes] = None
+        self, file_path: str, user_note: Optional[str] = None, *, file_bytes: Optional[bytes] = None,
+        progress: Optional[ReceiptProgress] = None,
     ) -> IntakeSummary:
         """Verify the Drive original before OCR and bookkeeping. Uploaded bytes stay in RAM."""
+        with (progress or self.start_receipt_progress()) as trace:
+            summary = self._process_file(file_path, user_note, file_bytes, trace)
+            trace.finish(summary.status)
+            return summary
+
+    def _process_file(
+        self, file_path: str, user_note: Optional[str], file_bytes: Optional[bytes], trace: ReceiptProgress,
+    ) -> IntakeSummary:
         filename, payload = self._read_original(file_path, file_bytes)
         if not payload or len(payload) > MAX_RECEIPT_BYTES:
             return self._unposted_summary("extraction_unavailable", "Send a non-empty receipt up to 20 MB.")
@@ -443,11 +470,11 @@ class ChiefOfStaff:
                 "duplicate", f"This exact file is already saved as receipt #{duplicate['id']}.",
                 exact_duplicate_of=duplicate["id"], **archive,
             )
-        return self._process_archived_receipt(filename, payload, file_hash, user_note, archive)
+        return self._process_archived_receipt(filename, payload, file_hash, user_note, archive, trace)
 
     def _process_archived_receipt(
         self, filename: str, payload: bytes, file_hash: str,
-        user_note: Optional[str], archive: Dict[str, Any],
+        user_note: Optional[str], archive: Dict[str, Any], trace: ReceiptProgress,
     ) -> IntakeSummary:
         cursor = self.main_conn.execute("SELECT id, file_hash, vendor, total_amount, date FROM receipts")
         existing_receipts = [dict(r) for r in cursor.fetchall()]
@@ -459,6 +486,7 @@ class ChiefOfStaff:
         parsed = None
         qa_res = None
 
+        trace.advance("corgi_reading")
         try:
             while retry_count <= self.qa.max_retries:
                 parsed = self.finance.parse_document(
@@ -469,6 +497,7 @@ class ChiefOfStaff:
                 parsed_dict["file_hash"] = file_hash
                 parsed_dict["original_filename"] = filename
 
+                trace.advance("bear_checking")
                 qa_res = self.qa.inspect_receipt(
                     parsed_dict, existing_receipts=existing_receipts, retry_count=retry_count
                 )
@@ -497,6 +526,7 @@ class ChiefOfStaff:
         if user_note:
             data_dict["notes"] = user_note
 
+        trace.advance("girraffe_filing")
         receipt_id = self.km.record_receipt(
             data=data_dict,
             file_hash=file_hash,
@@ -577,11 +607,20 @@ class ChiefOfStaff:
         }
 
     def process_batch_or_statement(
-        self, file_path: str, user_note: Optional[str] = None, *, file_bytes: Optional[bytes] = None
+        self, file_path: str, user_note: Optional[str] = None, *, file_bytes: Optional[bytes] = None,
+        progress: Optional[ReceiptProgress] = None,
     ) -> Dict[str, Any]:
         """
         Handles multi-receipt photos/PDFs OR Bank Statement reconciliation (CSV/PDF/Image).
         """
+        with (progress or self.start_receipt_progress()) as trace:
+            result = self._process_batch_or_statement(file_path, user_note, file_bytes, trace)
+            trace.finish(result["status"])
+            return result
+
+    def _process_batch_or_statement(
+        self, file_path: str, user_note: Optional[str], file_bytes: Optional[bytes], trace: ReceiptProgress,
+    ) -> Dict[str, Any]:
         filename, payload = self._read_original(file_path, file_bytes)
         if not payload or len(payload) > MAX_RECEIPT_BYTES:
             return self._batch_summary(
@@ -590,7 +629,7 @@ class ChiefOfStaff:
         file_hash = hashlib.sha256(payload).hexdigest()
         if self.main_conn.execute("SELECT 1 FROM receipts WHERE file_hash = ?", (file_hash,)).fetchone():
             return self._batch_summary(
-                self.process_file(filename, user_note=user_note, file_bytes=payload), "single_receipt"
+                self._process_file(filename, user_note, payload, trace), "single_receipt"
             )
 
         gdrive_id, gdrive_status, gdrive_error = self._archive_original(filename, payload, file_hash)
@@ -607,6 +646,7 @@ class ChiefOfStaff:
             ))
 
         examples = self.km.memory.get_recent_examples(limit=15)
+        trace.advance("corgi_reading")
         try:
             batch = self.finance.parse_batch_or_statement(
                 filename, vendor_examples=examples, user_note=user_note, file_bytes=payload
@@ -615,7 +655,7 @@ class ChiefOfStaff:
             batch = None
 
         if batch and len(batch.receipts) == 1 and batch.document_type == "single_receipt" and not filename.lower().endswith(".csv"):
-            single_res = self._process_archived_receipt(filename, payload, file_hash, user_note, archive)
+            single_res = self._process_archived_receipt(filename, payload, file_hash, user_note, archive, trace)
             return self._batch_summary(single_res, "single_receipt")
 
         if not batch or not batch.receipts:
@@ -636,6 +676,7 @@ class ChiefOfStaff:
         matched_count = 0
         held_lines: List[str] = []
 
+        trace.advance("bear_checking")
         for index, item in enumerate(batch.receipts, start=1):
             item = self._apply_vendor_memory_if_known(item)
             missing = self._missing_booking_details(item)
@@ -666,6 +707,7 @@ class ChiefOfStaff:
             if user_note:
                 item_dict["notes"] = user_note
             qa_res = self.qa.inspect_receipt(item_dict, existing_receipts=existing, retry_count=self.qa.max_retries)
+            trace.advance("girraffe_filing")
             rec_id = self.km.record_receipt(
                 data=item_dict,
                 file_hash=None,

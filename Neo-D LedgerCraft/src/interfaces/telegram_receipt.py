@@ -40,7 +40,7 @@ CATEGORY_LABELS = {
     "general": "General",
 }
 SOURCE_LABELS = {
-    "ai_suggestion": "🦊 AI suggestion",
+    "ai_suggestion": "🐶 Corgi · AI suggestion",
     "rule_heuristic": "🧭 Rule-based",
     "vendor_memory": "🧠 Vendor memory",
     "owner_correction": "✏️ Owner correction",

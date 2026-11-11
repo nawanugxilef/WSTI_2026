@@ -37,6 +37,7 @@ from telegram.ext import (
 from src.agents.chief_of_staff import ChiefOfStaff, IntakeSummary
 from src.agents.finance_agent import FinanceAgent
 from src.agents.qa_agent import likely_duplicate_receipt_id
+from src.agents.receipt_progress import ReceiptProgress
 from src.interfaces.cli import load_config, seed_accounts
 from src.interfaces.telegram_receipt import CATEGORY_LABELS, format_receipt_card, format_receipt_details
 from src.storage.categories import (
@@ -453,14 +454,14 @@ class TelegramReceiptBot:
         chat_id = update.effective_chat.id
         state = self._get_companion_state()
         msg = (
-            f"🦁 *Welcome back, Boss!* Your *Neo-D LedgerCraft* AI Executive Crew & Desk Companion are online.\n"
+            f"🤖 *Welcome back, Boss!* Meet your *Neo-D LedgerCraft* crew and Womby, your desk companion.\n"
             f"Chat ID: `{chat_id}`\n\n"
-            f"🤖 *Your 4 Deployed AI Agents:*\n"
-            f"• 🐕 *Chief of Staff*: Zero-friction intake, file archiving & routing\n"
-            f"• 🦊 *Finance AI*: Single-call multimodal OCR, Stream (`ABN`/`PAYG`/`Personal`), Activity (`Dog Walking`/`3D Printing`), Business %, & suggested ATO myTax labels\n"
-            f"• 🐻‍❄️ *QA Reviewer*: Deterministic math, GST & duplicate audit (max 2 retries)\n"
-            f"• 🦒 *Knowledge Manager*: Double-entry ledger & adaptive Vendor Memory\n\n"
-            f"⚡ *How It Works (No Approve Buttons — Record & Correct):*\n"
+            f"*Your AI crew*\n"
+            f"• 🤖 *Neo — Chief of Finance*: Takes in receipts, archives originals and coordinates the crew\n"
+            f"• 🐶 *Corgi — Finance*: Reads receipts and suggests Stream, Activity, Business %, and ATO myTax labels\n"
+            f"• 🐻 *Bear — QA*: Checks math, GST and duplicates (up to 2 retries)\n"
+            f"• 🦒 *Girraffe — Knowledge Manager*: Keeps the double-entry ledger and confirmed Vendor Memory\n\n"
+            f"⚡ *How it works*\n"
             f"• 📸 *Snap a receipt photo/PDF* or 💬 *type a quick note* (e.g. `Fictional Demo Cafe coffee 6.50` or `Fictional 3D Maker Supply nozzle kit 32.99`)\n"
             f"• 🎛️ *Conditional 1-Tap Inline Buttons*: Adjust *Stream* (`ABN`/`PAYG`/`Personal`), *Activity* (`Dog Walking`/`3D Printing`), *Business %* (`100%`/`80%`/`50%`/`30%`/`0%`), or *Category* — books & tax totals recalculate instantly and Vendor Memory remembers your confirmed fix!\n"
             f"• `/correct <id> ...` — Command-based correction (e.g. `/correct 1 pct=50 stream=abn activity=dog_walking gst=0`)\n"
@@ -471,7 +472,7 @@ class TelegramReceiptBot:
             f"• `/pnl` (or `/report`) — View Dog Walking vs 3D Printing Profit & Loss\n"
             f"• `/spending [month]` — Monthly spending breakdown (e.g. `/spending`, `/spending last`)\n"
             f"• `/reward` — View or customize your Reward Box treat (`{state['reward_name']}`)\n"
-            f"• `/companion` — Ping your ESP32 Desk Companion `( ^ ▽ ^ )`\n"
+            f"• `/companion` — View Womby's desk companion status `( ^ ▽ ^ )`\n"
             f"• `/backup` — Snapshot database to Google Drive"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
@@ -705,13 +706,12 @@ class TelegramReceiptBot:
 
         state = self._get_companion_state()
         msg = (
-            f"📟 *ESP32-C3 DESK COMPANION STATUS*\n\n"
-            f"• *OLED Display*: `( ^ ▽ ^ )` HAPPY // DESK ALLY\n"
-            f"• *Buzzer Audio*: 🔔 2-Tone PWM Chime (C6 → G6) Ready\n"
+            f"🐾 *WOMBY · DESK COMPANION STATUS*\n\n"
+            f"• *OLED cue*: `( ^ ▽ ^ )`\n"
+            f"• *Buzzer cue*: 🔔 Two-tone chime (C6 → G6)\n"
             f"• *Lifetime XP*: `{state['total_xp']} XP`\n"
             f"• *Active Reward*: {state['reward_name']}\n"
-            f"• *Local Event Topic*: `ledger/companion` (`./data/companion_event.json`)\n\n"
-            f"✅ Test ping dispatched! Your companion just winked and played a happy chime."
+            f"• *Local Event Topic*: `ledger/companion` (`./data/companion_event.json`)"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -740,13 +740,17 @@ class TelegramReceiptBot:
         if not text or text.startswith("/"):
             return
 
+        with self.cos.start_receipt_progress() as trace:
+            await self._process_text_note(update.message, text, trace)
+
+    async def _process_text_note(self, message, text: str, trace: ReceiptProgress):
         try:
-            await update.message.reply_chat_action("typing")
+            await message.reply_chat_action("typing")
         except TelegramError as error:
             logger.warning("Telegram typing notice failed (%s)", type(error).__name__)
 
         try:
-            captured = getattr(update.message, "date", None)
+            captured = getattr(message, "date", None)
             if not isinstance(captured, datetime.datetime):
                 captured = datetime.datetime.now(datetime.timezone.utc)
             if captured.tzinfo is None:
@@ -755,19 +759,19 @@ class TelegramReceiptBot:
                 capture_date = captured.astimezone(ZoneInfo("Australia/Sydney")).date()
             except ZoneInfoNotFoundError:
                 capture_date = None
-            summary = self.cos.process_note(text, capture_date=capture_date)
+            summary = self.cos.process_note(text, capture_date=capture_date, progress=trace)
             response, kb = self._intake_reply(summary)
             if summary.receipt_id and summary.status in XP_ELIGIBLE_STATUSES:
                 reward = self._award_xp_and_emit(xp_gain=10, event_label=f"Note: {summary.vendor}")
                 response += f"\n{reward}"
         except Exception as e:
             logger.error("Error processing note: %s", e)
-            await update.message.reply_text(
-                "🐕 I had trouble reading that note. Could you send it again with the vendor, date and amount in AUD?",
+            await message.reply_text(
+                "🤖 Neo: I had trouble logging that note. Could you send it again with the vendor, date and amount in AUD?",
             )
             return
 
-        await update.message.reply_text(response, parse_mode=None, reply_markup=kb)
+        await message.reply_text(response, parse_mode=None, reply_markup=kb)
 
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
@@ -784,14 +788,20 @@ class TelegramReceiptBot:
         filename = os.path.basename((doc.file_name or "").replace("\\", "/"))
         filename = "".join(c for c in filename if c.isalnum() or c in "._- ")
         if not filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png", ".csv")):
+            self.cos.start_receipt_progress().finish("extraction_unavailable")
             await update.message.reply_text("Please send a Receipt/Invoice (PDF/JPG/PNG) or Bank Statement (CSV/PDF).")
             return
 
         await self._handle_media(update.message, context, doc, document_name=filename)
 
     async def _handle_media(self, message, context, media, *, document_name: Optional[str] = None):
+        with self.cos.start_receipt_progress() as trace:
+            await self._process_media(message, context, media, trace, document_name=document_name)
+
+    async def _process_media(self, message, context, media, trace: ReceiptProgress, *, document_name: Optional[str] = None):
         size_error = "This file is too large. Please send a file up to 20 MB."
         if media.file_size is not None and media.file_size > MAX_TELEGRAM_RECEIPT_BYTES:
+            trace.finish("extraction_unavailable")
             await message.reply_text(size_error)
             return
 
@@ -805,7 +815,7 @@ class TelegramReceiptBot:
         receipt_label = "Photo Receipt" if document_name is None else "Document"
         filename = f"{media.file_unique_id}_{document_name}" if document_name else f"{media.file_unique_id}.jpg"
 
-        progress = await message.reply_text("📥 Got it. I’m reading your file now…")
+        progress = await message.reply_text("🤖 Neo: Got it. I’ll send this to Corgi to read…")
         try:
             file = await context.bot.get_file(media.file_id)
             downloaded = (
@@ -814,13 +824,16 @@ class TelegramReceiptBot:
             )
         except Exception as error:
             logger.error("Could not download Telegram receipt (%s)", type(error).__name__)
+            trace.finish("extraction_unavailable")
             await progress.edit_text("I couldn’t download that file. Could you try sending it again?")
             return
 
         if downloaded is None or len(downloaded) > MAX_TELEGRAM_RECEIPT_BYTES:
+            trace.finish("extraction_unavailable")
             await progress.edit_text(size_error)
             return
         if not downloaded:
+            trace.finish("extraction_unavailable")
             await progress.edit_text("That file arrived empty. Could you try sending it again?")
             return
 
@@ -831,7 +844,9 @@ class TelegramReceiptBot:
         batch_summary = False
         try:
             if batch:
-                batch_res = self.cos.process_batch_or_statement(filename, user_note=caption, file_bytes=raw_bytes)
+                batch_res = self.cos.process_batch_or_statement(
+                    filename, user_note=caption, file_bytes=raw_bytes, progress=trace,
+                )
                 response = batch_res["summary_text"]
                 if batch_res.get("gdrive_status") == "uploaded":
                     archive_url = drive_file_url(batch_res.get("gdrive_file_id"))
@@ -862,7 +877,7 @@ class TelegramReceiptBot:
                     reward = self._award_xp_and_emit(xp_gain=batch_res["xp_earned"], event_label=event_label)
                     response += f"\n{reward}"
             else:
-                summary = self.cos.process_file(filename, user_note=caption, file_bytes=raw_bytes)
+                summary = self.cos.process_file(filename, user_note=caption, file_bytes=raw_bytes, progress=trace)
                 response, kb = self._intake_reply(summary)
                 if summary.gdrive_status == "uploaded":
                     archive_url = drive_file_url(summary.gdrive_file_id)
@@ -871,7 +886,7 @@ class TelegramReceiptBot:
                     response += f"\n{reward}"
         except Exception as e:
             logger.error("Error processing Telegram receipt: %s", e)
-            response = "🦊 I had trouble reading that file. Could you try sending it again?"
+            response = "🤖 Neo: I had trouble processing that file. Could you try sending it again?"
 
         if archive_url and kb is None:
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("Open original in Google Drive", url=archive_url)]])

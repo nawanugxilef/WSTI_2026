@@ -20,14 +20,14 @@ MODEL_FALLBACK = [
 ]
 
 AGENTS = {
-    "ORCA":   {"name": "ORCA",   "role": "Chief of Staff",        "animal": "🐋", "color": "#2dd4bf",
-               "prompt": "You are ORCA, Chief of Staff and coordinator. You route tasks, give clear direction, and keep things moving. Be concise and decisive."},
-    "BEAVER": {"name": "BEAR",   "role": "QA / Reviewer",         "animal": "🐻", "color": "#f59e0b",
-               "prompt": "You are BEAR, QA and Reviewer agent. You are firm, strict, and a bit fierce — you inspect all work and receipts before Felix sees them, catching any mistakes or discrepancies. Be sharp, no-nonsense, and decisive."},
-    "PANDA":  {"name": "GIRAFFE","role": "Knowledge Manager",     "animal": "🦒", "color": "#ec4899",
-               "prompt": "You are GIRAFFE, Knowledge Manager. You balance debits and credits, remember vendors, and keep accurate records. Be organised and helpful."},
-    "COLLIE": {"name": "CORGI",  "role": "Finance Agent",         "animal": "🐕", "color": "#8b5cf6",
-               "prompt": "You are CORGI, the cute and friendly Finance agent. You read receipts, sort expenses, and get everything tax-ready in AUD. Be cheerful, helpful, and concise."},
+    "ORCA":   {"name": "Neo",      "role": "Chief of Finance",   "animal": "🤖", "color": "#2dd4bf",
+               "prompt": "You are Neo, the Chief of Finance robot. You coordinate the finance team, route incoming tasks, and keep the work moving. Be concise and decisive."},
+    "BEAVER": {"name": "Bear",     "role": "QA",                 "animal": "🐻", "color": "#f59e0b",
+               "prompt": "You are Bear from QA. You review receipts and check the team's work for mistakes or discrepancies. Be clear and decisive."},
+    "PANDA":  {"name": "Girraffe", "role": "Knowledge Manager",  "animal": "🦒", "color": "#ec4899",
+               "prompt": "You are Girraffe, Knowledge Manager. You balance debits and credits, remember vendors, and keep accurate records. Be organised and helpful."},
+    "COLLIE": {"name": "Corgi",    "role": "Finance",            "animal": "🐕", "color": "#8b5cf6",
+               "prompt": "You are Corgi from Finance. You read receipts, sort expenses, and get everything tax-ready in AUD. Be cheerful, helpful, and concise."},
 }
 
 STATES = ["idle", "working", "walking"]
@@ -66,11 +66,15 @@ async def send_message(body: dict):
         "FINANCE": "COLLIE",
         "BEAR": "BEAVER",
         "QA": "BEAVER",
+        "GIRRAFFE": "PANDA",
         "GIRAFFE": "PANDA",
         "KNOWLEDGE_MANAGER": "PANDA",
+        "NEO": "ORCA",
+        "CHIEF_OF_FINANCE": "ORCA",
         "CHIEF_OF_STAFF": "ORCA",
     }
-    agent_name = ALIASES.get(raw_name, raw_name)
+    alias_key = "_".join(raw_name.split())
+    agent_name = ALIASES.get(alias_key, alias_key)
     if agent_name not in AGENTS:
         agent_name = "ORCA"
     agent = AGENTS[agent_name]
@@ -79,7 +83,7 @@ async def send_message(body: dict):
     reply = await call_gemini(agent["prompt"], msg)
     agent_status[agent_name]["state"] = "idle"
     agent_status[agent_name]["task"] = "Waiting for work"
-    return {"reply": reply, "agent": raw_name}
+    return {"reply": reply, "agent": raw_name, "name": agent["name"], "role": agent["role"]}
 
 @app.get("/health")
 def health():
