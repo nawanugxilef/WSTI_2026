@@ -530,7 +530,7 @@ class DemoRuntime:
                 orchestrator = DemoOrchestrator(connection, FinanceAgent(api_key=""))
                 current = orchestrator.km.get_receipt(receipt_id)
                 if not current or not (
-                    current["status"] in _POSTED or category_edit and _category_editable(
+                    current["status"] in _POSTED or _category_editable(
                         current["status"], current["category"], current["flag_reason"],
                     )
                 ):
@@ -660,10 +660,11 @@ class DemoRuntime:
                             else:
                                 summary = orchestrator.process_note(note, capture_date=capture_date, progress=trace)
                                 result = self._result(summary, None)
-                        if result["status"] in _POSTED and connection.execute(
+                        if (result["status"] in _POSTED and connection.execute(
                             "SELECT 1 FROM journal_transactions WHERE reference = ?",
                             (f"receipt:{result['receipt_id']}",),
-                        ).fetchone():
+                        ).fetchone()) or (result["status"] == "needs_review" and result.get("receipt_id")):
+                            # Womby rewards logging a receipt, including one that still needs a quick check.
                             self._award_xp(connection, session, job)
                     except Exception:
                         logger.warning("One demo receipt could not be processed")

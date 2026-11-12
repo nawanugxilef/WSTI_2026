@@ -258,3 +258,20 @@ def test_manual_note_distinguishes_decimal_commas_and_thousands(amount, expected
     result = FinanceAgent(api_key="").parse_note(f"[FICTIONAL DEMO] coffee {amount}", capture_date=CAPTURE_DATE)
     assert result.total_amount == expected
     assert result.date == (CAPTURE_DATE.isoformat() if expected is not None else None)
+
+
+@pytest.mark.parametrize(("text", "vendor", "day"), [
+    ("Bunnings 12 Nov 2026 hammer $45.90", "Bunnings", "2026-11-12"),
+    ("Bunnings hammer $45.90 12/11/26", "Bunnings", "2026-11-12"),
+    ("Kmart Nov 3 storage box 19.00", "Kmart", "2026-11-03"),
+    ("Officeworks 25th December paper $9.80", "Officeworks", "2025-12-25"),
+    ("[FICTIONAL DEMO] Harbour Cafe $6.50 3 November", "[FICTIONAL DEMO] Harbour Cafe", "2026-11-03"),
+])
+def test_rule_parser_reads_written_dates_and_shop_names(text, vendor, day):
+    result = FinanceAgent(api_key="").parse_note(text, capture_date=date(2026, 11, 12))
+    assert result.vendor == vendor and result.date == day
+
+
+def test_month_word_next_to_a_price_is_not_a_date():
+    result = FinanceAgent(api_key="").parse_note("may 5.50", capture_date=date(2026, 11, 12))
+    assert result.date != "2026-05-05" and result.total_amount == 5.5

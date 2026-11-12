@@ -129,7 +129,17 @@ BATCH_SYSTEM_PROMPT = SYSTEM_PROMPT + "\nReturn one JSON object matching this sc
 )
 
 # Remove dates before scanning for amounts so a day or year cannot become a dollar value.
-NOTE_DATE_PATTERN = re.compile(r"(?<!\w)(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{2,4}|today|yesterday)(?!\w)", re.IGNORECASE)
+_MONTH_NAME = (
+    r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|"
+    r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?"
+)
+NOTE_DATE_PATTERN = re.compile(
+    r"(?<!\w)(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{2,4}"
+    rf"|\d{{1,2}}(?:st|nd|rd|th)?[ \t]+{_MONTH_NAME}(?:,?[ \t]+\d{{4}})?"
+    rf"|{_MONTH_NAME}[ \t]+\d{{1,2}}(?:st|nd|rd|th)?(?:,?[ \t]+\d{{4}})?"
+    r"|today|yesterday)(?!\w)(?![.,]\d)",
+    re.IGNORECASE,
+)
 NUMBER_PATTERN = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
 _BARE_NOTE_AMOUNT = re.compile(
     r"(?<![\w.,/$€£¥-])((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{1,2}|\d+,\d{1,2})(?![\w.,/-])"
@@ -185,15 +195,57 @@ _BARE_AMOUNT_REFERENCE = re.compile(
 )
 
 
-def _calendar_date(value: str) -> Optional[str]:
-    """Convert an explicit Australian or ISO date, optionally followed by a time."""
+def _calendar_date(value: str, today: Optional[datetime.date] = None) -> Optional[str]:
+    """Convert an explicit Australian, ISO or written-month date, optionally followed by a time."""
+    words = re.sub(r"(?<=\d)(?:st|nd|rd|th)\b|[,.]", " ", value.strip(), flags=re.IGNORECASE).split()
+    if words and any(w[0].isalpha() for w in words):
+        day = next((w for w in words if w.isdigit() and len(w) <= 2), None)
+        year = next((w for w in words if w.isdigit() and len(w) == 4), None)
+        month = next((w[:3].title() for w in words if w[0].isalpha()), None)
+        if not day or not month:
+            return None
+        base = today or datetime.date.today()
+        try:
+            parsed = datetime.datetime.strptime(f"{day} {month} {year or base.year}", "%d %b %Y").date()
+        except ValueError:
+            return None
+        if not year and parsed > base:
+            # A written date without a year is a past purchase, not a future one.
+            try:
+                parsed = parsed.replace(year=parsed.year - 1)
+            except ValueError:
+                return None
+        return parsed.isoformat()
     value = re.split(r"[T ]", value.strip(), maxsplit=1)[0]
-    for pattern in ("%Y-%m-%d", "%d/%m/%Y"):
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
         try:
             return datetime.datetime.strptime(value, pattern).date().isoformat()
         except ValueError:
             continue
     return None
+
+
+_DEMO_LABEL = re.compile(r"^\[FICTIONAL DEMO\]\s*", re.IGNORECASE)
+_VENDOR_JOINERS = ("&", "and", "of", "the")
+
+
+def _leading_vendor_name(text: str) -> str:
+    """Keep a capitalised shop name and drop lowercase item words, e.g. 'Bunnings hammer' -> 'Bunnings'."""
+    text = re.sub(r"\s+", " ", text).strip()
+    label = _DEMO_LABEL.match(text)
+    prefix, rest = (label.group(), text[label.end():]) if label else ("", text)
+    words = rest.split(" ")
+    kept = []
+    for word in words:
+        if word and (word[0].isupper() or word[0].isdigit() or word in _VENDOR_JOINERS):
+            kept.append(word)
+        else:
+            break
+    while kept and kept[-1] in _VENDOR_JOINERS:
+        kept.pop()
+    if not kept or len(kept) == len(words) or not any(w[0].isupper() for w in kept):
+        return text
+    return (prefix + " ".join(kept)).strip()
 
 
 def _amount_value(value: str) -> Optional[float]:
@@ -654,7 +706,7 @@ class FinanceAgent:
                     day -= datetime.timedelta(days=1)
                 dates.add(day.isoformat())
             else:
-                dates.add(_calendar_date(value))
+                dates.add(_calendar_date(value, capture_date))
         date = next(iter(dates)) if len(dates) == 1 else None
         text_without_dates = NOTE_DATE_PATTERN.sub(" ", text_without_pct)
 
@@ -679,6 +731,8 @@ class FinanceAgent:
             total = None
         explicit_vendor = re.search(r"(?:^|[|;])\s*(?:vendor|merchant)\s*[:=]\s*([^|;]+)", vendor_source, re.IGNORECASE)
         vendor = (explicit_vendor.group(1) if explicit_vendor else vendor_source).strip(" \t,;|-")
+        if not explicit_vendor:
+            vendor = _leading_vendor_name(vendor)
         if (
             capture_date is not None
             and not dates

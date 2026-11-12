@@ -69,7 +69,7 @@ dialog.innerHTML = `
             </button>
             <input id="neo-demo-picker" type="file" multiple accept=".jpg,.jpeg,.png,.heic,.heif,.pdf,image/jpeg,image/png,image/heic,image/heif,application/pdf" hidden>
             <label class="neo-demo-sr" for="neo-demo-note">Receipt note or caption</label>
-            <textarea id="neo-demo-note" rows="1" maxlength="300" placeholder="coffee 5,5"></textarea>
+            <textarea id="neo-demo-note" rows="1" maxlength="300" placeholder="e.g. Bunnings hammer $45.90"></textarea>
             <button id="neo-demo-send" type="submit" aria-label="Send" disabled>
               <svg class="neo-demo-send-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 9.5 14.5M21 3l-7 18-4.5-6.5L3 10l18-7Z"/></svg>
             </button>
@@ -306,7 +306,7 @@ function renderReceipt(container, result) {
   const status = result.receipt_status ?? result.status;
   const needsReview = status === "needs_review";
   const posted = editableStates.has(status);
-  const canAllocate = posted && Object.hasOwn(streams, result.claim_stream);
+  const canAllocate = (posted || needsReview) && Object.hasOwn(streams, result.claim_stream);
   const canCategorize = (posted || needsReview) && Array.isArray(result.category_options)
     && result.category_options.length > 0;
   if (!result.receipt_id || (!canAllocate && !canCategorize)) return;
@@ -332,11 +332,15 @@ function renderReceipt(container, result) {
     container.append(settings);
     return;
   }
+  if (needsReview) {
+    const vendor = result.vendor ? result.vendor.replace(/^\[FICTIONAL DEMO\]\s*/i, "") : "This receipt";
+    container.append(node("p", vendor + ": work or personal?", "neo-demo-question"));
+  }
   const actions = node("div", "", "neo-demo-receipt-actions");
   actions.setAttribute("role", "group");
   actions.setAttribute("aria-label", "Allocation for receipt " + result.receipt_id);
   for (const [stream, label] of Object.entries(streams)) {
-    const selected = result.claim_stream === stream;
+    const selected = !needsReview && result.claim_stream === stream;
     const button = node("button", (selected ? "✓ " : "") + label, "neo-demo-action");
     button.type = "button";
     button.setAttribute("aria-label", label);

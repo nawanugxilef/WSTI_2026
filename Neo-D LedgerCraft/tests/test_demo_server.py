@@ -633,7 +633,7 @@ def test_personal_category_can_confirm_classification_review(demo_server):
         assert updated["result"]["status"] == "corrected" and updated["result"]["receipt_id"] == result["receipt_id"]
         assert connection.execute("SELECT category, claim_stream, business_pct FROM receipts").fetchone() == ("groceries", "personal", 0)
         assert connection.execute("SELECT count(*) FROM journal_transactions").fetchone()[0] == 1
-        assert updated["session"]["xp"] == 0
+        assert updated["session"]["xp"] == 10  # awarded once at intake, not again on review
 
 
 def test_category_edit_cannot_post_flagged_duplicate_or_missing_evidence(demo_server, monkeypatch):
@@ -654,3 +654,23 @@ def test_category_edit_cannot_post_flagged_duplicate_or_missing_evidence(demo_se
     session = next(iter(demo_server.runtime._sessions.values()))
     with closing(sqlite3.connect(session.database)) as connection:
         assert connection.execute("SELECT reference FROM journal_transactions").fetchall() == [(f"receipt:{original['receipt_id']}",)]
+
+
+def test_written_date_note_names_vendor_awards_xp_and_asks_work_or_personal(demo_server):
+    client = DemoClient(demo_server)
+    client.open()
+    logged = client.intake({"text": "[FICTIONAL DEMO] Bunnings 12 Nov 2025 hammer $45.90"})
+    result = logged["job"]["results"][0]
+    assert result["date"] == "2025-11-12" and result["total_amount"] == 45.9
+    assert result["vendor"] == "[FICTIONAL DEMO] Bunnings"
+    assert result["status"] == "needs_review" and result["receipt_id"] > 0
+    assert result["claim_stream"] == "personal"
+    assert logged["job"]["xp"]["gained"] == 10
+    status, _, updated = client.request(
+        "POST", "/demo/api/correct",
+        {"receipt_id": result["receipt_id"], "claim_stream": "abn", "business_activity": "dog_walking", "business_pct": 100},
+    )
+    assert status == 200, updated
+    assert updated["result"]["status"] in ("corrected", "confirmed", "recorded")
+    assert updated["result"]["claim_stream"] == "abn"
+    assert updated["session"]["xp"] == 10
