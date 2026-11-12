@@ -45,6 +45,10 @@ def test_short_manual_expense_is_recorded_with_the_telegram_capture_date(text, a
     ("nasi campur 16", 16, "dining_coffee"),
     ("pork knuckles $20", 20, "dining_coffee"),
     ("baklava $15", 15, "dining_coffee"),
+    ("cake 3", 3, "dining_coffee"),
+    ("chocolate cake 3", 3, "dining_coffee"),
+    ("kue lapis 3", 3, "dining_coffee"),
+    ("cake from supermarket $3", 3, "groceries"),
     ("hot dog $8", 8, "dining_coffee"),
     ("milk tea 7", 7, "dining_coffee"),
     ("milk-tea 7", 7, "dining_coffee"),
@@ -87,7 +91,10 @@ def test_manual_foreign_price_is_not_recorded_as_aud(text):
     assert result.total_amount is None and result.date is None
 
 
-@pytest.mark.parametrize("text", ["unknown shop 7", "boba shop 7", "milktea 7 and 8"])
+@pytest.mark.parametrize("text", [
+    "unknown shop 7", "boba shop 7", "milktea 7 and 8",
+    "cake qty 3", "cake mix 3", "cake 3 slices", "cake 3 and 4", "cake last Friday 3",
+])
 def test_uncertain_whole_dollar_amount_stays_blank(text):
     result = FinanceAgent(api_key="").parse_note(text, capture_date=CAPTURE_DATE)
     assert result.total_amount is None and result.date is None

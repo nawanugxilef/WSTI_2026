@@ -151,6 +151,8 @@ _PREPARED_DISH = re.compile(
     r"pork\s+knuckles?|fried\s+rice|fish\s+(?:and|&)\s+chips|hot\s+dogs?|"
     r"baklava|biryani|pizza|ramen|sushi|dumplings?|falafel|kebabs?|shawarma|"
     r"burgers?|sandwich(?:es)?|tacos?|burritos?|ice\s+cream|cheesecake|"
+    r"(?:(?:chocolate|carrot|sponge)\s+)?cake(?!\s+(?:mix|flour|pan|tin|mould|shop)\b)|"
+    r"kue(?:\s+(?:lapis|bolu|sus|cubit))?|cupcakes?|brownies?|"
     r"(?:pearl\s+)?milk[-\s]*tea|bubble[-\s]*tea|boba(?:\s+(?:milk[-\s]*tea|tea))?)\b",
     re.IGNORECASE,
 )
