@@ -9,21 +9,21 @@ Autonomous multi-agent financial assistant for sole traders in Australia (`$ AUD
 ## 🏛️ Architecture: 4-Agent Pipeline
 
 ```
-Telegram / CLI / Notes / Receipts / Bank Statements
+Telegram / Web demo / CLI / Notes / Receipts / Bank Statements
                │
                ▼
-   [ Chief of Staff 🐕 ] ── Intake, file archiving & orchestration
+   [ Neo · Chief of Staff ] ── Intake, file archiving & orchestration
                │
                ▼
-      [ Finance Agent 🦊 ] ── Single-call Multimodal Gemini (vendor, AUD, GST, ABN & myTax)
+      [ Corgi · Finance 🐕 ] ── Single-call Multimodal Gemini (vendor, AUD, GST, ABN & myTax)
                │ ▲
        Review  │ │ Re-read feedback loop (max 2 retries)
                ▼ │
-        [ QA Agent 🐻‍❄️ ] ── Rule-based checks (math, 10% GST, dates, AUD, duplicates)
+        [ Bear · QA 🐻‍❄️ ] ── Rule-based checks (math, 10% GST, dates, AUD, duplicates)
                │
           Approved / Flagged
                ▼
-  [ Knowledge Manager 🦒 ] ── Double-entry ledger & Vendor Memory
+  [ Girraffe · Knowledge 🦒 ] ── Double-entry ledger & Vendor Memory
                │
      ┌─────────┴─────────┐
      ▼                   ▼
@@ -33,10 +33,10 @@ Local SQLite (WAL)   Google Drive (Receipt Originals)
                      - Statements/
 ```
 
-1. **Chief of Staff (🐕)**: Front-door intake coordinator (CLI, Telegram, single/multi receipt photos, PDFs, bank statements, and typed notes).
-2. **Finance Agent (🦊)**: Single-call Gemini multimodal extractor (JSON schema, temperature 0, Australian myTax classification, and Personal vs. ABN Business split for **Dog Walking** and **3D Printing**).
-3. **QA Agent (🐻‍❄️)**: Deterministic verification (Australian GST <= 10%, date sanity, strict AUD currency enforcement, line-item math, and duplicate detection with up to 2 retries).
-4. **Knowledge Manager (🦒)**: Double-entry journal posting (`sum(debits) == sum(credits)`) and adaptive Vendor Memory learning.
+1. **Neo, Chief of Staff**: Front-door intake coordinator (CLI, Telegram, single/multi receipt photos, PDFs, bank statements, and typed notes).
+2. **Corgi, Finance Agent (🐕)**: Single-call Gemini multimodal extractor (JSON schema, temperature 0, Australian myTax classification, and Personal vs. ABN Business split for **Dog Walking** and **3D Printing**).
+3. **Bear, QA Agent (🐻‍❄️)**: Deterministic verification (Australian GST <= 10%, date sanity, strict AUD currency enforcement, line-item math, and duplicate detection with up to 2 retries).
+4. **Girraffe, Knowledge Manager (🦒)**: Double-entry journal posting (`sum(debits) == sum(credits)`) and adaptive Vendor Memory learning.
 
 ---
 
@@ -110,4 +110,4 @@ python -m src.interfaces.cli backup
 ```bash
 python -m unittest discover tests
 ```
-10 unit tests covering QA rules, double-entry balance, vendor memory, and the end-to-end 4-agent Chief of Staff pipeline.
+214 tests and 28 subtests (13 November 2026) covering QA rules, double-entry balance, vendor memory, the end-to-end 4-agent pipeline, Telegram flows, dashboard sign-in and the public web demo.

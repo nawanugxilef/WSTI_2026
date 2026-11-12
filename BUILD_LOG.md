@@ -42,6 +42,22 @@ The development roadmap completed and underway during the contest build period:
 - **Web Server Protection & Intake:** `ThreadingHTTPServer` bound to `127.0.0.1`, input validation on mutation endpoints, timing-safe HMAC token comparison, fast zero-friction note intake (`POST /api/intake`), and isolated `DEMO_MODE` with disposable demo database (`data/demo.db`).
 - **Deployment Blueprint (`docs/deploy_aws.md`):** Complete AWS EC2 deployment guide with non-root system user, systemd service units, swapfile allocation, and billing alarms.
 
-### 2.3 Pitch Night Preparation & Hardware Sync (Nov 17–20, 2026)
+### 2.3 3D Office & Agent Personalities (Nov 9, 2026)
+- **Interactive 3D Office:** The agents appear as characters at their desks: Neo (Chief of Staff), Corgi (Finance), Bear (QA) and Girraffe (Knowledge Manager), with Felix in the boss office.
+
+### 2.4 Telegram, Drive & Owner Dashboard (Nov 11, 2026)
+- **Receipt Intake Fixes:** Safe posting, compact Telegram receipt cards with category icons, manual capture and Womby receipt feedback.
+- **Google Drive Originals:** Uploaded receipt originals are stored only in the owner's Google Drive.
+- **Live Office Activity:** The 3D office follows real receipt stages, with a task board (Inbox, In progress, Review, Done) and an activity calendar.
+- **Mobile Owner Dashboard:** Installable dashboard with Telegram one-time sign-in and Receipts, myTax and Books tabs.
+- **Corrections & Duplicates:** One-tap receipt corrections; a resent duplicate opens the original receipt.
+
+### 2.5 Public Web Demo & Server Deployment (Nov 12–13, 2026)
+- **Isolated Web Demo:** No-login demo with a private 30-minute session and its own temporary ledger per visitor, fixture extraction for the fictional samples, up to 10 photos per send, live agent activity and the Womby 3D companion. Reached from **Try Neo** at [neo.madewithfelix.app](https://neo.madewithfelix.app/).
+- **Smarter Notes:** Written dates, shop names and short informal notes are understood; Neo asks "work or personal?" when unsure.
+- **One-Command Deploy:** A single server command deploys the web demo, Telegram bot and owner dashboard from this repository to AWS EC2 (`m7i-flex.large`, Ubuntu 24.04, Sydney).
+- **Test Suite:** 214 tests and 28 subtests passing on 13 November 2026.
+
+### 2.6 Pitch Night Preparation & Hardware Sync (Nov 17–20, 2026)
 - **Pitch Night Interactive Demo:** Interactive stage demo featuring live web receipt intake and ATO deduction reporting review.
 - **Physical Companion Preview:** Hardware kit card assembly guide (`docs/hardware_bom_and_kitcard_spec.md` and `docs/assembly_guide_3d.html`) and serial protocol specification for physical desk companion boxes.
