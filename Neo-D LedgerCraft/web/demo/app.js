@@ -8,8 +8,19 @@ launcher.textContent = "Try Neo";
 launcher.setAttribute("aria-haspopup", "dialog");
 launcher.setAttribute("aria-controls", "neo-demo");
 launcher.setAttribute("aria-expanded", "false");
-toolbar?.querySelector('a[href="/dashboard"]')?.replaceWith(launcher);
-if (!launcher.isConnected) toolbar?.append(launcher);
+if (toolbar) {
+  toolbar.querySelector('a[href="/dashboard"]')?.remove();
+  const address = window.location.hostname.split(".");
+  const tailnetBlock = Number(address[1]);
+  if (window.location.protocol === "http:" && address.length === 4 && address[0] === "100"
+      && tailnetBlock >= 64 && tailnetBlock <= 127) {
+    const dashboard = document.createElement("a");
+    dashboard.href = "https://neo.madewithfelix.app/dashboard";
+    dashboard.textContent = "Dashboard";
+    toolbar.append(dashboard);
+  }
+  toolbar.append(launcher);
+}
 
 const dialog = document.createElement("dialog");
 dialog.id = "neo-demo";
@@ -108,6 +119,7 @@ let submitting = false;
 let correcting = false;
 let preparingAttachments = false;
 let activeJob;
+let intakeContext;
 let pollTimer;
 let replyTimer;
 let seenJob;
@@ -454,6 +466,12 @@ async function api(path, method = "GET", payload) {
 
 function updateJob(job, animate = true) {
   clearTimeout(pollTimer);
+  const context = job && intakeContext?.jobId === job.id ? intakeContext : null;
+  if (context && job.run_ids?.length) {
+    office?.dispatchEvent(new CustomEvent("neo-office:receipt-context", {
+      detail: { runIds: job.run_ids, kind: context.kind, note: context.note },
+    }));
+  }
   if (job) office?.dispatchEvent(new Event("neo-office:refresh-progress"));
   if (!job) {
     activeJob = null;
@@ -464,7 +482,15 @@ function updateJob(job, animate = true) {
   if (activeStates.has(job.state)) {
     activeJob = job.id;
     const progress = job.total > 1 ? " · " + job.completed + " of " + job.total + " checked" : "";
-    setStatus((stages[job.stage] || "Neo is preparing your request") + progress);
+    const received = context?.note ? `Neo received “${context.note}”` : "Neo received your receipt";
+    const stage = stages[job.stage] || "Neo is preparing your request";
+    if (job.state === "queued") {
+      setStatus("Queued · " + received);
+    } else if (job.stage === "terminal") {
+      setStatus("Finishing receipt processing…" + progress);
+    } else {
+      setStatus("Live · " + (job.stage === "neo_intake" ? received : stage) + progress);
+    }
     companion?.setState("thinking");
     updateControls();
     pollTimer = setTimeout(pollJob, 750);
@@ -500,6 +526,7 @@ async function pollJob() {
     if (error.status === 401) {
       session = null;
       activeJob = null;
+      intakeContext = null;
       submittedNote = null;
       clearDateQuestion();
       companion?.setState("idle");
@@ -525,6 +552,7 @@ async function connect() {
       if (error.status !== 401) throw error;
       snapshot = await api("session", "POST");
       seenJob = null;
+      intakeContext = null;
       submittedNote = null;
       clearDateQuestion();
       log.replaceChildren();
@@ -748,6 +776,14 @@ async function sendIntake(text, chosen, confirmation = null) {
     const payload = confirmation?.photo ? { photo_confirmation: confirmation.photo } : { text, files: encoded };
     const snapshot = await api("intake", "POST", payload);
     clearDateQuestion();
+    let kind = "note";
+    if (chosen.some((file) => /\.pdf$/i.test(file.name))) kind = "pdf";
+    else if (chosen.length || confirmation?.photo) kind = "photo";
+    intakeContext = {
+      jobId: snapshot.job.id,
+      kind,
+      note: kind === "note" ? text.replace(/\s+/g, " ").trim().slice(0, 96) : "",
+    };
     submittedNote = chosen.length || confirmation ? null : { id: snapshot.job.id, text };
     if (confirmation) {
       confirmation.form?.remove();
@@ -764,6 +800,7 @@ async function sendIntake(text, chosen, confirmation = null) {
   } catch (error) {
     if (error.status === 401) {
       session = null;
+      intakeContext = null;
       submittedNote = null;
       clearDateQuestion();
       setError("Your demo session expired. Send again to start a fresh session.");

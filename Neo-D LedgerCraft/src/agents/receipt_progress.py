@@ -136,9 +136,9 @@ def _append_event(path: Path, event: dict) -> None:
 class ReceiptProgress:
     """One ordered run. Recording a stage never changes the intake result."""
 
-    def __init__(self, path: Path | None):
+    def __init__(self, path: Path | None, *, run_id: str | None = None):
         self.path = path
-        self.run_id = uuid4().hex
+        self.run_id = run_id or uuid4().hex
         self.seq = 0
         self.rank = 0
         self.finished = False

@@ -98,8 +98,8 @@ class DemoServer(ThreadingHTTPServer):
         self, port: int, runtime: DemoRuntime, *,
         public_origin: str | None = None, tailnet_ip: str | None = None,
     ):
-        if tailnet_ip is not None and (public_origin is not None or runtime.mode not in ("fixture", "local")):
-            raise ValueError("The direct tailnet preview requires fixture or local OCR mode.")
+        if tailnet_ip is not None and public_origin is not None:
+            raise ValueError("Choose either a direct tailnet preview or a public HTTPS origin.")
         if public_origin is not None and runtime.mode == "local":
             raise ValueError("Local OCR is available only for private previews.")
         self.runtime = runtime
@@ -274,8 +274,6 @@ def main() -> None:
                 raise ValueError("Local OCR is available only for private previews.")
         if args.tailnet_ip is not None:
             _validate_tailnet_ip(args.tailnet_ip)
-            if args.mode not in ("fixture", "local"):
-                raise ValueError("The direct tailnet preview requires fixture or local OCR mode.")
         if args.mode == "local" and os.name != "nt":
             raise ValueError("Local photo OCR requires Windows.")
     except ValueError as error:

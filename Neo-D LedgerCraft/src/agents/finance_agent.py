@@ -150,7 +150,8 @@ _PREPARED_DISH = re.compile(
     r"martabak|pempek|siomay|roti\s+canai|es\s+teh|teh\s+tarik|cendol|"
     r"pork\s+knuckles?|fried\s+rice|fish\s+(?:and|&)\s+chips|hot\s+dogs?|"
     r"baklava|biryani|pizza|ramen|sushi|dumplings?|falafel|kebabs?|shawarma|"
-    r"burgers?|sandwich(?:es)?|tacos?|burritos?|ice\s+cream|cheesecake)\b",
+    r"burgers?|sandwich(?:es)?|tacos?|burritos?|ice\s+cream|cheesecake|"
+    r"(?:pearl\s+)?milk[-\s]*tea|bubble[-\s]*tea|boba(?:\s+(?:milk[-\s]*tea|tea))?)\b",
     re.IGNORECASE,
 )
 _DINING_CONTEXT = re.compile(
@@ -161,16 +162,23 @@ _GROCERY_CONTEXT = re.compile(
     r"\b(?:grocery|groceries|grocers?|supermarket|ingredients?|woolworths|coles|aldi|costco|bahan\s+masak)\b",
     re.IGNORECASE,
 )
-_NON_AUD_CODE = r"(?:USD|EUR|GBP|NZD|CAD|JPY|IDR|SGD)"
+_NON_AUD_CODE = r"(?:USD|EUR|GBP|NZD|CAD|JPY|IDR|SGD|rupiah)"
 _NON_AUD_PRICE = re.compile(
-    rf"(?:\b{_NON_AUD_CODE}\b\s*\$?|\b(?:US|NZ)\$|[£€¥])\s*(?=\d)|(?<=\d)\s*{_NON_AUD_CODE}\b",
+    rf"(?:\b{_NON_AUD_CODE}\b\s*\$?|\bRp\.?|\b(?:US|NZ)\$|[£€¥])\s*(?=\d)"
+    rf"|(?<=\d)\s*(?:{_NON_AUD_CODE}|Rp)\b",
     re.IGNORECASE,
 )
 _OTHER_DATE_CUE = re.compile(
     r"\b(?:tomorrow|yday|yest|last|next|ago|date|days?|weeks?|months?|years?|"
     r"mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|"
     r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|"
-    r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b",
+    r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|"
+    r"kemarin|kemaren|kmrn|semalam|tadi|besok|bsk|lusa|tanggal|tgl|hari|minggu|bulan|tahun|"
+    r"senin|selasa|rabu|kamis|jum['’]?at|sabtu)\b",
+    re.IGNORECASE,
+)
+_BARE_AMOUNT_REFERENCE = re.compile(
+    r"\b(?:qty|quantity|abn|acn|postcode|phone|(?:invoice|receipt|order|ref(?:erence)?)(?:\s+(?:no\.?|number|id))?)$",
     re.IGNORECASE,
 )
 
@@ -452,18 +460,41 @@ class FinanceAgent:
         capture_date: Optional[datetime.date] = None,
     ) -> ParsedReceipt:
         """Invokes Gemini model for text extraction with fallback models."""
-        evidence = self._heuristic_parse_text(text, capture_date=capture_date)
+        fallback = self._heuristic_parse_text(text, capture_date=capture_date)
+        evidence = fallback
+        if capture_date is not None and fallback.total_amount is None and not NOTE_DATE_PATTERN.search(text):
+            candidate = _TERSE_EXPENSE_NOTE.fullmatch(text.strip())
+            if (candidate and candidate["amount"].isdigit()
+                    and not _OTHER_DATE_CUE.search(text) and not _NON_AUD_PRICE.search(text)
+                    and not _BARE_AMOUNT_REFERENCE.search(candidate["description"])):
+                total = _amount_value(candidate["amount"])
+                if total is not None and total > 0:
+                    evidence = fallback.model_copy(update={
+                        "vendor": candidate["description"],
+                        "date": capture_date.isoformat(),
+                        "total_amount": total,
+                    })
         if evidence.date is None or evidence.total_amount is None:
-            return evidence
-        if capture_date is not None and _TERSE_COFFEE_NOTE.fullmatch(text.strip()):
+            return fallback
+        if evidence is fallback and capture_date is not None and _TERSE_COFFEE_NOTE.fullmatch(text.strip()):
             return evidence
 
         from google.genai import types
 
-        system_instruction = RECEIPT_SYSTEM_PROMPT
+        system_instruction = RECEIPT_SYSTEM_PROMPT + (
+            "\nCategorize typed notes using the meaning of informal words, abbreviations and item names. "
+            "Use the named merchant if present. Otherwise use the item description as the vendor label. "
+            "You may normalize capitalization, spacing and punctuation. Never invent a merchant brand. "
+            "If the note could describe a quantity or reference instead of a purchase, return a null total "
+            "and explain the uncertainty."
+        )
+        if evidence is not fallback:
+            system_instruction += (
+                f"\nIf this is a purchase, the trailing number is its verified amount of {evidence.total_amount:g} AUD."
+            )
         if capture_date is not None and not NOTE_DATE_PATTERN.search(text):
             system_instruction += (
-                f"\nFor this short manual Telegram note the application verified the entry date as {evidence.date} "
+                f"\nFor this short typed note the application verified the entry date as {evidence.date} "
                 "in Australia/Sydney. Use that date and base confidence on the expense classification."
             )
         prompt = "Extract the transaction details from this note:\n\n" + json.dumps(text, ensure_ascii=False)
@@ -500,9 +531,14 @@ class FinanceAgent:
                 )
                 data = json.loads(response.text)
                 parsed = ParsedReceipt(**data)
+                if evidence is not fallback and (parsed.total_amount is None or parsed.total_amount <= 0):
+                    return fallback
                 parsed.date = evidence.date
-                parsed.total_amount = evidence.total_amount
-                if not parsed.vendor or parsed.vendor.casefold() not in text.casefold():
+                parsed.total_amount = evidence.total_amount if parsed.currency.strip().upper() == "AUD" else None
+                parsed.tax_amount = evidence.tax_amount
+                vendor_key = re.sub(r"[\W_]+", "", parsed.vendor.casefold())
+                description_key = re.sub(r"[\W_]+", "", evidence.vendor.casefold())
+                if not vendor_key or vendor_key not in description_key:
                     parsed.vendor = evidence.vendor
                 parsed.classification_source = "ai_suggestion"
                 return self._normalize_parsed_receipt(parsed, "ai_suggestion")
@@ -510,7 +546,7 @@ class FinanceAgent:
                 print(f"[FinanceAgent] Model {m} error: {e}. Trying fallback...")
                 continue
 
-        return evidence
+        return fallback
 
     def _call_gemini_multimodal(
         self,

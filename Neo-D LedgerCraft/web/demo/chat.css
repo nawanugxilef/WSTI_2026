@@ -1,3 +1,4 @@
+.office-tools { flex-wrap: wrap; max-width: 100%; }
 body[data-neo-demo-open] {
   height: var(--neo-demo-viewport, 100dvh);
   overflow: hidden;
@@ -303,7 +304,7 @@ body[data-neo-demo-open]:has(.neo-demo[data-keyboard]) .office-status { display:
 .neo-demo-date-options button, .neo-demo-action { background: var(--demo-wash); color: var(--demo-accent); font-weight: 600; }
 .neo-demo-date-options button[type="submit"], .neo-demo-receipt-settings button[type="submit"], .neo-demo-action[aria-pressed="true"] { background: var(--demo-accent); color: var(--demo-paper); }
 .neo-demo-footer { min-width: 0; padding: .3em .65em .45em; border-top: 1px solid var(--demo-line); background: #f2f8ef; }
-.neo-demo-status { color: var(--demo-muted); font-size: .9em; }
+.neo-demo-status { color: var(--demo-muted); font-size: .9em; overflow-wrap: anywhere; }
 .neo-demo[data-processing] .neo-demo-status { color: var(--demo-accent); font-weight: 600; }
 .neo-demo-error { margin-block: .25em !important; color: #8f3e32; font-size: .96em; overflow-wrap: anywhere; }
 .neo-demo-composer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: .4em; margin-block: .3em .2em; }

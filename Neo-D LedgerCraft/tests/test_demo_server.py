@@ -186,18 +186,20 @@ def test_photo_suggestion_leaves_missing_and_ambiguous_values_blank():
     assert suggestion == {"vendor": "Wattle Cafe", "date": None, "total_amount": None}
 
 
-def test_private_tailnet_listener_checks_origin_and_uses_a_separate_cookie(monkeypatch):
+@pytest.mark.parametrize("mode", ["fixture", "gemini"])
+def test_private_tailnet_listener_checks_origin_and_uses_a_separate_cookie(monkeypatch, mode):
     # Simulate the private adapter on loopback without needing a Tailscale installation in CI.
     monkeypatch.setattr(demo_server_module, "_TAILNET_IPV4", IPv4Network("127.0.0.1/32"))
-    runtime = DemoRuntime("fixture", lambda: FixtureFinance(FIXTURES))
+    runtime = DemoRuntime(mode, lambda: FixtureFinance(FIXTURES))
     with DemoServer(0, runtime, tailnet_ip="127.0.0.1") as server:
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         try:
             client = DemoClient(server)
             assert client.request("POST", "/demo/api/session", origin="https://foreign.example")[0] == 403
-            status, headers, _ = client.request("POST", "/demo/api/session")
+            status, headers, snapshot = client.request("POST", "/demo/api/session")
             assert status == 200
+            assert snapshot["session"]["mode"] == mode
             cookie = headers["Set-Cookie"]
             assert cookie.startswith("neo-wsti-tailnet-demo=")
             assert "HttpOnly" in cookie and "SameSite=Strict" in cookie and "Secure" not in cookie
@@ -247,6 +249,8 @@ def test_upload_dedupe_xp_and_progress_are_session_scoped(demo_server, monkeypat
     assert a["job"]["results"][0]["receipt_id"] == 1
     assert a["job"]["results"][0]["extraction"] == "fixture"
     assert a["session"]["xp"] == 10
+    first_events = first.request("GET", "/api/office/receipt-progress")[2]["events"]
+    assert {event["run_id"] for event in first_events} == set(a["job"]["run_ids"])
     assert second.request("GET", "/demo/api/session")[2]["job"] is None
     assert second.request("GET", "/api/office/receipt-progress")[2]["events"] == []
     def extraction_forbidden(*args, **kwargs):
@@ -267,6 +271,7 @@ def test_upload_dedupe_xp_and_progress_are_session_scoped(demo_server, monkeypat
     assert b["job"]["results"][0]["status"] == "recorded"
     assert b["job"]["results"][0]["receipt_id"] == 1
     assert b["session"]["xp"] == 10
+    assert set(a["job"]["run_ids"]).isdisjoint(b["job"]["run_ids"])
     status, _, updated = first.request("POST", "/demo/api/correct", {"receipt_id": 1, "category": "groceries"})
     assert status == 200, updated
     assert updated["result"]["status"] == "corrected" and updated["result"]["receipt_id"] == 1

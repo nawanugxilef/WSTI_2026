@@ -1,5 +1,6 @@
 const OFFICE_HOST = "neo.madewithfelix.app";
 const DASHBOARD_ORIGIN = "https://" + OFFICE_HOST;
+const WSTI_DEMO_ORIGIN = "https://demo.neo.madewithfelix.app";
 const READ = ["GET", "HEAD"];
 const DASHBOARD_ROUTES = new Map([
   ["/dashboard", { type: "text/html", methods: READ }],
@@ -135,6 +136,16 @@ async function serveDashboard(request, url, route, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.hostname === OFFICE_HOST && (url.pathname === "/demo" || url.pathname === "/demo/")
+        && env.NEO_WSTI_DEMO_ORIGIN === WSTI_DEMO_ORIGIN) {
+      if (!READ.includes(request.method)) {
+        return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
+      }
+      return new Response(null, {
+        status: 302,
+        headers: { Location: `${WSTI_DEMO_ORIGIN}/demo`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+      });
+    }
     const dashboardRoute = DASHBOARD_ROUTES.get(url.pathname);
     if (url.hostname === OFFICE_HOST && dashboardRoute) {
       return serveDashboard(request, url, dashboardRoute, env);

@@ -4390,6 +4390,7 @@ window.OFFICE_PERSONALITIES = {
     let lastUpdate = null, live = false, demoStep = 0, firstApply = true;
     let activeRequest = null, destroyed = false;
     const lastSequenceByRun = new Map(), activeReceiptStages = new Map();
+    const demoReceiptContexts = new Map();
     const queuedReceiptEvents = [];
     let progressInitialised = false, receiptTimer = 0, recentReceiptEvent = null;
     function renderBubble(agent, duration, showRole = false) {
@@ -4470,11 +4471,34 @@ window.OFFICE_PERSONALITIES = {
     function isLatestReceiptEvent(event) {
       return lastSequenceByRun.get(event.run_id) === event.seq;
     }
+    function registerDemoReceiptContext(event) {
+      const { runIds, kind, note } = event.detail || {};
+      if (!Array.isArray(runIds)) return;
+      const caption = typeof note === 'string' ? note.trim().slice(0, 120) : '';
+      for (const value of runIds.slice(0, 10)) {
+        if (typeof value !== 'string' || !/^[0-9a-f]{32}$/i.test(value)) continue;
+        const runId = value.toLowerCase();
+        if (!demoReceiptContexts.has(runId)) {
+          demoReceiptContexts.set(runId, { pdf: kind === 'pdf', caption, sequence: 0 });
+        }
+      }
+      while (demoReceiptContexts.size > 80) demoReceiptContexts.delete(demoReceiptContexts.keys().next().value);
+      for (let i = queuedReceiptEvents.length - 1; i >= 0; i--) {
+        if (demoReceiptContexts.has(queuedReceiptEvents[i].run_id)) queuedReceiptEvents.splice(i, 1);
+      }
+    }
+    function demoReceiptCue(event) {
+      const context = demoReceiptContexts.get(event.run_id);
+      if (event.stage === 'neo_intake' && context?.caption) return `Received: ${context.caption}`;
+      if (event.stage === 'corgi_reading' && context?.pdf) return 'A PDF? I might be working overtime.';
+      return '';
+    }
     function renderReceiptProgress() {
       const byAgent = new Map();
       for (const event of activeReceiptStages.values()) {
         const [id, state, action, recentAction] = RECEIPT_STAGES[event.stage];
-        byAgent.set(id, { id, state, activity: isLatestReceiptEvent(event) ? action : recentAction });
+        const activity = demoReceiptCue(event) || (isLatestReceiptEvent(event) ? action : recentAction);
+        byAgent.set(id, { id, state, activity });
       }
       const agents = AGENT_IDS.map(id => byAgent.get(id) || { id, state: 'idle', activity: '' });
       let label = 'Live · Waiting for receipts';
@@ -4483,12 +4507,16 @@ window.OFFICE_PERSONALITIES = {
         const summary = event.stage === 'terminal'
           ? RECEIPT_OUTCOMES[event.outcome] || 'Receipt processing finished'
           : RECEIPT_STAGES[event.stage][4];
-        label = `${isLatestReceiptEvent(event) ? 'Live' : 'Recent'} · ${summary}`;
+        const completedDemo = event.stage === 'terminal' && demoReceiptContexts.has(event.run_id);
+        label = `${isLatestReceiptEvent(event) && !completedDemo ? 'Live' : 'Recent'} · ${summary}`;
       }
       apply({ agents }, label);
     }
     function advanceReceiptProgress() {
       if (!live || receiptTimer || !queuedReceiptEvents.length) return;
+      for (const runId of activeReceiptStages.keys()) {
+        if (demoReceiptContexts.has(runId)) return;
+      }
       rememberReceiptEvent(queuedReceiptEvents.shift());
       renderReceiptProgress();
       receiptTimer = setTimeout(() => {
@@ -4509,6 +4537,7 @@ window.OFFICE_PERSONALITIES = {
       if (!events.length && lastSequenceByRun.size) {
         lastSequenceByRun.clear();
         activeReceiptStages.clear();
+        demoReceiptContexts.clear();
         queuedReceiptEvents.length = 0;
         clearTimeout(receiptTimer);
         receiptTimer = 0;
@@ -4517,7 +4546,19 @@ window.OFFICE_PERSONALITIES = {
         bubbleAgent = null;
       }
       const replayFrom = Date.now() - 90_000;
+      let recentDemoCue = null;
       for (const event of events) {
+        const context = demoReceiptContexts.get(event.run_id);
+        if (context) {
+          // Browser-local context can arrive after a feed poll, so track its own sequence.
+          if (event.seq <= context.sequence) continue;
+          context.sequence = event.seq;
+          lastSequenceByRun.set(event.run_id, Math.max(event.seq, lastSequenceByRun.get(event.run_id) ?? 0));
+          rememberReceiptEvent(event);
+          const message = demoReceiptCue(event);
+          if (message && Date.parse(event.at) >= replayFrom) recentDemoCue = { event, message };
+          continue;
+        }
         if (event.seq <= (lastSequenceByRun.get(event.run_id) ?? -1)) continue;
         lastSequenceByRun.set(event.run_id, event.seq);
         if (!progressInitialised && Date.parse(event.at) < replayFrom) rememberReceiptEvent(event);
@@ -4525,7 +4566,14 @@ window.OFFICE_PERSONALITIES = {
       }
       progressInitialised = true;
       renderReceiptProgress();
-      advanceReceiptProgress();
+      // A poll can observe several stages at once. Keep the cue when its stage has already passed.
+      if (recentDemoCue && recentReceiptEvent?.run_id === recentDemoCue.event.run_id
+          && recentReceiptEvent.seq > recentDemoCue.event.seq) {
+        const [id] = RECEIPT_STAGES[recentDemoCue.event.stage];
+        renderBubble(agents[id], 3200).textContent = recentDemoCue.message;
+      } else {
+        advanceReceiptProgress();
+      }
       updateOfficePanels(events);
     }
 
@@ -4576,7 +4624,10 @@ window.OFFICE_PERSONALITIES = {
     }
     poll();
     const pollTimer = setInterval(poll, receiptMode ? RECEIPT_POLL_MS : opts.statusUrl === 'demo' || !opts.statusUrl ? 4000 : POLL_MS);
-    if (receiptMode) container.addEventListener('neo-office:refresh-progress', poll);
+    if (receiptMode) {
+      container.addEventListener('neo-office:receipt-context', registerDemoReceiptContext);
+      container.addEventListener('neo-office:refresh-progress', poll);
+    }
 
     // ----- taps -----
     const raycaster = new THREE.Raycaster();
@@ -4834,6 +4885,7 @@ window.OFFICE_PERSONALITIES = {
         cancelAnimationFrame(raf);
         clearInterval(pollTimer);
         clearTimeout(receiptTimer);
+        container.removeEventListener('neo-office:receipt-context', registerDemoReceiptContext);
         container.removeEventListener('neo-office:refresh-progress', poll);
         ro.disconnect(); io.disconnect();
         renderer.domElement.removeEventListener('pointerdown', onTap);

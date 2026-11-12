@@ -314,9 +314,9 @@ class DemoOrchestrator(ChiefOfStaff):
 
 
 class _DemoProgress(ReceiptProgress):
-    def __init__(self, database: Path, report: Callable[[str], None]):
+    def __init__(self, database: Path, report: Callable[[str], None], run_id: str):
         self._report = report
-        super().__init__(receipt_progress_path(database))
+        super().__init__(receipt_progress_path(database), run_id=run_id)
 
     def _record(self, stage: str, outcome: str | None = None) -> None:
         super()._record(stage, outcome)
@@ -327,6 +327,7 @@ class _DemoProgress(ReceiptProgress):
 class Job:
     id: str
     total: int
+    run_ids: list[str]
     state: str = "queued"
     stage: str | None = None
     results: list[dict] = field(default_factory=list)
@@ -425,7 +426,7 @@ class DemoRuntime:
                 "expires_in": max(0, math.ceil(session.expires - now)),
             },
             "job": None if job is None else {
-                "id": job.id, "state": job.state, "stage": job.stage,
+                "id": job.id, "state": job.state, "stage": job.stage, "run_ids": list(job.run_ids),
                 "completed": len(job.results), "total": job.total, "results": list(job.results),
                 "xp": {"gained": job.xp_gained, "total": session.xp, "animation": job.animation},
             },
@@ -487,7 +488,7 @@ class DemoRuntime:
                 raise DemoError(429, "This session has reached its receipt limit.")
             if self._hourly_units + units > GLOBAL_HOURLY_UNITS or self._active >= MAX_JOBS:
                 raise DemoError(429, "The demo is busy. Try again later.")
-            job = Job(id=secrets.token_hex(12), total=units)
+            job = Job(id=secrets.token_hex(12), total=units, run_ids=[secrets.token_hex(16) for _ in range(units)])
             self._executor.submit(self._run, session, job, note, uploads, confirmation, capture_date)
             session.job = job
             session.used += units
@@ -626,11 +627,11 @@ class DemoRuntime:
                 init_db(connection)
                 seed_accounts(connection)
                 orchestrator = None
-                for upload in uploads or [None]:
+                for index, upload in enumerate(uploads or [None]):
                     if self._stopping.is_set() or self._clock() >= session.expires:
                         state = "failed"
                         break
-                    trace = _DemoProgress(session.database, report)
+                    trace = _DemoProgress(session.database, report, job.run_ids[index])
                     try:
                         digest = hashlib.sha256(upload.data).hexdigest() if upload else ""
                         if confirmation:
