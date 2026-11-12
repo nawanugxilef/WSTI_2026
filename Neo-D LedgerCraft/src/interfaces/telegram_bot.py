@@ -43,7 +43,14 @@ from src.agents.qa_agent import likely_duplicate_receipt_id
 from src.agents.receipt_progress import ReceiptProgress
 from src.interfaces.cli import load_config, seed_accounts
 from src.interfaces.dashboard_auth import LOGIN_SECONDS, create_login_url
-from src.interfaces.telegram_receipt import CATEGORY_LABELS, format_receipt_card, format_receipt_details
+from src.interfaces.telegram_receipt import (
+    CATEGORY_ICONS,
+    CATEGORY_LABELS,
+    CATEGORY_STREAM_ICONS,
+    format_existing_receipt_card,
+    format_receipt_card,
+    format_receipt_details,
+)
 from src.storage.categories import (
     ATO_SUGGESTION_DISCLAIMER,
     VALID_ACTIVITIES,
@@ -64,34 +71,6 @@ logger = logging.getLogger(__name__)
 MAX_TELEGRAM_RECEIPT_BYTES = FileSizeLimit.FILESIZE_DOWNLOAD
 XP_ELIGIBLE_STATUSES = {"recorded", "confirmed", "corrected", "flagged", "needs_review"}
 
-_CATEGORY_ICONS = {
-    "materials_3d_printing": "🖨️",
-    "shipping_freight": "📦",
-    "tools_equipment": "🛠️",
-    "income_3d_printing": "💰",
-    "dog_walking_supplies": "🐕",
-    "income_dog_walking": "🦮",
-    "travel_parking": "🅿️",
-    "car_fuel_maintenance": "⛽",
-    "software_subscriptions": "💻",
-    "office_supplies": "📎",
-    "work_car_travel": "🚗",
-    "work_uniform_clothing": "👕",
-    "self_education": "🎓",
-    "work_home_office_other": "🖥️",
-    "groceries": "🛒",
-    "dining_coffee": "☕",
-    "utilities": "🔌",
-    "health_medical": "🏥",
-    "transport_personal": "🚆",
-    "entertainment": "🎬",
-    "hobby_3d_printing": "🎨",
-    "transfer": "🔁",
-    "general": "🗂️",
-}
-_CATEGORY_STREAM_ICONS = {"abn": "💼", "payg": "👔", "personal": "🏠"}
-
-
 def build_correction_keyboard(
     receipt_id: int,
     claim_stream: str = "abn",
@@ -109,7 +88,7 @@ def build_correction_keyboard(
         rows: List[List[InlineKeyboardButton]] = []
         row: List[InlineKeyboardButton] = []
         for spec in cats:
-            icon = _CATEGORY_ICONS.get(spec.key) or _CATEGORY_STREAM_ICONS.get(spec.stream, "🏠")
+            icon = CATEGORY_ICONS.get(spec.key) or CATEGORY_STREAM_ICONS.get(spec.stream, "🏠")
             name = CATEGORY_LABELS.get(spec.key, spec.key.replace("_", " ").title())
             label = f"{icon} {name}"
             if len(label) > 28:
@@ -244,12 +223,10 @@ def _existing_receipt_reply(
 ) -> tuple[str, InlineKeyboardMarkup]:
     controls = build_correction_keyboard(summary.receipt_id, claim_stream=summary.claim_stream)
     if show_details:
-        card = format_receipt_details(summary)
         keyboard = _with_receipt_navigation(summary, controls, "← Back", "existing")
     else:
-        card = format_receipt_card(summary)
         keyboard = _with_receipt_navigation(summary, controls, "Details", "existing_details")
-    return f"🐾 Womby found it! Already saved as receipt #{summary.receipt_id}.\n\n{card}", keyboard
+    return format_existing_receipt_card(summary, show_details=show_details), keyboard
 
 
 def parse_correction_tokens(tokens: List[str]) -> Dict[str, object]:

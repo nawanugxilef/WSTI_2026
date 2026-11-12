@@ -1,0 +1,47 @@
+{
+  "b0b47be42ce3b55d34f901a024c2aa580003246a5b7341c72d35998108b8cf8b": {
+    "vendor": "[FICTIONAL DEMO] Harbour Cafe",
+    "date": "2026-11-07",
+    "total_amount": 6.60,
+    "tax_amount": 0.60,
+    "gst_status": "explicit",
+    "category": "dining_coffee",
+    "purpose": "personal",
+    "claim_stream": "personal",
+    "business_activity": "none",
+    "business_pct": 0,
+    "payment_method": "Card",
+    "confidence": 0.95,
+    "items": [{ "description": "Coffee", "amount": 6.60 }]
+  },
+  "ec95c0d7aba231c31e4d499d8f9e09bcb0551c08153126403941d3500eb14bf9": {
+    "vendor": "[FICTIONAL DEMO] Paper Gum Studio",
+    "date": "2026-11-08",
+    "total_amount": 22.00,
+    "tax_amount": 2.00,
+    "gst_status": "explicit",
+    "category": "office_supplies",
+    "purpose": "business",
+    "claim_stream": "abn",
+    "business_activity": "printing_3d",
+    "business_pct": 100,
+    "payment_method": "Card",
+    "confidence": 0.95,
+    "items": [{ "description": "Printer labels", "amount": 22.00 }]
+  },
+  "257873ff2c4cebd10fdb20d4e779f894b3ef60913fc9123951556a8266700952": {
+    "vendor": "[FICTIONAL DEMO] Studio Supply",
+    "date": "2026-11-09",
+    "total_amount": 44.00,
+    "tax_amount": 4.00,
+    "gst_status": "explicit",
+    "category": "materials_3d_printing",
+    "purpose": "business",
+    "claim_stream": "abn",
+    "business_activity": "printing_3d",
+    "business_pct": 100,
+    "payment_method": "Card",
+    "confidence": 0.95,
+    "items": [{ "description": "3D printing filament", "amount": 44.00 }]
+  }
+}

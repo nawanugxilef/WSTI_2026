@@ -118,6 +118,7 @@ RULES:
    - Assign a suggested Australian ATO myTax label. These labels are AI suggestions only, not guaranteed tax deductibility.
    - If the receipt is ambiguous, set confidence < 0.80 and populate uncertainty_note explaining what the owner should check.
 8. Preserve the exact source evidence for vendor, date, and total_amount. If the vendor is unknown, return an empty string. If the date or total is unknown, return null. Never invent transaction details, and never use an example as source evidence.
+9. Recognize prepared dishes, takeaway meals, drinks, and desserts in any language. Use Personal dining_coffee when the note describes a meal or snack without a grocery-shopping context. Use groceries when the source identifies supermarket shopping or ingredients.
 """
 
 RECEIPT_SYSTEM_PROMPT = SYSTEM_PROMPT + "\nReturn one JSON object matching this schema:\n" + json.dumps(
@@ -135,13 +136,35 @@ _BARE_NOTE_AMOUNT = re.compile(
 )
 _DEMO_PREFIX = r"(?:\[FICTIONAL DEMO\][ \t]+)?"
 _NOTE_WORD = r"(?:3d|[^\W\d_][^\W\d_]*(?:[.'’&-][^\W\d_]*)*)"
-_NOTE_AMOUNT_TAIL = rf"[ \t]+(?:AUD[ \t]*\$?|A\$|\$)?[ \t]*{NUMBER_PATTERN}"
+_NOTE_AMOUNT_TAIL = rf"[ \t]+(?:AUD[ \t]*\$?|A\$|\$)?[ \t]*(?P<amount>{NUMBER_PATTERN})"
 _COFFEE_WORD = r"(?:coffee|coffe|cofee)"
 _TERSE_EXPENSE_NOTE = re.compile(
-    rf"{_DEMO_PREFIX}{_NOTE_WORD}(?:[ \t]+{_NOTE_WORD}){{0,5}}{_NOTE_AMOUNT_TAIL}", re.IGNORECASE
+    rf"{_DEMO_PREFIX}(?P<description>{_NOTE_WORD}(?:[ \t]+{_NOTE_WORD}){{0,5}}){_NOTE_AMOUNT_TAIL}", re.IGNORECASE
 )
 _TERSE_COFFEE_NOTE = re.compile(
     rf"{_DEMO_PREFIX}{_COFFEE_WORD}{_NOTE_AMOUNT_TAIL}", re.IGNORECASE
+)
+_PREPARED_DISH = re.compile(
+    r"\b(?:nasi\s+(?:campur|goreng|uduk|padang|lemak|kuning)|mi(?:e)?\s+(?:ayam|goreng)|"
+    r"ayam\s+(?:geprek|bakar|goreng)|soto\s+ayam|sop\s+buntut|gado[-\s]gado|rendang|sate|satay|"
+    r"martabak|pempek|siomay|roti\s+canai|es\s+teh|teh\s+tarik|cendol|"
+    r"pork\s+knuckles?|fried\s+rice|fish\s+(?:and|&)\s+chips|hot\s+dogs?|"
+    r"baklava|biryani|pizza|ramen|sushi|dumplings?|falafel|kebabs?|shawarma|"
+    r"burgers?|sandwich(?:es)?|tacos?|burritos?|ice\s+cream|cheesecake)\b",
+    re.IGNORECASE,
+)
+_DINING_CONTEXT = re.compile(
+    rf"\b(?:{_COFFEE_WORD}s?|kopi|caf[eé]s?|lattes?|take\s?away|restaurant|dining|breakfast|lunch|dinner|dessert)\b",
+    re.IGNORECASE,
+)
+_GROCERY_CONTEXT = re.compile(
+    r"\b(?:grocery|groceries|grocers?|supermarket|ingredients?|woolworths|coles|aldi|costco|bahan\s+masak)\b",
+    re.IGNORECASE,
+)
+_NON_AUD_CODE = r"(?:USD|EUR|GBP|NZD|CAD|JPY|IDR|SGD)"
+_NON_AUD_PRICE = re.compile(
+    rf"(?:\b{_NON_AUD_CODE}\b\s*\$?|\b(?:US|NZ)\$|[£€¥])\s*(?=\d)|(?<=\d)\s*{_NON_AUD_CODE}\b",
+    re.IGNORECASE,
 )
 _OTHER_DATE_CUE = re.compile(
     r"\b(?:tomorrow|yday|yest|last|next|ago|date|days?|weeks?|months?|years?|"
@@ -608,6 +631,14 @@ class FinanceAgent:
         amounts = {_amount_value(match.group(1)) for match in amount_matches}
         total = next(iter(amounts)) if len(amounts) == 1 else None
         vendor_source = text_without_dates[:amount_matches[0].start()] if amount_matches else text_without_dates
+        terse_note = _TERSE_EXPENSE_NOTE.fullmatch(text.strip()) if capture_date is not None else None
+        if (not amount_matches and terse_note and _PREPARED_DISH.fullmatch(terse_note["description"])
+                and terse_note["amount"].isdigit()):
+            # A named dish followed by a whole-dollar price is common in quick expense notes.
+            total = _amount_value(terse_note["amount"])
+            vendor_source = terse_note["description"]
+        if _NON_AUD_PRICE.search(text_without_dates):
+            total = None
         explicit_vendor = re.search(r"(?:^|[|;])\s*(?:vendor|merchant)\s*[:=]\s*([^|;]+)", vendor_source, re.IGNORECASE)
         vendor = (explicit_vendor.group(1) if explicit_vendor else vendor_source).strip(" \t,;|-")
         if (
@@ -616,7 +647,7 @@ class FinanceAgent:
             and total is not None
             and total > 0
             and vendor
-            and _TERSE_EXPENSE_NOTE.fullmatch(text.strip())
+            and terse_note
             and not _OTHER_DATE_CUE.search(text)
         ):
             date = capture_date.isoformat()
@@ -631,7 +662,9 @@ class FinanceAgent:
         )
 
         lower = text.lower()
-        is_coffee = any(word in lower for word in ("coffee", "cafe", "latte")) or bool(re.search(rf"\b{_COFFEE_WORD}\b", lower))
+        business_context = _PREPARED_DISH.sub(" ", lower)
+        is_dining = business_context != lower or bool(_DINING_CONTEXT.search(text))
+        is_groceries = bool(_GROCERY_CONTEXT.search(text))
         if "afterpay" in lower or "pay in 4" in lower or "zippay" in lower or "zip pay" in lower:
             payment_method = "Afterpay / BNPL (2200)"
         elif "osko" in lower:
@@ -700,10 +733,10 @@ class FinanceAgent:
         ):
             if any(k in lower for k in ("3d", "print", "nozzle", "filament", "resin", "pla")):
                 category = "hobby_3d_printing"
-            elif is_coffee:
-                category = "dining_coffee"
-            elif "grocer" in lower or "supermarket" in lower:
+            elif is_groceries:
                 category = "groceries"
+            elif is_dining:
+                category = "dining_coffee"
             else:
                 category = "general"
             claim_stream = "personal"
@@ -714,7 +747,7 @@ class FinanceAgent:
         # Priority 4: Ambiguous Bare Transfers or Payment Rail Notes without merchant/category context
         elif (
             any(k in lower for k in ("transfer", "tfr", "osko", "payid", "atm cash", "cash out", "afterpay", "pay in 4", "zip pay", "zippay"))
-            and not is_coffee
+            and not is_dining
             and not any(
                 k in lower
                 for k in (
@@ -735,7 +768,7 @@ class FinanceAgent:
             )
 
         # Priority 5: Business Activities and Standard Categories
-        elif "dog" in lower or "walk" in lower or "pet" in lower or "leash" in lower:
+        elif any(word in business_context for word in ("dog", "walk", "pet", "leash")):
             if any(k in lower for k in ("income", "fee", "client", "earned", "revenue")):
                 category = "income_dog_walking"
                 confidence = 0.88
@@ -751,7 +784,7 @@ class FinanceAgent:
                     uncertainty_note = "Pet item without explicit business designation — suggested for Dog Walking business; verify if for client walking or personal pet."
             claim_stream = "abn"
             business_activity = "dog_walking"
-        elif any(k in lower for k in ("3d", "print", "nozzle", "plate", "maker", "pla", "resin", "filament")):
+        elif any(k in business_context for k in ("3d", "print", "nozzle", "plate", "maker", "pla", "resin", "filament")):
             if any(k in lower for k in ("income", "sale", "sold", "revenue", "client", "earned")):
                 category = "income_3d_printing"
             else:
@@ -760,14 +793,8 @@ class FinanceAgent:
             business_activity = "printing_3d"
             confidence = 0.88
             uncertainty_note = None
-        elif is_coffee:
-            category = "dining_coffee"
-            claim_stream = "personal"
-            business_activity = "none"
-            confidence = 0.90
-            uncertainty_note = None
-        elif "grocer" in lower or "supermarket" in lower:
-            category = "groceries"
+        elif is_dining or is_groceries:
+            category = "groceries" if is_groceries else "dining_coffee"
             claim_stream = "personal"
             business_activity = "none"
             confidence = 0.90

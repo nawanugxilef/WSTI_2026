@@ -3791,10 +3791,10 @@ window.OFFICE_PERSONALITIES = {
   };
   const RECEIPT_PROGRESS_URL = '/api/office/receipt-progress';
   const RECEIPT_STAGES = {
-    neo_intake: ['chief_of_staff', 'working', 'Receiving a receipt', 'Neo received a receipt'],
-    corgi_reading: ['finance', 'working', 'Reading a receipt', 'Corgi started reading'],
-    bear_checking: ['qa', 'review', 'Checking a receipt', 'Bear started checking'],
-    girraffe_filing: ['knowledge_manager', 'working', 'Filing a receipt', 'Girraffe started filing'],
+    neo_intake: ['chief_of_staff', 'working', 'Receiving a receipt…', 'Received the receipt', 'Neo received a receipt'],
+    corgi_reading: ['finance', 'working', 'Got it. Reading the receipt…', 'Started reading the receipt', 'Corgi started reading'],
+    bear_checking: ['qa', 'review', 'Checking the receipt…', 'Started checking the receipt', 'Bear started checking'],
+    girraffe_filing: ['knowledge_manager', 'working', 'Filing the receipt…', 'Started filing the receipt', 'Girraffe started filing'],
   };
   const RECEIPT_OUTCOMES = {
     recorded: 'Receipt recorded', needs_review: 'Receipt needs review', duplicate: 'Duplicate skipped',
@@ -3816,7 +3816,6 @@ window.OFFICE_PERSONALITIES = {
     qa: [-4.5, 1.2],
     knowledge_manager: [1.5, 1.2],
   };
-  const PANTRY = { finance: [-6.2, 3.6], knowledge_manager: [-6.3, 5.8] };
   const BOSS = [[-1.2, -4.2], [0, -4.4], [1.2, -4.2], [0.6, -3.6]];
   const BOSS_SEAT = [2.0, -6.1];  // the lion (Felix), beside the big desk so the desk doesn't hide him
   // Felix does rounds out of his office, past the desks, and back to his seat.
@@ -4165,7 +4164,7 @@ window.OFFICE_PERSONALITIES = {
     alert.visible = false;
     root.add(alert);
 
-    const [x, z] = id === 'boss' ? BOSS_SEAT : (PANTRY[id] || DESK[id]);
+    const [x, z] = id === 'boss' ? BOSS_SEAT : DESK[id];
     root.position.set(x, FLOOR_TOP, z);
     root.userData.agentId = id;
     scene.add(root);
@@ -4465,14 +4464,17 @@ window.OFFICE_PERSONALITIES = {
 
     function rememberReceiptEvent(event) {
       if (event.stage === 'terminal') activeReceiptStages.delete(event.run_id);
-      else activeReceiptStages.set(event.run_id, event.stage);
+      else activeReceiptStages.set(event.run_id, event);
       recentReceiptEvent = event;
+    }
+    function isLatestReceiptEvent(event) {
+      return lastSequenceByRun.get(event.run_id) === event.seq;
     }
     function renderReceiptProgress() {
       const byAgent = new Map();
-      for (const stage of activeReceiptStages.values()) {
-        const [id, state, activity] = RECEIPT_STAGES[stage];
-        byAgent.set(id, { id, state, activity });
+      for (const event of activeReceiptStages.values()) {
+        const [id, state, action, recentAction] = RECEIPT_STAGES[event.stage];
+        byAgent.set(id, { id, state, activity: isLatestReceiptEvent(event) ? action : recentAction });
       }
       const agents = AGENT_IDS.map(id => byAgent.get(id) || { id, state: 'idle', activity: '' });
       let label = 'Live · Waiting for receipts';
@@ -4480,8 +4482,8 @@ window.OFFICE_PERSONALITIES = {
         const event = recentReceiptEvent;
         const summary = event.stage === 'terminal'
           ? RECEIPT_OUTCOMES[event.outcome] || 'Receipt processing finished'
-          : RECEIPT_STAGES[event.stage][3];
-        label = `Live · ${summary}`;
+          : RECEIPT_STAGES[event.stage][4];
+        label = `${isLatestReceiptEvent(event) ? 'Live' : 'Recent'} · ${summary}`;
       }
       apply({ agents }, label);
     }
@@ -4504,6 +4506,16 @@ window.OFFICE_PERSONALITIES = {
       }
     }
     function acceptReceiptProgress(events) {
+      if (!events.length && lastSequenceByRun.size) {
+        lastSequenceByRun.clear();
+        activeReceiptStages.clear();
+        queuedReceiptEvents.length = 0;
+        clearTimeout(receiptTimer);
+        receiptTimer = 0;
+        recentReceiptEvent = null;
+        bubble.style.display = 'none';
+        bubbleAgent = null;
+      }
       const replayFrom = Date.now() - 90_000;
       for (const event of events) {
         if (event.seq <= (lastSequenceByRun.get(event.run_id) ?? -1)) continue;
@@ -4564,6 +4576,7 @@ window.OFFICE_PERSONALITIES = {
     }
     poll();
     const pollTimer = setInterval(poll, receiptMode ? RECEIPT_POLL_MS : opts.statusUrl === 'demo' || !opts.statusUrl ? 4000 : POLL_MS);
+    if (receiptMode) container.addEventListener('neo-office:refresh-progress', poll);
 
     // ----- taps -----
     const raycaster = new THREE.Raycaster();
@@ -4612,6 +4625,12 @@ window.OFFICE_PERSONALITIES = {
     };
 
     async function speak(agent) {
+      const selection = new CustomEvent('neo-office:agent-select', {
+        cancelable: true,
+        detail: { id: agent.id },
+      });
+      if (!container.dispatchEvent(selection)) return;
+
       const now = performance.now();
       agent.pokeCount = (agent.pokeCount || 0) + 1;
       const say = renderBubble(agent, 5000, true);
@@ -4815,6 +4834,7 @@ window.OFFICE_PERSONALITIES = {
         cancelAnimationFrame(raf);
         clearInterval(pollTimer);
         clearTimeout(receiptTimer);
+        container.removeEventListener('neo-office:refresh-progress', poll);
         ro.disconnect(); io.disconnect();
         renderer.domElement.removeEventListener('pointerdown', onTap);
         renderer.domElement.removeEventListener('pointermove', onMove);

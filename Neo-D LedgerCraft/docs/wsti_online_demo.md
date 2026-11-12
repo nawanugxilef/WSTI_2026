@@ -1,0 +1,65 @@
+# WSTI online demo
+
+The WSTI submission deadline is Tuesday, 17 November 2026 at 14:00 Sydney time. The organiser lists the pitch video, demo video and live prototype link. The briefing slide also asks for a landing page. [WSTI Festi schedule](https://wsti.org.au/initiatives/wsti-festi-2026/)
+
+## Audit
+
+The audit compared GitHub `main` (`7fbf7be`), the deployed-release branch baseline (`93a142e`), and the public HTTPS routes. Neo Office, its sanitised progress feed, and the dashboard shell were reachable. Anonymous dashboard data and CSV requests returned `401`. The raw intake and demo routes returned `404`. [WSTI main](https://github.com/nawanugxilef/WSTI_2026/tree/7fbf7bea76ef075a274b8b1e27752e7955a40289) · [Release branch baseline](https://github.com/nawanugxilef/WSTI_2026/tree/93a142e5083654f39c0e23f077922d1c4ab86cb0) · [Neo Office](https://neo.madewithfelix.app/)
+
+| Area | Existing implementation |
+| --- | --- |
+| Landing and web | The Cloudflare Worker maps `/` to the Neo Office at `/office-public`. The dashboard uses a separate HTTPS tunnel and an owner session issued through Telegram. Root `main.py` provides a character chat and the public Worker has no route for it. |
+| AWS and Telegram | A read-only check on 11 November verified `neo.service`, `neo-bot.service` and `neo-dashboard-tunnel.service` active on FelixNeo. The owner dashboard and bot have Gemini and Drive configured. The running services have no dedicated demo Gemini key. The bot checks the configured owner chat and supports notes, photos, PDFs and corrections. [`deploy_aws.md`](deploy_aws.md) |
+| Intake and Drive | Chief of Staff checks the file hash, archives originals in Drive and invokes Finance, QA and Knowledge Manager. Drive confirmation is required for the production file workflow. The `DEMO_MODE` switch in the existing dashboard still selects a single ledger, so browser sessions require their own isolated storage. [`chief_of_staff.py`](../src/agents/chief_of_staff.py) · [`web_server.py`](../src/interfaces/web_server.py) |
+| Gemini and XP | Finance has a configured Gemini model chain, deterministic note parsing and explicit extraction errors for unavailable document processing. Recorded receipts award XP in the bot and update companion state. The demo runs its own XP state. [`finance_agent.py`](../src/agents/finance_agent.py) · [`telegram_bot.py`](../src/interfaces/telegram_bot.py) |
+
+The FelixServer reference was checked against the running Felix Inc bot, dashboard and publisher images. The source hashes matched for the note parser, Gemini classifier, Telegram entrypoint, shared corrections, dashboard, reports and Office publisher. Felix Inc parses the amount and date before Gemini chooses a category. Its Telegram and dashboard use the same correction functions. Neo's web chat uses its existing Finance, Chief of Staff and Knowledge Manager paths for the equivalent workflow. The local preview uses Windows OCR and the offline classifier. Semantic classification through Gemini is already available with the separate demo provider configuration.
+
+Use Felix Inc's receipt cards and edit flow as the interface reference. WSTI uses AUD, its own receipt categories and separate handling for entries under review. The FelixSandbox Office reads a sanitised status snapshot. The Neo demo has an ordered receipt event feed scoped to each session, which drives its Office bubbles and panels. [WSTI requirements](https://github.com/nawanugxilef/WSTI_2026/blob/main/AGENTS.md)
+
+## Run the local MVP
+
+From the `Neo-D LedgerCraft` directory with the project virtual environment active, run:
+
+```bash
+python -m src.interfaces.demo_server --mode fixture
+```
+
+Open [the local demo](http://localhost:8090/demo). The standalone server binds to loopback. Use the downloadable `[FICTIONAL DEMO]` samples or an explicit fictional text note. The default fixture mode uses a known sample checksum to supply extraction data to the real ledger pipeline. Other files receive a clarification message. Recorded receipts generate real XP for the current demo session and the page uses it to animate Womby.
+
+A short fictional note such as `coffee 5,5` uses the Sydney date when Neo receives it, matching Telegram's note flow. The offline classifier recognises common dishes such as nasi campur, pork knuckles and baklava as Dining & Coffee, and uses Groceries when the note explicitly describes grocery shopping. Neo asks for clarification when a note is ambiguous. Receipt photos and PDFs use the date from the document or the user's confirmation.
+
+Chat docks below the Office on phones and beside it on wider screens. The Office resizes when the phone keyboard opens. The chat asks the Office to refresh the session's receipt progress when intake starts and as the job updates. Agent bubbles use actual pipeline events. Fast steps appear as recent activity.
+
+Once Neo records a receipt, its chat card offers Category, ABN, PAYG and Personal. Category uses the same category labels as Telegram and offers choices for the current allocation. ABN asks for the activity and business share, and PAYG asks for the work share. Choose 50% for a half-work allocation. A correction updates the same receipt and its journal in the demo ledger. Each session allows up to 40 correction attempts. Corrections award no XP.
+
+Resending the same file in a demo session opens the original receipt card and its available corrections. The upload is marked as a duplicate and keeps the existing receipt, journal entry and XP. [WSTI Telegram duplicate flow](https://github.com/nawanugxilef/WSTI_2026/commit/93a142e5083654f39c0e23f077922d1c4ab86cb0)
+
+For private phone review over Tailscale, use `--mode local --tailnet-ip <server-tailscale-ip> --port 8091` on a Windows host with English (UK) OCR available, or `--mode fixture` for samples only. Open `http://<server-tailscale-ip>:8091/demo` from a device connected to the tailnet. This binds to the specified Tailscale IPv4 address and accepts only Tailscale-range peers. It uses a separate demo session cookie over the encrypted tailnet transport. The HTTPS proxy configuration and loopback preview keep their Secure cookie.
+
+The browser reduces larger camera photos to fit the upload budget and leaves small sample files intact where possible. HEIC and HEIF can be converted where the browser can decode them. Local mode reads JPG and PNG with the Windows OCR engine and supports the downloadable sample PDF. An uploaded photo outside the sample set opens a confirmation form with the fields that OCR could suggest. Confirming the vendor, date and AUD total records the receipt through the same demo ledger and awards XP if it posts. The server discards the image after OCR and keeps only the draft metadata until confirmation or expiry. [Windows OCR API](https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr.ocrengine)
+
+The full Python suite passed 159 tests and 28 subtests. The 26 demo cases cover notes, missing details, photos, the ten-file boundary, PDF, duplicate detection, session isolation, expiry, XP, provider budgeting with a stub, receipt corrections and local photo confirmation. The category correction tests verify that the spending summary uses the updated category. Chromium checks at 320, 390 and 1280 pixels covered the chat and Womby. A tap on Neo in the scene opened the chat at 390 pixels. Browser tests submitted notes, JPG and PDF samples, a ten-photo batch, an eleventh photo and unreadable input. A second browser context started with an empty session and 0 XP. On the Tailscale preview at 390 and 1280 pixels, a sample photo receipt moved to ABN with 50% business use and then to Personal with the same receipt ID and XP.
+
+The optional Gemini mode uses a dedicated `NEO_DEMO_GEMINI_API_KEY` with `--mode gemini`. The deployed Finance code lists `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, and `gemini-3.8-flash`. The demo client uses an eight-second timeout per request, one SDK attempt, and a maximum of 2,048 output tokens. The demo allows up to 90 provider calls per rolling hour per process, including fallback and QA rereads. The local tests use fixture extraction and stub the provider. Active project access, quota and billing still need verification in AI Studio before enabling OCR. Quotas apply at the Gemini project level. [Finance model chain](../src/agents/finance_agent.py) · [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits)
+
+## Session limits and data
+
+The demo issues an opaque browser session and uses a separate temporary SQLite ledger for each session. Use only fictional data. Uploaded bytes are held in memory for processing and discarded afterwards. Sessions expire after 30 minutes. Cleanup removes expired temporary demo state once its active job has stopped. The MVP admits up to 32 active sessions, two concurrent intake jobs, 20 work units per session and 80 work units per hour across the process. Each note-only submission or uploaded file uses one work unit. A submission accepts a note up to 300 characters, up to ten JPG/PNG photos, or one PDF. The upload caps are 2 MiB per file and 10 MiB per submission before base64 encoding.
+
+The demo retains extracted records in temporary session state and discards original uploads. The WSTI workflow can run without Drive credentials or folders. A future archive demo should use a dedicated Drive identity with the `drive.file` scope, a private demo root and opaque per-session child folders. The server must control membership and expiration, and files stay private. [Google Drive API scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)
+
+Womby is the on-screen companion spelling for this demo. The original Meshy export is a rigid mesh with no rig, morph targets or clips. The viewer animates the companion and eyes in code. For an authorised local preview, place an optimised copy at `web/demo/womby.glb`. A fresh checkout can run the chat and XP flow with the viewer's unavailable state. Confirm the export rights and attribution with Felix before distributing the GLB publicly. [Meshy asset ownership](https://help.meshy.ai/en/articles/10137554-what-is-the-ownership-of-the-generated-models)
+
+## Telegram demo design
+
+Use a separate demo bot and demo database. A private `/start` uses the verified numeric Telegram user ID to recover any existing membership. New users enter an expiring invitation code generated from at least 128 bits of randomness, then choose a short plain-text nickname. Store an HMAC of the invitation code with a dedicated demo secret. Assign an opaque tenant ID and use it for all receipt and XP operations.
+
+Keep a unique Telegram ID in the membership table. Under a single SQLite `BEGIN IMMEDIATE`, look up the existing user first, validate the invitation, then create the membership only if fewer than five users already belong to that code. Persist accepted memberships for the lifetime of the invitation, including an accepted user who is still choosing a nickname. A returning user recovers the existing tenant without spending another slot. A concurrency test should submit at least ten distinct identities to the same invitation and retry one accepted identity. Web-to-Telegram account linking is a later step. [Telegram bot deep linking](https://core.telegram.org/bots/features#deep-linking) · [SQLite transaction behaviour](https://sqlite.org/lang_transaction.html)
+
+## Approval-gated rollout
+
+1. Confirm the local fixture flow for notes, one photo, ten photos, photo eleven rejection, PDF, unreadable input, two isolated sessions, and recorded-only XP. Check the mobile layout and the age-out of demo state.
+2. Obtain Felix's approval for public access and any paid resources. Confirm the GLB export rights for public distribution. Use a separate non-root AWS service with a private runtime directory and dedicated Gemini credentials if approved. Keep the demo process outside the owner environment and Drive account. Set the service's temporary directory inside its private runtime directory so service teardown can clean up after abnormal exits.
+3. Prefer a dedicated HTTPS demo hostname serving the existing landing page and the exact demo paths. This separates browser access to the owner dashboard from the demo scripts and cookies. Start the loopback service with `--public-origin https://demo.example` using the approved origin and have the HTTPS proxy preserve the expected Host and Origin headers. Enforce body size at the edge and application, use trusted client IP information for edge rate limits, and keep session cookies `HttpOnly`, `Secure` and `SameSite`. Verify that the dashboard and export still reject anonymous requests before and after any edge change.
+4. Validate end to end in a public browser using fictional data, record the demo video, and capture the working prototype URL. Roll back by removing the demo routes and stopping the demo service. Restrict cleanup to generated demo state.

@@ -39,6 +39,21 @@ def test_short_manual_expense_is_recorded_with_the_telegram_capture_date(text):
         assert sum(row["total_credit"] for row in trial_balance) == 5.50
 
 
+@pytest.mark.parametrize(("text", "amount", "category"), [
+    ("nasi campur 16", 16, "dining_coffee"),
+    ("pork knuckles $20", 20, "dining_coffee"),
+    ("baklava $15", 15, "dining_coffee"),
+    ("hot dog $8", 8, "dining_coffee"),
+    ("baklava from supermarket $15", 15, "groceries"),
+    ("dog walking client at cafe $60", 60, "income_dog_walking"),
+])
+def test_manual_food_note_uses_dish_and_shopping_context(text, amount, category):
+    result = FinanceAgent(api_key="").parse_note(text, capture_date=CAPTURE_DATE)
+    assert result.total_amount == amount and result.category == category
+    assert result.date == CAPTURE_DATE.isoformat()
+    assert result.confidence >= 0.8
+
+
 @pytest.mark.parametrize("text", [
     "[FICTIONAL DEMO] coffee",
     "[FICTIONAL DEMO] coffee 2",
@@ -51,6 +66,11 @@ def test_short_manual_expense_is_recorded_with_the_telegram_capture_date(text):
 def test_incomplete_or_ambiguous_manual_note_does_not_get_capture_date(text):
     result = FinanceAgent(api_key="").parse_note(text, capture_date=CAPTURE_DATE)
     assert result.date is None
+
+
+def test_manual_foreign_price_is_not_recorded_as_aud():
+    result = FinanceAgent(api_key="").parse_note("baklava USD 15.00", capture_date=CAPTURE_DATE)
+    assert result.total_amount is None and result.date is None
 
 
 def test_manual_note_preserves_explicit_date_and_non_telegram_default():

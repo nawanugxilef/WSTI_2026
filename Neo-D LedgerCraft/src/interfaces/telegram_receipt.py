@@ -39,6 +39,32 @@ CATEGORY_LABELS = {
     "transfer": "Transfer",
     "general": "General",
 }
+CATEGORY_ICONS = {
+    "materials_3d_printing": "🖨️",
+    "shipping_freight": "📦",
+    "tools_equipment": "🛠️",
+    "income_3d_printing": "💰",
+    "dog_walking_supplies": "🐕",
+    "income_dog_walking": "🦮",
+    "travel_parking": "🅿️",
+    "car_fuel_maintenance": "⛽",
+    "software_subscriptions": "💻",
+    "office_supplies": "📎",
+    "work_car_travel": "🚗",
+    "work_uniform_clothing": "👕",
+    "self_education": "🎓",
+    "work_home_office_other": "🖥️",
+    "groceries": "🛒",
+    "dining_coffee": "☕",
+    "utilities": "🔌",
+    "health_medical": "🏥",
+    "transport_personal": "🚆",
+    "entertainment": "🎬",
+    "hobby_3d_printing": "🎨",
+    "transfer": "🔁",
+    "general": "🗂️",
+}
+CATEGORY_STREAM_ICONS = {"abn": "💼", "payg": "👔", "personal": "🏠"}
 SOURCE_LABELS = {
     "ai_suggestion": "🐶 Corgi · AI suggestion",
     "rule_heuristic": "🧭 Rule-based",
@@ -210,3 +236,8 @@ def format_receipt_details(summary: IntakeSummary) -> str:
     if _review_required(summary):
         details.append(_review_reason(summary))
     return card + "\n\n" + "\n".join(details) if details else card
+
+
+def format_existing_receipt_card(summary: IntakeSummary, *, show_details: bool = False) -> str:
+    card = format_receipt_details(summary) if show_details else format_receipt_card(summary)
+    return f"🐾 Womby found it! Already saved as receipt #{summary.receipt_id}.\n\n{card}"
