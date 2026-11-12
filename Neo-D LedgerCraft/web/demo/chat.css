@@ -188,8 +188,6 @@ body[data-neo-demo-open]:has(.neo-demo[data-keyboard]) .office-status { display:
 }
 .neo-demo-info { display: grid; gap: .2em; padding: .5em .75em; border-bottom: 1px solid var(--demo-line); background: #f6faf4; color: var(--demo-muted); font-size: .9em; }
 .neo-demo-info strong { color: var(--demo-ink); }
-.neo-demo-model-credit { display: none; font-size: .85em; }
-.neo-demo:has(.neo-demo-model[data-womby-model="ready"]) .neo-demo-model-credit { display: block; }
 .neo-demo-samples summary { width: fit-content; cursor: pointer; font-weight: 600; color: var(--demo-accent); }
 .neo-demo-samples div { display: flex; gap: 2px 12px; flex-wrap: wrap; margin: 3px 0 1px; }
 .neo-demo-samples a { text-underline-offset: 2px; }

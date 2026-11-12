@@ -54,7 +54,6 @@ dialog.innerHTML = `
           </div>
           <p id="neo-demo-mode" hidden></p>
         </details>
-        <p class="neo-demo-model-credit">Womby model generated with Meshy and adapted for WSTI. If generated on the Free plan, licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>.</p>
       </div>
       <div id="neo-demo-log" class="neo-demo-log" role="log" aria-label="Chat messages" aria-live="polite"></div>
       <footer class="neo-demo-footer">
