@@ -4681,6 +4681,10 @@ window.OFFICE_PERSONALITIES = {
         detail: { id: agent.id },
       });
       if (!container.dispatchEvent(selection)) return;
+      if (agent.id === 'chief_of_staff' && document.querySelector('nav[data-neo-office-toolbar] a[href="/demo"]')) {
+        window.location.assign('/demo');
+        return;
+      }
 
       const now = performance.now();
       agent.pokeCount = (agent.pokeCount || 0) + 1;

@@ -1,6 +1,6 @@
 const OFFICE_HOST = "neo.madewithfelix.app";
 const DASHBOARD_ORIGIN = "https://" + OFFICE_HOST;
-const WSTI_DEMO_ORIGIN = "https://demo.neo.madewithfelix.app";
+const WSTI_DEMO_ORIGIN = "https://neo-wsti-demo.madewithfelix.app";
 const READ = ["GET", "HEAD"];
 const DASHBOARD_ROUTES = new Map([
   ["/dashboard", { type: "text/html", methods: READ }],
@@ -136,8 +136,8 @@ async function serveDashboard(request, url, route, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.hostname === OFFICE_HOST && (url.pathname === "/demo" || url.pathname === "/demo/")
-        && env.NEO_WSTI_DEMO_ORIGIN === WSTI_DEMO_ORIGIN) {
+    const demoEnabled = env.NEO_WSTI_DEMO_ORIGIN === WSTI_DEMO_ORIGIN;
+    if (demoEnabled && url.hostname === OFFICE_HOST && (url.pathname === "/demo" || url.pathname === "/demo/")) {
       if (!READ.includes(request.method)) {
         return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
       }
@@ -170,15 +170,22 @@ export default {
         return new Response("Neo Office is temporarily unavailable", { status: 502 });
       }
 
-      return new Response(request.method === "HEAD" ? null : upstream.body, {
+      const showDemoLink = demoEnabled && route.type === "text/html";
+      const response = new Response(request.method === "HEAD" ? null : upstream.body, {
         headers: {
           "Content-Type": `${route.type}; charset=utf-8`,
-          "Cache-Control": route.type === "application/json" ? "no-store" : "public, max-age=60",
+          "Cache-Control": route.type === "application/json" || showDemoLink ? "no-store" : "public, max-age=60",
           "Content-Security-Policy": CONTENT_SECURITY_POLICY,
           "Referrer-Policy": "no-referrer",
           "X-Content-Type-Options": "nosniff",
         },
       });
+      if (!showDemoLink || request.method === "HEAD") return response;
+      return new HTMLRewriter().on("nav[data-neo-office-toolbar]", {
+        element(toolbar) {
+          toolbar.append('<a href="/demo">Try Neo</a>', { html: true });
+        },
+      }).transform(response);
     } catch {
       return new Response("Neo Office is temporarily unavailable", { status: 502 });
     }
