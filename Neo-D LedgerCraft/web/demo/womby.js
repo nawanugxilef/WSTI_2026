@@ -1,4 +1,10 @@
-const STATES = new Set(["idle", "listening", "thinking", "answering", "happy"]);
+const STATE_LABELS = {
+  idle: "Womby is resting",
+  listening: "Womby is listening",
+  thinking: "Womby is thinking",
+  answering: "Womby is answering",
+  happy: "Womby is celebrating",
+};
 const XP_ANIMATION_MS = 1600;
 const FRAME_MS = 1000 / 30;
 
@@ -79,6 +85,11 @@ function releaseScene(root) {
 export function mountWomby(container) {
   const THREE = window.THREE;
   const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const initialAriaHidden = container.getAttribute("aria-hidden");
+  const visor = document.createElement("div");
+  visor.className = "neo-demo-visor";
+  container.removeAttribute("aria-hidden");
+  container.setAttribute("role", "img");
   let requestedState = "idle";
   let rewardTimer = 0;
   let rewardStarted = 0;
@@ -88,7 +99,9 @@ export function mountWomby(container) {
   let stop = () => {};
 
   function publishState() {
-    container.dataset.wombyState = celebrating ? "happy" : requestedState;
+    const state = celebrating ? "happy" : requestedState;
+    container.dataset.wombyState = state;
+    container.setAttribute("aria-label", STATE_LABELS[state]);
     update();
   }
 
@@ -99,7 +112,7 @@ export function mountWomby(container) {
 
   const controller = {
     setState(state) {
-      if (disposed || !STATES.has(state)) return;
+      if (disposed || !Object.hasOwn(STATE_LABELS, state)) return;
       if (state === "listening" || state === "thinking") endCelebration();
       requestedState = state;
       publishState();
@@ -121,16 +134,16 @@ export function mountWomby(container) {
       endCelebration();
       stop();
       container.replaceChildren();
+      container.removeAttribute("role");
+      container.removeAttribute("aria-label");
+      if (initialAriaHidden !== null) container.setAttribute("aria-hidden", initialAriaHidden);
       delete container.dataset.wombyState;
       delete container.dataset.wombyModel;
     },
   };
   publishState();
 
-  const message = document.createElement("p");
-  message.setAttribute("role", "status");
-  message.textContent = "Loading Womby…";
-  container.replaceChildren(message);
+  container.replaceChildren(visor);
   container.dataset.wombyModel = "loading";
 
   function unavailable() {
@@ -139,8 +152,7 @@ export function mountWomby(container) {
     update = () => {};
     stop = () => {};
     container.dataset.wombyModel = "unavailable";
-    message.textContent = "Womby’s 3D preview is unavailable here.";
-    container.replaceChildren(message);
+    container.replaceChildren(visor);
   }
 
   if (!THREE?.GLTFLoader) {

@@ -280,6 +280,7 @@ def main() -> None:
             raise ValueError("Local photo OCR requires Windows.")
     except ValueError as error:
         parser.error(str(error))
+    fixtures = load_fixtures(FIXTURES)
     if args.mode == "gemini":
         key = os.environ.get("NEO_DEMO_GEMINI_API_KEY", "").strip()
         if not key:
@@ -289,12 +290,14 @@ def main() -> None:
         def finance_factory():
             return create_gemini_finance(key, budget)
     else:
-        fixtures = load_fixtures(FIXTURES)
-
         def finance_factory():
             return FixtureFinance(fixtures)
 
-    runtime = DemoRuntime(args.mode, finance_factory, photo_reader=read_photo_text if args.mode == "local" else None)
+    runtime = DemoRuntime(
+        args.mode, finance_factory,
+        photo_reader=read_photo_text if args.mode == "local" else None,
+        gemini_samples=FixtureFinance(fixtures) if args.mode == "gemini" else None,
+    )
     try:
         with DemoServer(args.port, runtime, public_origin=args.public_origin, tailnet_ip=args.tailnet_ip) as server:
             origin = server.public_origin or f"http://{server.tailnet_ip or 'localhost'}:{server.server_port}"

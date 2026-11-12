@@ -354,10 +354,12 @@ class DemoRuntime:
         self, mode: str, finance_factory: Callable[[], FinanceAgent], *,
         clock: Callable[[], float] = time.monotonic, session_seconds: int = SESSION_SECONDS,
         photo_reader: Callable[[bytes], str] | None = None,
+        gemini_samples: FixtureFinance | None = None,
     ):
         self.mode = mode
         self.finance_factory = finance_factory
         self.photo_reader = photo_reader
+        self.gemini_samples = gemini_samples
         self.session_seconds = session_seconds
         self._clock = clock
         self._lock = threading.Lock()
@@ -623,14 +625,14 @@ class DemoRuntime:
             with closing(get_connection(session.database)) as connection:
                 init_db(connection)
                 seed_accounts(connection)
-                finance = self.finance_factory()
-                orchestrator = DemoOrchestrator(connection, finance)
+                orchestrator = None
                 for upload in uploads or [None]:
                     if self._stopping.is_set() or self._clock() >= session.expires:
                         state = "failed"
                         break
                     trace = _DemoProgress(session.database, report)
                     try:
+                        digest = hashlib.sha256(upload.data).hexdigest() if upload else ""
                         if confirmation:
                             draft_id, parsed = confirmation
                             draft = session.photo_drafts[draft_id]
@@ -639,17 +641,24 @@ class DemoRuntime:
                             result = self._receipt_result(summary, name=draft.name, extraction="confirmed_photo")
                             with self._lock:
                                 del session.photo_drafts[draft_id]
-                        elif upload:
-                            digest = hashlib.sha256(upload.data).hexdigest()
-                            if (self.photo_reader and isinstance(finance, FixtureFinance)
-                                    and not finance.is_sample(digest) and not upload.name.endswith(".pdf")):
-                                result = self._prepare_photo(session, orchestrator, upload, digest, trace)
-                            else:
-                                summary = orchestrator.process_demo_upload(upload, note, trace, digest=digest)
-                                result = self._result(summary, upload)
+                        elif upload and self.gemini_samples is not None and self.gemini_samples.is_sample(digest):
+                            sample_orchestrator = DemoOrchestrator(connection, self.gemini_samples)
+                            summary = sample_orchestrator.process_demo_upload(upload, note, trace, digest=digest)
+                            result = self._receipt_result(summary, name=upload.name, extraction="fixture")
                         else:
-                            summary = orchestrator.process_note(note, capture_date=capture_date, progress=trace)
-                            result = self._result(summary, None)
+                            if orchestrator is None:
+                                finance = self.finance_factory()
+                                orchestrator = DemoOrchestrator(connection, finance)
+                            if upload:
+                                if (self.photo_reader and isinstance(finance, FixtureFinance)
+                                        and not finance.is_sample(digest) and not upload.name.endswith(".pdf")):
+                                    result = self._prepare_photo(session, orchestrator, upload, digest, trace)
+                                else:
+                                    summary = orchestrator.process_demo_upload(upload, note, trace, digest=digest)
+                                    result = self._result(summary, upload)
+                            else:
+                                summary = orchestrator.process_note(note, capture_date=capture_date, progress=trace)
+                                result = self._result(summary, None)
                         if result["status"] in _POSTED and connection.execute(
                             "SELECT 1 FROM journal_transactions WHERE reference = ?",
                             (f"receipt:{result['receipt_id']}",),

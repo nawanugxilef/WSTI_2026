@@ -161,8 +161,14 @@ function updateSession(next) {
   session = next;
   byId("xp").textContent = next.xp + " XP";
   const mode = byId("mode");
-  mode.hidden = next.mode === "gemini";
-  mode.textContent = next.mode === "local" ? "PDF demo uses the sample above." : "Sample files only.";
+  mode.hidden = false;
+  if (next.mode === "gemini") {
+    mode.textContent = "Downloads use preset extraction. Other uploads use Gemini.";
+  } else if (next.mode === "local") {
+    mode.textContent = "Downloads use preset extraction. Other photos use local OCR.";
+  } else {
+    mode.textContent = "Sample files only, with preset extraction.";
+  }
 }
 
 function clearDateQuestion() {

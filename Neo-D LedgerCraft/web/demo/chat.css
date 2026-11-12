@@ -114,6 +114,57 @@ body[data-neo-demo-open]:has(.neo-demo[data-keyboard]) .office-status { display:
 }
 .neo-demo-model { position: relative; width: 2.8em; height: 2.7em; flex: none; }
 .neo-demo-model canvas { display: block; max-width: 100%; }
+.neo-demo-model:is([data-womby-model="loading"], [data-womby-model="unavailable"]) { display: grid; place-items: center; }
+.neo-demo-visor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15%;
+  width: min(94%, 7em);
+  max-height: 90%;
+  aspect-ratio: 1.65;
+  border: 2px solid #91bea1;
+  border-radius: 40% / 50%;
+  background: #163127;
+  color: #c6ffe4;
+}
+.neo-demo-visor::before, .neo-demo-visor::after {
+  content: "";
+  width: 12%;
+  height: 42%;
+  border-radius: 1em;
+  background: currentColor;
+}
+[data-womby-state="listening"] .neo-demo-visor::before,
+[data-womby-state="listening"] .neo-demo-visor::after { height: 56%; }
+[data-womby-state="thinking"] .neo-demo-visor::before,
+[data-womby-state="thinking"] .neo-demo-visor::after { height: 25%; transform: translate(35%, -25%); }
+[data-womby-state="answering"] .neo-demo-visor::before,
+[data-womby-state="answering"] .neo-demo-visor::after,
+[data-womby-state="happy"] .neo-demo-visor::before,
+[data-womby-state="happy"] .neo-demo-visor::after {
+  width: 20%;
+  height: 31%;
+  border: 2px solid currentColor;
+  border-bottom: 0;
+  border-radius: 70% 70% 0 0;
+  background: transparent;
+}
+[data-womby-state="happy"] .neo-demo-visor { border-color: #b78335; color: #ffdc8d; }
+@media (prefers-reduced-motion: no-preference) {
+  [data-womby-state="idle"] .neo-demo-visor::before,
+  [data-womby-state="idle"] .neo-demo-visor::after,
+  [data-womby-state="listening"] .neo-demo-visor::before,
+  [data-womby-state="listening"] .neo-demo-visor::after { animation: neo-demo-visor-blink 4.7s infinite; }
+  [data-womby-state="happy"] .neo-demo-visor { animation: neo-demo-visor-celebrate .4s ease-in-out 4 alternate; }
+}
+@keyframes neo-demo-visor-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  94% { transform: scaleY(.12); }
+}
+@keyframes neo-demo-visor-celebrate {
+  to { transform: scale(1.05); box-shadow: 0 0 .5em #ffcf7c; }
+}
 .neo-demo-companion-copy { display: grid; justify-items: start; gap: .1em; }
 .neo-demo-companion-copy strong { font-size: .8em; }
 #neo-demo-xp {

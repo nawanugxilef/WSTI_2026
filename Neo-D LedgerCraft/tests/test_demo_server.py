@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.agents.finance_agent import ParsedReceipt
+from src.agents.finance_agent import FinanceAgent, ParsedReceipt
 from src.interfaces import demo_runtime
 from src.interfaces import demo_server as demo_server_module
 from src.interfaces.demo_runtime import DemoError, DemoRuntime, FixtureFinance, load_fixtures
@@ -388,6 +388,63 @@ def test_downloadable_samples_feed_the_demo_pipeline(demo_server):
         assert job["results"][0]["total_amount"] == amount
         assert job["results"][0]["extraction"] == "fixture"
         assert job["xp"]["gained"] == 10
+
+
+def test_gemini_mode_keeps_downloads_offline_and_sends_other_inputs_to_provider():
+    factory_calls = []
+    provider_calls = []
+    budget = demo_runtime.GeminiRequestBudget()
+    receipt = next(iter(FIXTURES.values()))
+
+    def generate_content(**kwargs):
+        provider_calls.append(kwargs["contents"])
+        return SimpleNamespace(text=receipt.model_dump_json())
+
+    def finance_factory():
+        factory_calls.append(True)
+        provider = SimpleNamespace(models=SimpleNamespace(generate_content=generate_content), close=lambda: None)
+        finance = FinanceAgent(api_key="")
+        finance._client = demo_runtime._DemoGeminiClient(provider, budget)
+        return finance
+
+    samples = FixtureFinance(load_fixtures(SAMPLE_MANIFEST))
+    runtime = DemoRuntime("gemini", finance_factory, gemini_samples=samples)
+    server = DemoServer(0, runtime)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        client = DemoClient(server)
+        assert client.open()["session"]["mode"] == "gemini"
+        for original, renamed, total in (
+            ("harbour-cafe.jpg", "renamed.jpg", 6.60),
+            ("studio-supply.pdf", "renamed.pdf", 44.00),
+        ):
+            status, _, contents = client.request("GET", f"/demo/samples/{original}")
+            assert status == 200
+            job = client.intake({"files": [file(renamed, contents)]})["job"]
+            result = job["results"][0]
+            assert (result["status"], result["extraction"], result["total_amount"]) == ("recorded", "fixture", total)
+            assert job["xp"]["gained"] == 10
+        assert not factory_calls and not provider_calls
+
+        status, _, contents = client.request("GET", "/demo/samples/paper-gum.jpg")
+        assert status == 200
+        job = client.intake({"files": [file("paper-gum.jpg", contents), file("harbour-cafe.jpg", PHOTOS[0])]})["job"]
+        assert [result["extraction"] for result in job["results"]] == ["fixture", "gemini"]
+        assert job["xp"]["gained"] == 20
+        assert len(factory_calls) == len(provider_calls) == 1
+        assert provider_calls[0][0].inline_data.data == PHOTOS[0]
+
+        note = "[FICTIONAL DEMO] shop 0 $35.40 2024-05-02"
+        result = client.intake({"text": note})["job"]["results"][0]
+        assert (result["status"], result["extraction"], result["total_amount"]) == ("recorded", "gemini", 35.40)
+        assert len(factory_calls) == len(provider_calls) == 2
+        assert note in provider_calls[1]
+    finally:
+        server.shutdown()
+        worker.join()
+        server.server_close()
+        runtime.close()
 
 
 def test_expiry_discards_only_the_demo_session():
