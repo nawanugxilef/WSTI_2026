@@ -1,12 +1,12 @@
 # AWS Deployment Runbook — Neo-D LedgerCraft
 
-Production deployment and operations guide for Neo-D LedgerCraft on an AWS EC2 instance (Ubuntu 24.04 LTS / 4 GB RAM `t3.medium` or `t4g.medium`).
+Production deployment and operations guide for Neo-D LedgerCraft on an AWS EC2 instance (Ubuntu 24.04 LTS, `m7i-flex.large`).
 
 ---
 
 ## 1. System Requirements & Architecture Overview
 
-- **Compute:** AWS EC2 `t3.medium` (x86_64) or `t4g.medium` (arm64 Graviton) with 2 vCPUs and 4 GB RAM.
+- **Compute:** AWS EC2 `m7i-flex.large` (x86_64) with 2 vCPUs and 8 GB RAM, region ap-southeast-2 (Sydney).
 - **Operating System:** Ubuntu 24.04 LTS (Noble Numbat).
 - **Python Version:** Python 3.12+ (isolated virtual environment in `/opt/ledgercraft/venv`).
 - **Services:**
