@@ -674,3 +674,18 @@ def test_written_date_note_names_vendor_awards_xp_and_asks_work_or_personal(demo
     assert updated["result"]["status"] in ("corrected", "confirmed", "recorded")
     assert updated["result"]["claim_stream"] == "abn"
     assert updated["session"]["xp"] == 10
+
+
+def test_resent_note_reopens_original_without_extra_xp(demo_server):
+    client = DemoClient(demo_server)
+    client.open()
+    note = {"text": "[FICTIONAL DEMO] Cafe coffee $6.50 on 2024-05-01"}
+    first = client.intake(note)["job"]["results"][0]
+    assert first["status"] == "recorded"
+    repeat = client.intake(note)
+    again = repeat["job"]["results"][0]
+    assert again["status"] == "duplicate" and again["receipt_status"] == "recorded"
+    assert again["receipt_id"] == first["receipt_id"] and again["category_options"]
+    assert repeat["job"]["xp"]["gained"] == 0 and repeat["session"]["xp"] == 10
+    other = client.intake({"text": "[FICTIONAL DEMO] Cafe coffee $7.20 on 2024-05-01"})["job"]["results"][0]
+    assert other["status"] == "recorded" and other["receipt_id"] != first["receipt_id"]

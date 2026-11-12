@@ -292,6 +292,14 @@ class DemoOrchestrator(ChiefOfStaff):
     def __init__(self, connection, finance: FinanceAgent):
         super().__init__(connection, gdrive=_MemoryUploadBoundary(), finance_agent=finance)
 
+    def existing_receipt(self, receipt_id: int) -> IntakeSummary | None:
+        row = self.main_conn.execute("SELECT * FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        if row is None:
+            return None
+        original = self._build_summary_from_receipt_row(dict(row))
+        original.exact_duplicate_of = original.receipt_id
+        return original
+
     def exact_duplicate(self, digest: str) -> IntakeSummary | None:
         row = self.main_conn.execute("SELECT * FROM receipts WHERE file_hash = ?", (digest,)).fetchone()
         if row is None:
@@ -659,6 +667,8 @@ class DemoRuntime:
                                     result = self._result(summary, upload)
                             else:
                                 summary = orchestrator.process_note(note, capture_date=capture_date, progress=trace)
+                                if summary.status == "duplicate" and summary.exact_duplicate_of:
+                                    summary = orchestrator.existing_receipt(summary.exact_duplicate_of) or summary
                                 result = self._result(summary, None)
                         if (result["status"] in _POSTED and connection.execute(
                             "SELECT 1 FROM journal_transactions WHERE reference = ?",

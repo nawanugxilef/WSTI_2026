@@ -60,6 +60,25 @@ class TestChiefOfStaffPipeline(unittest.TestCase):
         self.assertEqual(tot_deb, tot_crd)
         self.assertEqual(tot_deb, 32.99)
 
+    def test_resent_note_keeps_original_receipt(self):
+        first = self.cos.process_note("Fictional Demo Cafe coffee 6.50 today")
+        again = self.cos.process_note("Fictional Demo Cafe coffee 6.50 today")
+        self.assertEqual(again.status, "duplicate")
+        self.assertEqual(again.exact_duplicate_of, first.receipt_id)
+        self.assertEqual(again.receipt_id, 0)
+        count = self.main_conn.execute("SELECT COUNT(*) FROM receipts").fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_same_note_sent_later_records_a_new_receipt(self):
+        first = self.cos.process_note("Fictional Demo Cafe coffee 6.50 today")
+        with self.main_conn:
+            self.main_conn.execute(
+                "UPDATE receipts SET created_at = datetime('now', '-11 minutes') WHERE id = ?", (first.receipt_id,)
+            )
+        later = self.cos.process_note("Fictional Demo Cafe coffee 6.50 today")
+        self.assertNotEqual(later.status, "duplicate")
+        self.assertNotEqual(later.receipt_id, first.receipt_id)
+
 
 class TestReceiptPhotoPipeline(unittest.TestCase):
     def setUp(self):

@@ -33,6 +33,7 @@ from src.storage.gdrive import GDriveAdapter
 
 
 MAX_RECEIPT_BYTES = 20 * 1024 * 1024
+NOTE_REPEAT_WINDOW_MINUTES = 10
 
 
 @dataclass
@@ -354,6 +355,20 @@ class ChiefOfStaff:
             summary_text="\n".join(message),
         )
 
+    def _recent_note_duplicate(self, parsed: ParsedReceipt) -> Optional[int]:
+        """Find a typed note with the same vendor, amount and date sent within the last few minutes.
+
+        An accidental resend keeps the original receipt. A real second purchase sent later still records.
+        """
+        row = self.main_conn.execute(
+            """SELECT id FROM receipts
+               WHERE file_hash IS NULL AND lower(vendor) = lower(?) AND date = ?
+                 AND abs(total_amount - ?) < 0.005 AND created_at >= datetime('now', ?)
+               ORDER BY id DESC LIMIT 1""",
+            (parsed.vendor, parsed.date, float(parsed.total_amount), f"-{NOTE_REPEAT_WINDOW_MINUTES} minutes"),
+        ).fetchone()
+        return int(row[0]) if row else None
+
     def start_receipt_progress(self) -> ReceiptProgress:
         return ReceiptProgress.for_connection(self.main_conn)
 
@@ -400,6 +415,13 @@ class ChiefOfStaff:
                 else f"Please confirm the following details: {', '.join(missing)}."
             )
             return self._unposted_summary("needs_review", reason, parsed=parsed)
+
+        repeat_of = self._recent_note_duplicate(parsed)
+        if repeat_of:
+            return self._unposted_summary(
+                "duplicate", f"This note matches receipt #{repeat_of}, sent a moment ago.",
+                parsed=parsed, exact_duplicate_of=repeat_of,
+            )
 
         trace.advance("girraffe_filing")
         receipt_id = self.km.record_receipt(

@@ -110,4 +110,4 @@ python -m src.interfaces.cli backup
 ```bash
 python -m unittest discover tests
 ```
-214 tests and 28 subtests (13 November 2026) covering QA rules, double-entry balance, vendor memory, the end-to-end 4-agent pipeline, Telegram flows, dashboard sign-in and the public web demo.
+217 tests and 28 subtests (13 November 2026) covering QA rules, double-entry balance, vendor memory, the end-to-end 4-agent pipeline, Telegram flows, dashboard sign-in and the public web demo.

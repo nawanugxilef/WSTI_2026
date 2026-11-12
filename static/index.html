@@ -3732,7 +3732,7 @@ THREE.DefaultLoadingManager.setURLModifier(function(url){const normalized=decode
 //
 // Replies are chosen in the browser from these lines, picked by the agent's REAL
 // current state (from the public status feed) and how often it has been tapped.
-// A tap never reaches the real agent on FelixServer.
+// A tap never reaches the real agent on the server.
 //
 // states: idle | working | review | needs_boss | error
 // nudged: after 3+ taps in a row
@@ -3768,7 +3768,7 @@ window.OFFICE_PERSONALITIES = {
 </script>
 <script>
 // Agentic AI Office: a small Three.js office where each character mirrors the
-// REAL state of an agent on FelixServer, read from the public status feed.
+// REAL state of an agent on the Neo server, read from the public status feed.
 //
 // Usage:
 //   const office = AgentOffice.mount(containerEl, {
@@ -3918,7 +3918,7 @@ window.OFFICE_PERSONALITIES = {
 
   // ---------- the room ----------
   // A floating "diorama": the office sits on a rounded pastel platform with no walls,
-  // like the islands elsewhere on felixsandbox. Furniture is the Kenney Furniture Kit
+  // like a small floating island. Furniture is the Kenney Furniture Kit
   // (CC0, kenney.nl), recoloured to a soft clay palette. Kenney units are ~1 per floor
   // tile; K scales them to this office (22 x 15, pets ~1.2 tall).
   const K = 2.5;

@@ -35,7 +35,7 @@ The public demo runs in fixture mode: the sample receipts use known extraction d
 | Telegram commands: `/recent`, `/mytax`, `/pnl`, `/spending`, `/balance`, `/dashboard`, `/reward`, `/companion`, `/backup` and more | Live, owner only |
 | Physical desk companion (ESP32-C3, about $6.10 AUD in parts) | Design: bill of materials and 3D assembly guide, not yet built |
 
-Automated tests: **214 tests and 28 subtests pass** (13 November 2026).
+Automated tests: **217 tests and 28 subtests pass** (13 November 2026).
 
 ---
 

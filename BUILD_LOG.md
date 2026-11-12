@@ -4,7 +4,7 @@
 **Team / Author:** Felix Gunawan  
 **Contest Build Window:** November 5–17, 2026 (Final Submission: Tuesday, Nov 17, 2026, 2:00 PM AEDT)  
 **Pitch Night:** November 20, 2026  
-**Auditor / QA Agent:** Claude  
+**QA / Reviewers:** ChatGPT (Codex) and Claude  
 **Lead Builder / Coder:** Antigravity  
 
 ---
@@ -56,7 +56,7 @@ The development roadmap completed and underway during the contest build period:
 - **Isolated Web Demo:** No-login demo with a private 30-minute session and its own temporary ledger per visitor, fixture extraction for the fictional samples, up to 10 photos per send, live agent activity and the Womby 3D companion. Reached from **Try Neo** at [neo.madewithfelix.app](https://neo.madewithfelix.app/).
 - **Smarter Notes:** Written dates, shop names and short informal notes are understood; Neo asks "work or personal?" when unsure.
 - **One-Command Deploy:** A single server command deploys the web demo, Telegram bot and owner dashboard from this repository to AWS EC2 (`m7i-flex.large`, Ubuntu 24.04, Sydney).
-- **Test Suite:** 214 tests and 28 subtests passing on 13 November 2026.
+- **Test Suite:** 217 tests and 28 subtests passing on 13 November 2026.
 
 ### 2.6 Pitch Night Preparation & Hardware Sync (Nov 17–20, 2026)
 - **Pitch Night Interactive Demo:** Interactive stage demo featuring live web receipt intake and ATO deduction reporting review.
