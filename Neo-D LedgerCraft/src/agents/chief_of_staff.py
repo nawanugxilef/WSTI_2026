@@ -173,7 +173,7 @@ class ChiefOfStaff:
             or "repayment" in category.lower()
         )
 
-        needs_review = status in ("flagged", "needs_review") or bool((flag_reason or "").strip()) or confidence < 0.80
+        needs_review = status in ("flagged", "needs_review") or bool((flag_reason or "").strip())
         if is_transfer_or_repayment and is_correction and not needs_review:
             header_icon = "✏️"
             header_verb = "Updated (Saved; journal pending linkage/account details)"

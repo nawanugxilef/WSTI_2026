@@ -241,7 +241,7 @@ def build_dashboard_payload(
         is_dup = status == "duplicate" or bool(r.get("flag_reason") and "duplicate" in r["flag_reason"].lower())
         has_flag = bool((r.get("flag_reason") or "").strip()) and not is_dup
         confidence = float(r["confidence"] if r.get("confidence") is not None else 0.85)
-        is_needs_review = (status not in ("recorded", "confirmed", "corrected") or has_flag or confidence < 0.80) and not is_dup
+        is_needs_review = (status not in ("recorded", "confirmed", "corrected") or has_flag) and not is_dup
         purpose = r.get("purpose") or "business"
         stream = r.get("claim_stream") or ("abn" if purpose == "business" else "personal")
         activity = r.get("business_activity") or ("printing_3d" if stream == "abn" else "none")

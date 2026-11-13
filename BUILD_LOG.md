@@ -54,7 +54,7 @@ The development roadmap completed and underway during the contest build period:
 
 ### 2.5 Public Web Demo & Server Deployment (Nov 12–13, 2026)
 - **Isolated Web Demo:** No-login demo with a private 30-minute session and its own temporary ledger per visitor, fixture extraction for the fictional samples, up to 10 photos per send, live agent activity and the Womby 3D companion. Reached from **Try Neo** at [neo.madewithfelix.app](https://neo.madewithfelix.app/).
-- **Smarter Notes:** Written dates, shop names and short informal notes are understood; Neo asks "work or personal?" when unsure.
+- **Smarter Notes:** Written dates, shop names and short informal notes are understood. An unfamiliar personal item is recorded straight away with Neo's best guess, and one tap changes its category or moves it to ABN or PAYG.
 - **One-Command Deploy:** A single server command deploys the web demo, Telegram bot and owner dashboard from this repository to AWS EC2 (`m7i-flex.large`, Ubuntu 24.04, Sydney).
 - **Test Suite:** 217 tests and 28 subtests passing on 13 November 2026.
 

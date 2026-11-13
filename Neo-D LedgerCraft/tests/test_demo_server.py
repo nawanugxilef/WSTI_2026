@@ -617,17 +617,17 @@ def test_category_edit_updates_spending_and_preserves_allocation(demo_server):
         assert updated["session"]["xp"] == 10
 
 
-def test_personal_category_can_confirm_classification_review(demo_server):
+def test_unknown_personal_note_is_recorded_with_a_guess_and_retagged(demo_server):
     client = DemoClient(demo_server)
     client.open()
     note = "[FICTIONAL DEMO] Zed Widget $12.50 on 2024-05-01"
     result = client.intake({"text": note})["job"]["results"][0]
-    assert result["status"] == "needs_review" and result["receipt_id"] > 0
+    assert result["status"] == "recorded" and result["receipt_id"] > 0
     assert result["category_options"]
     route = "/demo/api/correct"
     session = next(iter(demo_server.runtime._sessions.values()))
     with closing(sqlite3.connect(session.database)) as connection:
-        assert connection.execute("SELECT count(*) FROM journal_transactions").fetchone()[0] == 0
+        assert connection.execute("SELECT count(*) FROM journal_transactions").fetchone()[0] == 1
         status, _, updated = client.request("POST", route, {"receipt_id": result["receipt_id"], "category": "groceries"})
         assert status == 200, updated
         assert updated["result"]["status"] == "corrected" and updated["result"]["receipt_id"] == result["receipt_id"]
@@ -656,14 +656,14 @@ def test_category_edit_cannot_post_flagged_duplicate_or_missing_evidence(demo_se
         assert connection.execute("SELECT reference FROM journal_transactions").fetchall() == [(f"receipt:{original['receipt_id']}",)]
 
 
-def test_written_date_note_names_vendor_awards_xp_and_asks_work_or_personal(demo_server):
+def test_written_date_note_names_vendor_awards_xp_and_can_move_to_work(demo_server):
     client = DemoClient(demo_server)
     client.open()
     logged = client.intake({"text": "[FICTIONAL DEMO] Bunnings 12 Nov 2025 hammer $45.90"})
     result = logged["job"]["results"][0]
     assert result["date"] == "2025-11-12" and result["total_amount"] == 45.9
     assert result["vendor"] == "[FICTIONAL DEMO] Bunnings"
-    assert result["status"] == "needs_review" and result["receipt_id"] > 0
+    assert result["status"] == "recorded" and result["receipt_id"] > 0
     assert result["claim_stream"] == "personal"
     assert logged["job"]["xp"]["gained"] == 10
     status, _, updated = client.request(

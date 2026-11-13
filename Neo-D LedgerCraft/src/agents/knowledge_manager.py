@@ -53,6 +53,13 @@ class KnowledgeManager:
         return any(k in c for k in ("income", "revenue", "sales"))
 
     @staticmethod
+    def _low_confidence_matters(claim_stream: str, category: str) -> bool:
+        # A guessed category on a personal purchase changes no tax claim, so it is recorded and the
+        # owner retags it with one tap. Business claims and transfers still wait for review.
+        c = (category or "").lower()
+        return claim_stream != "personal" or "transfer" in c or "repayment" in c
+
+    @staticmethod
     def _is_classification_or_allocation_clause(clause: str) -> bool:
         """
         Returns True if the clause represents classification, stream, activity,
@@ -399,7 +406,11 @@ class KnowledgeManager:
         needs_classification_review = (
             (data_status in ("needs_review", "pending", "unverified"))
             or bool(missing_allocation_reasons)
-            or (confidence < 0.80 and classification_source not in ("owner_correction", "vendor_memory"))
+            or (
+                confidence < 0.80
+                and self._low_confidence_matters(claim_stream, category)
+                and classification_source not in ("owner_correction", "vendor_memory")
+            )
         )
 
         if data_status in ("error", "duplicate"):
@@ -1092,7 +1103,11 @@ class KnowledgeManager:
         needs_classification_review = (
             bool(remaining_review_flags)
             or bool(missing_allocation_reasons)
-            or (candidate_conf < 0.80 and candidate_source not in ("owner_correction", "vendor_memory"))
+            or (
+                candidate_conf < 0.80
+                and self._low_confidence_matters(final_stream, final_cat)
+                and candidate_source not in ("owner_correction", "vendor_memory")
+            )
         )
 
         if remaining_qa_flags:
