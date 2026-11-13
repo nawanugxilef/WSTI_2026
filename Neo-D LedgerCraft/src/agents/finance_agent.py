@@ -265,7 +265,7 @@ class FinanceAgent:
     ):
         self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
         self.model_name = model_name
-        self.fallback_models = fallback_models or ["gemini-flash-lite-latest", "gemini-3.8-flash"]
+        self.fallback_models = fallback_models or ["gemini-3.1-flash-lite", "gemini-3.8-flash"]
         self._client = None
         if self.api_key:
             try:
