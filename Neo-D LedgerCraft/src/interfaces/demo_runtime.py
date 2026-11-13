@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from src.agents.chief_of_staff import ChiefOfStaff, IntakeSummary
 from src.agents.finance_agent import ExtractionUnavailableError, FinanceAgent, ParsedReceipt
 from src.agents.receipt_progress import ReceiptProgress, read_receipt_progress, receipt_progress_path
+from src.agents.wellbeing import coffee_check_in
 from src.interfaces.cli import seed_accounts
 from src.interfaces.demo_photo_ocr import PhotoOcrUnavailable
 from src.interfaces.telegram_receipt import (
@@ -65,6 +66,13 @@ class DemoError(Exception):
     def __init__(self, status: int, message: str):
         super().__init__(message)
         self.status = status
+
+
+def _sydney_today() -> date:
+    try:
+        return datetime.now(ZoneInfo("Australia/Sydney")).date()
+    except ZoneInfoNotFoundError:
+        return date.today()
 
 
 def _category_editable(status: str, category: str, flag_reason: str | None) -> bool:
@@ -676,6 +684,10 @@ class DemoRuntime:
                         ).fetchone()) or (result["status"] == "needs_review" and result.get("receipt_id")):
                             # Womby rewards logging a receipt, including one that still needs a quick check.
                             self._award_xp(connection, session, job)
+                            # Same check-in as Telegram; the receipt is already recorded either way.
+                            check_in = coffee_check_in(connection, result["receipt_id"], capture_date or _sydney_today())
+                            if check_in:
+                                result["message"] += "\n\n" + check_in
                     except Exception:
                         logger.warning("One demo receipt could not be processed")
                         trace.finish("error")

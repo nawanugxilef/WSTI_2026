@@ -689,3 +689,13 @@ def test_resent_note_reopens_original_without_extra_xp(demo_server):
     assert repeat["job"]["xp"]["gained"] == 0 and repeat["session"]["xp"] == 10
     other = client.intake({"text": "[FICTIONAL DEMO] Cafe coffee $7.20 on 2024-05-01"})["job"]["results"][0]
     assert other["status"] == "recorded" and other["receipt_id"] != first["receipt_id"]
+
+
+def test_third_coffee_gets_a_check_in_and_every_coffee_is_still_recorded(demo_server):
+    client = DemoClient(demo_server)
+    client.open()
+    results = [client.intake({"text": f"[FICTIONAL DEMO] flat white ${price}"})["job"]["results"][0]
+               for price in ("5.10", "5.20", "5.30", "5.40")]
+    assert [r["status"] for r in results] == ["recorded"] * 4
+    assert ["Everything okay?" in r["message"] for r in results] == [False, False, True, False]
+    assert client.request("GET", "/demo/api/session")[2]["session"]["xp"] == 40
