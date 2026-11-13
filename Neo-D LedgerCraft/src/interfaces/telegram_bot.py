@@ -41,6 +41,7 @@ from src.agents.chief_of_staff import ChiefOfStaff, IntakeSummary
 from src.agents.finance_agent import FinanceAgent
 from src.agents.qa_agent import likely_duplicate_receipt_id
 from src.agents.receipt_progress import ReceiptProgress
+from src.agents.wellbeing import coffee_check_in
 from src.interfaces.cli import load_config, seed_accounts
 from src.interfaces.dashboard_auth import LOGIN_SECONDS, create_login_url
 from src.interfaces.telegram_receipt import (
@@ -737,6 +738,16 @@ class TelegramReceiptBot:
                 raise
             await send(text, parse_mode=None, reply_markup=reply_markup)
 
+    def _check_in(self, receipt_id: int, today: Optional[datetime.date] = None) -> str:
+        """Blank, or a gentle check-in line when today's receipts show a pattern (e.g. a third coffee)."""
+        if today is None:
+            try:
+                today = datetime.datetime.now(ZoneInfo("Australia/Sydney")).date()
+            except ZoneInfoNotFoundError:
+                today = datetime.date.today()
+        message = coffee_check_in(self.conn, receipt_id, today)
+        return f"\n\n{message}" if message else ""
+
     def _intake_reply(self, summary: IntakeSummary) -> tuple[str, Optional[InlineKeyboardMarkup]]:
         if summary.status == "duplicate" and summary.exact_duplicate_of:
             receipt = self.cos.km.get_receipt(summary.exact_duplicate_of)
@@ -776,7 +787,7 @@ class TelegramReceiptBot:
             response, kb = self._intake_reply(summary)
             if summary.receipt_id and summary.status in XP_ELIGIBLE_STATUSES:
                 reward = self._award_xp_and_emit(xp_gain=10, event_label=f"Note: {summary.vendor}")
-                response += f"\n{reward}"
+                response += f"\n{reward}" + self._check_in(summary.receipt_id, capture_date)
         except Exception as e:
             logger.error("Error processing note: %s", e)
             await message.reply_text(
@@ -896,7 +907,7 @@ class TelegramReceiptBot:
                     archive_url = drive_file_url(summary.gdrive_file_id)
                 if summary.receipt_id and summary.status in XP_ELIGIBLE_STATUSES:
                     reward = self._award_xp_and_emit(xp_gain=10, event_label=f"{receipt_label}: {summary.vendor}")
-                    response += f"\n{reward}"
+                    response += f"\n{reward}" + self._check_in(summary.receipt_id)
         except Exception as e:
             logger.error("Error processing Telegram receipt: %s", e)
             response = "🤖 Neo: I had trouble processing that file. Could you try sending it again?"
