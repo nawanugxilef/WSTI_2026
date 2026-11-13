@@ -18,7 +18,7 @@ An ADHD-friendly receipt catch-up assistant for sole traders in Sydney, Australi
 - Fix any receipt with one tap: **Category**, **ABN**, **PAYG** or **Personal**.
 - Send the same file twice and Neo finds the duplicate. No second entry, no extra XP.
 
-The public demo runs in fixture mode: the sample receipts use known extraction data, so judges can try it without an AI quota. The owner's Telegram bot (`@neo_ledgercraft_bot`) and the private dashboard run the full Gemini pipeline and only answer the owner.
+The public demo runs the same Gemini pipeline as the bot: Corgi reads any typed note or receipt photo with AI (a few seconds each), with a rule-based fallback if Gemini is busy. Exact copies of the downloadable sample receipts use known extraction data, so they always work. The demo is capped at 90 AI calls per hour. The owner's Telegram bot (`@neo_ledgercraft_bot`) and the private dashboard only answer the owner.
 
 ---
 
