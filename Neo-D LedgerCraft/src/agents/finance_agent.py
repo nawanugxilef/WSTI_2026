@@ -578,7 +578,7 @@ class FinanceAgent:
                         response_mime_type="application/json",
                         temperature=0.0,
                         http_options=types.HttpOptions(
-                            timeout=8_000,
+                            timeout=15_000,  # Gemini rejects deadlines under 10 s
                             retry_options=types.HttpRetryOptions(attempts=1),
                         ),
                     ),

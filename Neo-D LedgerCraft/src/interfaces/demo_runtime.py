@@ -281,7 +281,7 @@ def create_gemini_finance(api_key: str, budget: GeminiRequestBudget) -> FinanceA
         vertexai=False,
         http_options=types.HttpOptions(
             base_url="https://generativelanguage.googleapis.com",
-            timeout=8_000,
+            timeout=15_000,  # Gemini rejects deadlines under 10 s
             retry_options=types.HttpRetryOptions(attempts=1),
         ),
     )

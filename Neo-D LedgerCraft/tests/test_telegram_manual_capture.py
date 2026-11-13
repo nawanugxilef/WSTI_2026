@@ -127,7 +127,7 @@ def test_configured_model_cannot_replace_manual_capture_date_or_amount():
     generate.assert_called_once()
     config = generate.call_args.kwargs["config"]
     assert "verified the entry date as 2026-11-11 in Australia/Sydney" in config.system_instruction
-    assert config.http_options.timeout == 8_000
+    assert config.http_options.timeout == 15_000
     assert config.http_options.retry_options.attempts == 1
     assert result.date == CAPTURE_DATE.isoformat()
     assert result.total_amount == 5.50
