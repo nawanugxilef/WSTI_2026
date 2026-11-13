@@ -163,7 +163,7 @@ def build_correction_keyboard(
             stream_row,
             pct_row,
             [
-                InlineKeyboardButton("🚗 D1 Car/Travel", callback_data=f"corr:{receipt_id}:cat:work_car_travel"),
+                InlineKeyboardButton("🚗 D1 Car", callback_data=f"corr:{receipt_id}:cat:work_car_travel"),
                 InlineKeyboardButton("👕 D3 Clothing", callback_data=f"corr:{receipt_id}:cat:work_uniform_clothing"),
             ],
             [
@@ -463,7 +463,7 @@ class TelegramReceiptBot:
             f"• `/dashboard` — Open your private finance dashboard\n"
             f"• `/categories` — View all ABN, PAYG, and Personal categories\n"
             f"• `/balance` — View Double-Entry Trial Balance\n"
-            f"• `/mytax` (or `/total`) — View Confirmed vs Needs-Review ATO myTax Summary\n"
+            f"• `/mytax` (or `/total`) — View Recorded vs Needs-Review ATO myTax Summary\n"
             f"• `/pnl` (or `/report`) — View Dog Walking vs 3D Printing Profit & Loss\n"
             f"• `/spending [month]` — Monthly spending breakdown (e.g. `/spending`, `/spending last`)\n"
             f"• `/reward` — View or customize your Reward Box treat (`{state['reward_name']}`)\n"
@@ -515,7 +515,7 @@ class TelegramReceiptBot:
         for r in rows:
             stream_badge = format_stream_badge(r.get("claim_stream") or "abn")
             act_badge = format_activity_badge(r.get("business_activity") or "none")
-            status_tag = "⚠️ Needs Review" if r.get("status") in ("flagged", "needs_review") else "✅ Confirmed"
+            status_tag = "⚠️ Needs Review" if r.get("status") in ("flagged", "needs_review") else "✅ Recorded"
             lines.append(
                 f"• *#{r['id']}* ({r['date']}) *{r['vendor']}* — `${float(r['total_amount']):.2f} AUD` [{status_tag}]\n"
                 f"  {stream_badge} | {act_badge} | `{r['category']}` | `{float(r.get('business_pct') or 0):.0f}%` "
@@ -952,7 +952,7 @@ class TelegramReceiptBot:
         ]
         tot_confirmed = 0.0
         if confirmed:
-            lines.append("✅ *Confirmed / Ready Claim Totals:*")
+            lines.append("✅ *Recorded Claim Totals:*")
             for s in confirmed:
                 stream_tag = str(s.get("claim_stream") or "abn").upper()
                 lines.append(
@@ -961,13 +961,13 @@ class TelegramReceiptBot:
                 )
                 tot_confirmed += s["gross_amount"]
         else:
-            lines.append("✅ *Confirmed / Ready Claim Totals:* `$0.00 AUD`")
+            lines.append("✅ *Recorded Claim Totals:* `$0.00 AUD`")
 
-        lines.append(f"\n*Total Confirmed Suggested Deductions*: `${tot_confirmed:.2f} AUD`")
+        lines.append(f"\n*Total Recorded Suggested Deductions*: `${tot_confirmed:.2f} AUD`")
 
         if review_items:
             tot_review = sum(r["gross_amount"] for r in review_items)
-            lines.append("\n⚠️ *Segregated Needs-Review Items (Excluded from Confirmed Totals):*")
+            lines.append("\n⚠️ *Segregated Needs-Review Items (Excluded from Recorded Totals):*")
             for r in review_items:
                 stream_tag = str(r.get("claim_stream") or "abn").upper()
                 lines.append(
@@ -998,7 +998,7 @@ class TelegramReceiptBot:
             f"📊 *PROFIT & LOSS SUMMARY* ({pnl['period']})",
             f"_Strictly in Australian Dollars ({pnl['currency']})_\n",
             "🐕 *Dog Walking ABN Activity*:",
-            f"• Confirmed Income: `${pnl['dog_walking']['income']:.2f} AUD`",
+            f"• Recorded Income: `${pnl['dog_walking']['income']:.2f} AUD`",
             f"• Expenses (Claimable): `${pnl['dog_walking']['expenses']:.2f} AUD`",
             f"• Net Profit: `${pnl['dog_walking']['net']:.2f} AUD`",
         ]
@@ -1008,7 +1008,7 @@ class TelegramReceiptBot:
         lines.extend([
             "",
             "🖨️ *3D Printing ABN Activity*:",
-            f"• Confirmed Income: `${pnl['printing_3d']['income']:.2f} AUD`",
+            f"• Recorded Income: `${pnl['printing_3d']['income']:.2f} AUD`",
             f"• Expenses (Claimable): `${pnl['printing_3d']['expenses']:.2f} AUD`",
             f"• Net Profit: `${pnl['printing_3d']['net']:.2f} AUD`",
         ])
@@ -1061,7 +1061,7 @@ class TelegramReceiptBot:
         ]
         if data.get("pending_review_spending", 0.0) > 0:
             lines.append(
-                f"⚠️ *Pending Review Expenses (Excluded from Confirmed)*: `${data['pending_review_spending']:.2f} AUD` ({data['pending_review_count']} receipts)\n"
+                f"⚠️ *Pending Review Expenses (Excluded from Recorded)*: `${data['pending_review_spending']:.2f} AUD` ({data['pending_review_count']} receipts)\n"
             )
 
         if data["by_category"]:

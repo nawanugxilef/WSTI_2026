@@ -240,8 +240,8 @@ class ChiefOfStaff:
             lines.append(f"• ⚠️ *Uncertainty Note*: {uncertainty_note}")
 
         if needs_review:
-            review_msg = flag_reason or "Held in Needs Review — excluded from confirmed myTax claim totals until verified."
-            lines.append(f"• 🚨 *Review Status*: `{status}` ({review_msg}) — _Segregated from confirmed myTax totals_")
+            review_msg = flag_reason or "Held in Needs Review — excluded from recorded myTax claim totals until verified."
+            lines.append(f"• 🚨 *Review Status*: `{status}` ({review_msg}) — _Segregated from recorded myTax totals_")
 
         if is_transfer_or_repayment:
             lines.append("• ℹ️ *Journal Status*: Saved; journal pending linkage/account details (unposted to trial balance)")

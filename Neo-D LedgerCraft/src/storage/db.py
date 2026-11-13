@@ -172,3 +172,18 @@ def init_db(conn: sqlite3.Connection) -> None:
                 ("source", "TEXT NOT NULL DEFAULT 'owner_correction'"),
             ],
         )
+        # Rename pre-14 Nov 2026 labels to the official ATO myTax 2026 field names (idempotent).
+        for old, new in _LABEL_RENAMES:
+            conn.execute("UPDATE receipts SET tax_label = ? WHERE tax_label = ?", (new, old))
+            conn.execute("UPDATE vendor_memory SET default_tax_label = ? WHERE default_tax_label = ?", (new, old))
+
+
+_LABEL_RENAMES = (
+    ("Cost of sales", "Purchases and other costs"),
+    ("Other business expenses", "All other expenses"),
+    ("Motor vehicle and travel expenses", "All other expenses"),
+    ("Depreciation / Instant asset write-off", "Depreciation expenses"),
+    ("Business income", "Other business income"),
+    ("D1 Work-related car/travel expenses", "D1 Work-related car expenses"),
+    ("D3 Work-related clothing, laundry and dry-cleaning", "D3 Work clothing, laundry and dry-cleaning expenses"),
+)

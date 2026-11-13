@@ -114,8 +114,8 @@ RULES:
    - "payg": PAYG employee work-related deductions (work_car_travel, work_uniform_clothing, self_education, work_home_office_other). Set business_activity to "payg_work".
    - "personal": Private/personal expenses (groceries, dining_coffee, utilities, health_medical, transport_personal, entertainment, hobby_3d_printing, transfer, general). Set business_activity to "none" and business_pct to 0.
    - Payment Rails & Transfers: Payment rails (PayID, Osko, Afterpay, Zip Pay) are payment methods, NOT proof that an entry is an internal transfer. If a transaction mentions PayID, Osko, or BNPL alongside business revenue (dog walking client fees, 3D printing client payments) or business expenses (supplies, tools), preserve the actual income or expense category, tax stream, and business activity. Genuine internal account transfers are classified as category "transfer" (claim_stream "personal", 0% business). Ambiguous transfers, unverified rail transactions, or loan/BNPL repayments must be given confidence < 0.80 with an uncertainty_note flagging them for owner review to avoid double-counting purchases and repayments.
-7. Australian ATO myTax Labels:
-   - Assign a suggested Australian ATO myTax label. These labels are AI suggestions only, not guaranteed tax deductibility.
+7. Australian ATO myTax Labels and ambiguity:
+   - Leave tax_label null. The app assigns the myTax label from its fixed ATO table based on the category.
    - If the receipt is ambiguous, set confidence < 0.80 and populate uncertainty_note explaining what the owner should check.
 8. Preserve the exact source evidence for vendor, date, and total_amount. If the vendor is unknown, return an empty string. If the date or total is unknown, return null. Never invent transaction details, and never use an example as source evidence.
 9. Recognize prepared dishes, takeaway meals, drinks, and desserts in any language. Use Personal dining_coffee when the note describes a meal or snack without a grocery-shopping context. Use groceries when the source identifies supermarket shopping or ingredients.
@@ -281,7 +281,7 @@ class FinanceAgent:
             claim_stream=parsed.claim_stream,
             business_activity=parsed.business_activity,
             business_pct=parsed.business_pct,
-            tax_label=parsed.tax_label,
+            tax_label=None,  # label comes from the fixed ATO table, never from the model
         )
         parsed.category = str(alloc["category"])
         parsed.purpose = str(alloc["purpose"])

@@ -11,7 +11,7 @@
       "currency": "AUD",
       "category": "materials_3d_printing",
       "purpose": "business",
-      "tax_label": "Cost of sales",
+      "tax_label": "Purchases and other costs",
       "notes": "Fictional sample 3D printing business expense (build plate & nozzle kit)"
     },
     {
@@ -22,7 +22,7 @@
       "currency": "AUD",
       "category": "dog_walking_supplies",
       "purpose": "business",
-      "tax_label": "Other business expenses",
+      "tax_label": "All other expenses",
       "notes": "Fictional sample dog walking business expense (leashes & treats)"
     },
     {
@@ -55,7 +55,7 @@
       "currency": "AUD",
       "category": "materials_3d_printing",
       "purpose": "business",
-      "tax_label": "Other business expenses",
+      "tax_label": "All other expenses",
       "notes": "Fictional sample packing tape and labels for 3D orders"
     },
     {
@@ -66,7 +66,7 @@
       "currency": "AUD",
       "category": "dog_walking_supplies",
       "purpose": "business",
-      "tax_label": "Other business expenses",
+      "tax_label": "All other expenses",
       "notes": "Fictional pet first-aid kit and antiseptic spray"
     },
     {
@@ -88,7 +88,7 @@
       "currency": "AUD",
       "category": "software_subscriptions",
       "purpose": "business",
-      "tax_label": "Other business expenses",
+      "tax_label": "All other expenses",
       "notes": "Fictional monthly 3D design CAD & software subscription"
     },
     {
@@ -110,7 +110,7 @@
       "currency": "AUD",
       "category": "materials_3d_printing",
       "purpose": "business",
-      "tax_label": "Cost of sales",
+      "tax_label": "Purchases and other costs",
       "notes": "Fictional brass screws and workbench fasteners"
     },
     {
@@ -121,7 +121,7 @@
       "currency": "AUD",
       "category": "dog_walking_supplies",
       "purpose": "business",
-      "tax_label": "Other business expenses",
+      "tax_label": "All other expenses",
       "notes": "Fictional biodegradable dog waste bags bundle"
     },
     {

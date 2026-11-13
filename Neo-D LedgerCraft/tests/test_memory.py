@@ -24,7 +24,7 @@ class TestVendorMemory(unittest.TestCase):
             raw_vendor="Fictional 3D Maker Supplies AU",
             category="materials_3d_printing",
             purpose="business",
-            tax_label="Cost of sales",
+            tax_label="Purchases and other costs",
         )
 
         # 3. Lookup should now match with confidence 1.0

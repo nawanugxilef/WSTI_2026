@@ -160,7 +160,7 @@ class TestWebServer(unittest.TestCase):
                 INSERT INTO receipts (
                     vendor, date, total_amount, category, tax_label, status, gdrive_status,
                     gdrive_file_id, items_json
-                ) VALUES (?, ?, ?, 'materials_3d_printing', 'Cost of sales', ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, 'materials_3d_printing', 'Purchases and other costs', ?, ?, ?, ?)
                 """,
                 (
                     ("=[FICTIONAL DEMO] Formula", "2026-07-01", 55, "recorded", "uploaded", drive_id,

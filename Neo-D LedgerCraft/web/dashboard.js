@@ -182,7 +182,7 @@ function renderSpendingChart() {
   byId("spend-donut").style.backgroundImage = stops.length > 1 ? "conic-gradient(" + stops.join(",") + ")" : "";
   byId("spend-donut").style.backgroundColor = stops.length === 1 ? chartColors[0] : "";
   byId("spend-total").textContent = money(total);
-  fillList("spend-categories", rows, "No confirmed spending for this selection.");
+  fillList("spend-categories", rows, "No recorded spending for this selection.");
 }
 
 function renderMyTax() {
@@ -197,8 +197,8 @@ function renderMyTax() {
   if (tax.payg_total > 0) breakdown.push(row("PAYG", money(tax.payg_total)));
   fillList("tax-business", breakdown, "No ABN expenses.");
   renderSpendingChart();
-  fillList("tax-labels", tax.by_mytax_label.map((entry) => row(entry.tax_label || entry.label, money(entry.gross_amount))), "No confirmed myTax categories.");
-  fillList("tax-categories", tax.by_category.map((entry) => row(categoryLabel(entry.category), money(entry.amount))), "No confirmed claimable expenses.");
+  fillList("tax-labels", tax.by_mytax_label.map((entry) => row(entry.tax_label || entry.label, money(entry.gross_amount))), "No recorded myTax categories.");
+  fillList("tax-categories", tax.by_category.map((entry) => row(categoryLabel(entry.category), money(entry.amount))), "No recorded claimable expenses.");
   byId("export-link").href = "/api/export.csv?fy=" + encodeURIComponent(data.fy_start_year);
   byId("tax-disclaimer").textContent = "Review items and duplicates are excluded from totals. " + data.suggestion_disclaimer;
 }
@@ -225,7 +225,7 @@ function renderBooks() {
     item.append(heading, progress);
     return item;
   });
-  fillList("books-categories", bars, "No confirmed spending this month.");
+  fillList("books-categories", bars, "No recorded spending this month.");
   fillList("books-activity", [
     ["Dog walking", books.dog_walking_pl],
     ["3D printing", books.printing_3d_pl],

@@ -283,7 +283,8 @@ class KnowledgeManager:
             claim_stream=data.get("claim_stream"),
             business_activity=data.get("business_activity"),
             business_pct=data.get("business_pct"),
-            tax_label=data.get("tax_label"),
+            # Only an owner-confirmed label may override the fixed ATO table; AI labels are ignored.
+            tax_label=data.get("tax_label") if data.get("classification_source") in ("owner_correction", "vendor_memory") else None,
             catalog=self.catalog,
             strict_category=True,
             allow_incomplete=True,
@@ -822,7 +823,7 @@ class KnowledgeManager:
         elif target_stream == "payg":
             target_tax_label = "D5 Other work-related expenses"
         else:
-            target_tax_label = "Other business expenses"
+            target_tax_label = "All other expenses"
 
         alloc = resolve_allocation(
             category=target_cat,

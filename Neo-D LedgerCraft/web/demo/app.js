@@ -445,7 +445,7 @@ function photoConfirmationForm(result) {
     }
     sendIntake("", [], {
       form: container,
-      label: "Confirmed receipt details",
+      label: "Recorded receipt details",
       photo: { draft_id: result.draft_id, vendor, date: fields.date.value, total_amount: fields.total_amount.valueAsNumber },
     });
   });

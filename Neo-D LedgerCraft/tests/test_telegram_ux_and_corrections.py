@@ -83,7 +83,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 "claim_stream": "abn",
                 "business_activity": "printing_3d",
                 "business_pct": 100.0,
-                "tax_label": "Cost of sales",
+                "tax_label": "Purchases and other costs",
             }
         )
         rec_2 = cos.km.get_receipt(rec_id_2)
@@ -171,7 +171,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 "claim_stream": "abn",
                 "business_activity": "printing_3d",
                 "business_pct": 100.0,
-                "tax_label": "Depreciation / Instant asset write-off",
+                "tax_label": "Depreciation expenses",
                 "confidence": 0.60,
                 "uncertainty_note": "Ambiguous category — confirm tools_equipment vs personal",
             },
@@ -382,7 +382,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 claim_stream="abn",
                 business_activity="printing_3d",
                 business_pct=100.0,
-                tax_label="Cost of sales",
+                tax_label="Purchases and other costs",
                 payment_method="Bank Account (1000)",
                 confidence=0.92,
                 items=[ReceiptItem(description="Hardened steel nozzle pack", amount=110.00)],
@@ -844,7 +844,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                     currency="AUD",
                     purpose="business",
                     category="materials_3d_printing",
-                    tax_label="Cost of sales",
+                    tax_label="Purchases and other costs",
                     claim_stream="abn",
                     summary_text="Detailed report" if saved else "Please confirm the receipt date.",
                     status="recorded" if saved else "needs_review",
@@ -983,7 +983,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 "claim_stream": "abn",
                 "business_activity": "printing_3d",
                 "business_pct": 100.0,
-                "tax_label": "Cost of sales",
+                "tax_label": "Purchases and other costs",
                 "confidence": 0.60,
                 "classification_source": "ai_suggestion",
                 "uncertainty_note": "Uncertain category and missing tax invoice ABN",
@@ -1032,7 +1032,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 "claim_stream": "abn",
                 "business_activity": "printing_3d",
                 "business_pct": 100.0,
-                "tax_label": "Cost of sales",
+                "tax_label": "Purchases and other costs",
                 "confidence": 0.90,
             }
         )
@@ -1164,7 +1164,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertEqual(to_abn.business_activity, "none")
         self.assertEqual(to_abn.business_pct, 0.0)
         self.assertEqual(to_abn.category, "office_supplies")
-        self.assertEqual(to_abn.tax_label, "Other business expenses")
+        self.assertEqual(to_abn.tax_label, "All other expenses")
         self.assertNotIn("D5", to_abn.tax_label or "")
         self.assertEqual(to_abn.status, "needs_review")
         self.assertIsNone(cos.km.memory.lookup(to_abn.vendor, confirmed_only=True))
@@ -1187,7 +1187,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         mytax_abn = self.jm.get_mytax_summary("2026-01-01", "2027-12-31")
         self.assertEqual(len(mytax_abn), 1)
         self.assertEqual(mytax_abn[0]["claim_stream"], "abn")
-        self.assertEqual(mytax_abn[0]["tax_label"], "Other business expenses")
+        self.assertEqual(mytax_abn[0]["tax_label"], "All other expenses")
 
         # 4. Change ABN receipt back to PAYG -> must recompute PAYG category & D5 tax label (NOT ABN label!)
         to_payg = cos.correct_receipt(receipt_id=payg_id, claim_stream="payg")
@@ -1384,7 +1384,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
                 "claim_stream": "abn",
                 "business_activity": "dog_walking",
                 "business_pct": 60.0,
-                "tax_label": "Other business expenses",
+                "tax_label": "All other expenses",
                 "confidence": 1.0,
                 "classification_source": "owner_correction",
             }
@@ -1496,7 +1496,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertNotIn("No business or PAYG tax deductions recorded yet", mytax_msg)
         self.assertIn("Unallocated Needs-Review Records (1)", mytax_msg)
         self.assertIn(f"#{rec_id}", mytax_msg)
-        self.assertIn("Total Confirmed Suggested Deductions*: `$0.00 AUD`", mytax_msg)
+        self.assertIn("Total Recorded Suggested Deductions*: `$0.00 AUD`", mytax_msg)
 
         # Call /total (alias for /mytax)
         update_total = MagicMock()
@@ -2114,7 +2114,7 @@ class TestTelegramUXAndCorrections(unittest.TestCase):
         self.assertIn("Total Expenses: $120.00 AUD (1 receipts)", spend_msg)
         self.assertIn("Business Claimable*: `$120.00 AUD`", spend_msg)
         self.assertIn("Personal Living*: `$0.00 AUD`", spend_msg)
-        self.assertIn("Pending Review Expenses (Excluded from Confirmed)*: `$75.00 AUD` (1 receipts)", spend_msg)
+        self.assertIn("Pending Review Expenses (Excluded from Recorded)*: `$75.00 AUD` (1 receipts)", spend_msg)
         self.assertIn("530.00 AUD in internal transfers / financing repayments from consumption", spend_msg)
 
     def test_defect_16_dog_walking_osko_field_specific_resolution_and_card_status(self):

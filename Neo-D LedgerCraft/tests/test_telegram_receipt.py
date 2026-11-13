@@ -88,7 +88,7 @@ def test_abn_details_reuse_card_and_explain_allocation():
         claim_stream="abn",
         business_activity="printing_3d",
         business_pct=85.5,
-        tax_label="Cost of sales",
+        tax_label="Purchases and other costs",
         classification_source="vendor_memory",
         confidence=1.0,
     )
@@ -99,7 +99,7 @@ def test_abn_details_reuse_card_and_explain_allocation():
     assert details.startswith(card + "\n\n")
     assert "Tax stream: ABN sole trader" in details
     assert "Confidence: 100%" in details
-    assert "ATO suggestion: Cost of sales" in details
+    assert "ATO suggestion: Purchases and other costs" in details
 
 
 def test_duplicate_only_shows_existing_receipt_id():

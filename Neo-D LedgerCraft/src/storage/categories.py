@@ -32,18 +32,20 @@ EXCLUSIVE_ABN_ACTIVITY_BY_CATEGORY = {
 }
 
 VALID_ABN_TAX_LABELS = {
-    "Cost of sales",
-    "Other business expenses",
-    "Depreciation / Instant asset write-off",
+    # Field names from the ATO myTax 2026 "Net income or loss from business" instructions.
+    "Purchases and other costs",
+    "Depreciation expenses",
     "Motor vehicle expenses",
-    "Motor vehicle and travel expenses",
-    "Business income",
+    "Repairs and maintenance",
+    "All other expenses",
+    "Other business income",
 }
 
 VALID_PAYG_TAX_LABELS = {
-    "D1 Work-related car/travel expenses",
+    # Question names from the ATO Individual tax return 2026 instructions (D1-D5).
+    "D1 Work-related car expenses",
     "D2 Work-related travel expenses",
-    "D3 Work-related clothing, laundry and dry-cleaning",
+    "D3 Work clothing, laundry and dry-cleaning expenses",
     "D4 Work-related self-education expenses",
     "D5 Other work-related expenses",
 }
@@ -71,9 +73,9 @@ def is_tax_label_compatible(stream: str, tax_label: Optional[str]) -> bool:
         return False
     lbl = str(tax_label).strip()
     lbl_up = lbl.upper()
-    is_payg_d_label = lbl_up.startswith(("D1 ", "D2 ", "D3 ", "D4 ", "D5 ")) or "work-related" in lbl.lower()
+    is_payg_d_label = lbl_up.startswith(("D1 ", "D2 ", "D3 ", "D4 ", "D5 "))
     if s == "payg":
-        return lbl in VALID_PAYG_TAX_LABELS or is_payg_d_label
+        return lbl in VALID_PAYG_TAX_LABELS
     if s == "abn":
         return lbl in VALID_ABN_TAX_LABELS and not is_payg_d_label
     return False
@@ -345,11 +347,11 @@ def resolve_allocation(
     elif stream == "payg":
         resolved_tax_label = "D5 Other work-related expenses"
     elif "income" in cat_key or "revenue" in cat_key or "sales" in cat_key:
-        resolved_tax_label = "Business income"
+        resolved_tax_label = "Other business income"
     elif act == "printing_3d" and ("material" in cat_key or "shipping" in cat_key or "3d" in cat_key):
-        resolved_tax_label = "Cost of sales"
+        resolved_tax_label = "Purchases and other costs"
     else:
-        resolved_tax_label = "Other business expenses"
+        resolved_tax_label = "All other expenses"
 
     resolved_purpose = "business" if stream in ("abn", "payg") else "personal"
 
