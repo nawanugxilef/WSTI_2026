@@ -739,8 +739,8 @@ class FinanceAgent:
             and total is not None
             and total > 0
             and vendor
-            and terse_note
             and not _OTHER_DATE_CUE.search(text)
+            and not re.search(r"(?<!\w)\d{1,2}/\d{1,2}(?!\d)", text)  # partial date like 5/11: ask, never guess
         ):
             date = capture_date.isoformat()
 

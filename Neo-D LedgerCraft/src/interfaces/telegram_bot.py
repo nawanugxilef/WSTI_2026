@@ -68,6 +68,8 @@ from src.storage.journal import JournalManager
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
+# httpx logs full request URLs at INFO, and Telegram URLs contain the bot token.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 MAX_TELEGRAM_RECEIPT_BYTES = FileSizeLimit.FILESIZE_DOWNLOAD
 XP_ELIGIBLE_STATUSES = {"recorded", "confirmed", "corrected", "flagged", "needs_review"}

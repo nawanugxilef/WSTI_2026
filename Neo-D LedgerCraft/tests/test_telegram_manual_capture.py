@@ -275,3 +275,12 @@ def test_rule_parser_reads_written_dates_and_shop_names(text, vendor, day):
 def test_month_word_next_to_a_price_is_not_a_date():
     result = FinanceAgent(api_key="").parse_note("may 5.50", capture_date=date(2026, 11, 12))
     assert result.date != "2026-05-05" and result.total_amount == 5.5
+
+
+@pytest.mark.parametrize("text", [
+    "[FICTIONAL DEMO] PLA filament 1kg $29 from Studio Supply",
+    "[FICTIONAL DEMO] printer ink $64.95 at Paper Gum",
+])
+def test_longer_undated_note_with_one_price_gets_capture_date(text):
+    result = FinanceAgent(api_key="").parse_note(text, capture_date=CAPTURE_DATE)
+    assert result.date == CAPTURE_DATE.isoformat()
