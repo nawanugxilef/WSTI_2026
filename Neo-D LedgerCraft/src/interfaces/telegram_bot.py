@@ -955,7 +955,8 @@ class TelegramReceiptBot:
 
         lines = [
             "🇦🇺 *SUGGESTED ATO myTAX DEDUCTIONS SUMMARY* (FY 2026/2027):",
-            f"_{ATO_SUGGESTION_DISCLAIMER}_\n",
+            f"_{ATO_SUGGESTION_DISCLAIMER}_",
+            "_Cash basis: income counts when received; unpaid invoices and bills are not tracked._\n",
         ]
         tot_confirmed = 0.0
         if confirmed:

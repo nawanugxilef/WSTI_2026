@@ -35,7 +35,9 @@ The public demo runs the same Gemini pipeline as the bot: Corgi reads any typed 
 | Telegram commands: `/recent`, `/mytax`, `/pnl`, `/spending`, `/balance`, `/dashboard`, `/reward`, `/companion`, `/backup` and more | Live, owner only |
 | Physical desk companion (ESP32-C3, about $6.10 AUD in parts) | Design: bill of materials and 3D assembly guide, not yet built |
 
-Automated tests: **217 tests and 28 subtests pass** (13 November 2026).
+Automated tests: **229 tests and 28 subtests pass** (14 November 2026).
+
+**Cash basis.** The ledger records income when it reaches the bank and expenses when they are paid. Card and Afterpay/Zip purchases are posted as a liability. Unpaid client invoices (receivables) and unpaid supplier bills (payables) are not tracked, and card or BNPL repayments are not posted yet, so the Books tab understates net worth. The myTax summary is built from recorded receipts and is not affected. Many small businesses may use the cash basis; check with a registered tax agent.
 
 ---
 

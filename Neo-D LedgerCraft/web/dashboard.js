@@ -200,7 +200,7 @@ function renderMyTax() {
   fillList("tax-labels", tax.by_mytax_label.map((entry) => row(entry.tax_label || entry.label, money(entry.gross_amount))), "No recorded myTax categories.");
   fillList("tax-categories", tax.by_category.map((entry) => row(categoryLabel(entry.category), money(entry.amount))), "No recorded claimable expenses.");
   byId("export-link").href = "/api/export.csv?fy=" + encodeURIComponent(data.fy_start_year);
-  byId("tax-disclaimer").textContent = "Review items and duplicates are excluded from totals. " + data.suggestion_disclaimer;
+  byId("tax-disclaimer").textContent = "Review items and duplicates are excluded from totals. Cash basis: income counts when received; unpaid invoices and bills are not tracked. " + data.suggestion_disclaimer;
 }
 
 function renderBooks() {
