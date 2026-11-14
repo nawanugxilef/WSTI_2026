@@ -43,3 +43,22 @@ def test_old_labels_are_renamed_on_startup():
     )
     init_db(conn)
     assert conn.execute("SELECT tax_label FROM receipts").fetchone()["tax_label"] == "All other expenses"
+
+
+def test_donation_and_tax_agent_get_d9_d10_labels():
+    conn = _conn()
+    km = KnowledgeManager(conn)
+    for cat, label in (("gifts_donations", "D9 Gifts or donations"), ("tax_affairs", "D10 Cost of managing tax affairs")):
+        rid = km.record_receipt({
+            "vendor": "[FICTIONAL DEMO] Helper", "date": "2026-11-10", "total_amount": 50.0,
+            "category": cat, "claim_stream": "payg", "business_activity": "payg_work",
+            "business_pct": 100, "confidence": 0.95, "classification_source": "ai_suggestion",
+        })
+        assert conn.execute("SELECT tax_label FROM receipts WHERE id = ?", (rid,)).fetchone()["tax_label"] == label
+
+
+def test_rule_based_note_recognises_donation_and_tax_agent():
+    from src.agents.finance_agent import FinanceAgent
+    parse = FinanceAgent._heuristic_parse_text
+    assert parse(FinanceAgent.__new__(FinanceAgent), "Red Cross donation $50").category == "gifts_donations"
+    assert parse(FinanceAgent.__new__(FinanceAgent), "Tax agent fee $220").category == "tax_affairs"

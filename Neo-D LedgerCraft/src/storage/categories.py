@@ -9,6 +9,7 @@ All ATO myTax labels are suggestions only and do not guarantee tax deductibility
 from __future__ import annotations
 
 import math
+import re
 import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -42,12 +43,14 @@ VALID_ABN_TAX_LABELS = {
 }
 
 VALID_PAYG_TAX_LABELS = {
-    # Question names from the ATO Individual tax return 2026 instructions (D1-D5).
+    # Question names from the ATO Individual tax return 2026 instructions (D1-D5, D9, D10).
     "D1 Work-related car expenses",
     "D2 Work-related travel expenses",
     "D3 Work clothing, laundry and dry-cleaning expenses",
     "D4 Work-related self-education expenses",
     "D5 Other work-related expenses",
+    "D9 Gifts or donations",
+    "D10 Cost of managing tax affairs",
 }
 
 
@@ -73,7 +76,7 @@ def is_tax_label_compatible(stream: str, tax_label: Optional[str]) -> bool:
         return False
     lbl = str(tax_label).strip()
     lbl_up = lbl.upper()
-    is_payg_d_label = lbl_up.startswith(("D1 ", "D2 ", "D3 ", "D4 ", "D5 "))
+    is_payg_d_label = re.match(r"D\d+ ", lbl_up) is not None
     if s == "payg":
         return lbl in VALID_PAYG_TAX_LABELS
     if s == "abn":
@@ -143,7 +146,7 @@ def recompute_compatible_category(
     if stream == "abn":
         if cat_key in ("work_car_travel", "transport_personal"):
             return "car_fuel_maintenance"
-        if cat_key in ("work_home_office_other", "self_education", "work_uniform_clothing"):
+        if cat_key in ("work_home_office_other", "self_education", "work_uniform_clothing", "gifts_donations", "tax_affairs"):
             return "dog_walking_supplies" if act == "dog_walking" else "office_supplies"
         if cat_key == "hobby_3d_printing":
             return "materials_3d_printing" if act == "printing_3d" else "office_supplies"

@@ -27,7 +27,7 @@ The public demo runs the same Gemini pipeline as the bot: Corgi reads any typed 
 | Area | Status |
 |---|---|
 | Receipt intake: typed notes, photos, PDFs, multi-receipt photos, bank statements (Telegram); notes, up to 10 photos or one PDF (web) | Live |
-| Work or personal question, ABN / PAYG / Personal streams, business share, 23 categories, ATO myTax labels | Live |
+| Best guess with one-tap change, ABN / PAYG / Personal streams, business share, 25 categories, official ATO myTax labels (incl. D9 donations, D10 tax agent) | Live |
 | Vendor memory, duplicate detection, "Needs review" flag, double-entry ledger | Live |
 | Womby companion: +10 XP per recorded receipt, no streaks, no penalties, reward box | Live |
 | 3D office with live agent activity and task board | Live |

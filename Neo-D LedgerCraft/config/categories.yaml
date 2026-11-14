@@ -88,6 +88,18 @@ payg_categories:
     activity: "payg_work"
     default_business_pct: 100
     description: "Working from home consumables, union fees, professional tools and subscriptions"
+  gifts_donations:
+    tax_label: "D9 Gifts or donations"
+    stream: "payg"
+    activity: "payg_work"
+    default_business_pct: 100
+    description: "Donations of $2 or more to a deductible gift recipient (DGR) charity; individual return deduction"
+  tax_affairs:
+    tax_label: "D10 Cost of managing tax affairs"
+    stream: "payg"
+    activity: "payg_work"
+    default_business_pct: 100
+    description: "Registered tax agent fees and other costs of managing your own tax affairs; individual return deduction"
 
 personal_categories:
   groceries:

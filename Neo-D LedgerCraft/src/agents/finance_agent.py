@@ -111,7 +111,7 @@ RULES:
    - If GST is not stated or unknown, set tax_amount to null and gst_status to "unknown".
 6. Tax Stream (claim_stream), Activity (business_activity), Business % (business_pct), and Payment Rails:
    - "abn": Sole trader business expenses/income. Set business_activity to "printing_3d" (materials_3d_printing, income_3d_printing, tools_equipment, shipping_freight, software_subscriptions, office_supplies) or "dog_walking" (dog_walking_supplies, income_dog_walking, travel_parking, car_fuel_maintenance).
-   - "payg": PAYG employee work-related deductions (work_car_travel, work_uniform_clothing, self_education, work_home_office_other). Set business_activity to "payg_work".
+   - "payg": Individual tax return deductions: PAYG employee work-related expenses (work_car_travel, work_uniform_clothing, self_education, work_home_office_other), plus gifts_donations (donations to a registered DGR charity) and tax_affairs (tax agent or tax-return preparation fees), which anyone may claim. Set business_activity to "payg_work".
    - "personal": Private/personal expenses (groceries, dining_coffee, utilities, health_medical, transport_personal, entertainment, hobby_3d_printing, transfer, general). Set business_activity to "none" and business_pct to 0.
    - Payment Rails & Transfers: Payment rails (PayID, Osko, Afterpay, Zip Pay) are payment methods, NOT proof that an entry is an internal transfer. If a transaction mentions PayID, Osko, or BNPL alongside business revenue (dog walking client fees, 3D printing client payments) or business expenses (supplies, tools), preserve the actual income or expense category, tax stream, and business activity. Genuine internal account transfers are classified as category "transfer" (claim_stream "personal", 0% business). Ambiguous transfers, unverified rail transactions, or loan/BNPL repayments must be given confidence < 0.80 with an uncertainty_note flagging them for owner review to avoid double-counting purchases and repayments.
 7. Australian ATO myTax Labels and ambiguity:
@@ -890,6 +890,12 @@ class FinanceAgent:
             claim_stream = "personal"
             business_activity = "none"
             confidence = 0.90
+            uncertainty_note = None
+        elif any(k in lower for k in ("donation", "donate", "tax agent", "tax return prep")):
+            category = "tax_affairs" if "tax" in lower else "gifts_donations"
+            claim_stream = "payg"
+            business_activity = "payg_work"
+            confidence = 0.82
             uncertainty_note = None
         elif "payg" in lower or "uniform" in lower or "self education" in lower or "home office" in lower:
             category = "work_home_office_other"

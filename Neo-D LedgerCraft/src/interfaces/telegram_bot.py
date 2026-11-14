@@ -171,6 +171,10 @@ def build_correction_keyboard(
             [
                 InlineKeyboardButton("🎓 D4 Education", callback_data=f"corr:{receipt_id}:cat:self_education"),
                 InlineKeyboardButton("💻 D5 Home/Other", callback_data=f"corr:{receipt_id}:cat:work_home_office_other"),
+            ],
+            [
+                InlineKeyboardButton("🎁 D9 Donation", callback_data=f"corr:{receipt_id}:cat:gifts_donations"),
+                InlineKeyboardButton("🧾 D10 Tax agent", callback_data=f"corr:{receipt_id}:cat:tax_affairs"),
                 InlineKeyboardButton("📂 All Categories...", callback_data=f"corr:{receipt_id}:menu:cats"),
             ],
         ]
