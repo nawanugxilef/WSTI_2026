@@ -27,3 +27,5 @@ Neo-D LedgerCraft/data/*.db-wal
 Neo-D LedgerCraft/data/*.db-shm
 Neo-D LedgerCraft/data/receipts/
 Neo-D LedgerCraft/data/statements/
+Neo-D LedgerCraft/data/business_profile.json
+Neo-D LedgerCraft/data/business_profile.tmp

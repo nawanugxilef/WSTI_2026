@@ -13,6 +13,15 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from src.storage import businesses as biz
+
+
+def _sql_activity_list() -> str:
+    # Keys are preset names or custom_[a-z0-9_]+ (validated in businesses.py), so inlining is safe.
+    keys = biz.known_activity_keys()
+    assert all(k.replace("_", "").isalnum() for k in keys)
+    return ", ".join(f"'{k}'" for k in keys)
+
 
 @dataclass
 class JournalLeg:
@@ -127,7 +136,7 @@ class JournalManager:
         Strictly excludes needs-review/flagged items (status IN ('flagged', 'needs_review')),
         personal expenses, income rows, and duplicate receipts.
         """
-        query = """
+        query = f"""
             SELECT 
                 tax_label,
                 COALESCE(claim_stream, 'abn') as claim_stream,
@@ -144,7 +153,7 @@ class JournalManager:
               AND COALESCE(tax_amount, 0.0) >= 0.0
               AND COALESCE(tax_amount, 0.0) <= ROUND((total_amount * (COALESCE(business_pct, 0.0) / 100.0)) / 11.0 + 0.10, 2)
               AND COALESCE(business_pct, 0.0) > 0
-              AND (COALESCE(claim_stream, 'abn') != 'abn' OR business_activity IN ('dog_walking', 'printing_3d'))
+              AND (COALESCE(claim_stream, 'abn') != 'abn' OR business_activity IN ({_sql_activity_list()}))
               AND (COALESCE(claim_stream, 'abn') != 'payg' OR business_activity = 'payg_work')
               AND date >= ? AND date <= ?
               AND tax_label IS NOT NULL
@@ -195,7 +204,7 @@ class JournalManager:
         or unallocated claim stream).
         Never computes or confirms fictitious deduction numbers for unallocated receipts.
         """
-        query = """
+        query = f"""
             SELECT id, vendor, date, total_amount, category, claim_stream, business_activity, business_pct, flag_reason
             FROM receipts
             WHERE status IN ('flagged', 'needs_review')
@@ -207,7 +216,7 @@ class JournalManager:
               AND (
                   COALESCE(business_pct, 0.0) <= 0
                   OR tax_label IS NULL
-                  OR (COALESCE(claim_stream, 'personal') = 'abn' AND business_activity NOT IN ('dog_walking', 'printing_3d'))
+                  OR (COALESCE(claim_stream, 'personal') = 'abn' AND business_activity NOT IN ({_sql_activity_list()}))
               )
             ORDER BY id DESC;
         """
@@ -244,13 +253,8 @@ class JournalManager:
         GENUINELY_CONFIRMED_STATUSES = {"recorded", "confirmed", "corrected"}
         PENDING_REVIEW_STATUSES = {"flagged", "needs_review", "pending", "unverified"}
 
-        dog_inc = 0.0
-        dog_exp = 0.0
-        dog_pending_inc = 0.0
-
-        print_inc = 0.0
-        print_exp = 0.0
-        print_pending_inc = 0.0
+        keys = biz.abn_activity_keys()
+        buckets = {k: {"income": 0.0, "expenses": 0.0, "pending_income": 0.0} for k in keys}
 
         seen_income_hashes = set()
 
@@ -288,51 +292,35 @@ class JournalManager:
                 or status not in GENUINELY_CONFIRMED_STATUSES
             )
 
+            key = biz.business_for(act, cat)
             if is_inc:
-                is_dog = (act == "dog_walking" or "dog" in cat)
                 if is_confirmed:
-                    if is_dog:
-                        dog_inc += amt
-                    else:
-                        print_inc += amt
+                    buckets[key]["income"] += amt
                 elif is_pending:
-                    if is_dog:
-                        dog_pending_inc += amt
-                    else:
-                        print_pending_inc += amt
+                    buckets[key]["pending_income"] += amt
             else:
                 claim = round(amt * (pct / 100.0), 2) if (is_confirmed and pct > 0) else 0.0
-                if claim > 0:
-                    if act == "dog_walking" or "dog" in cat:
-                        dog_exp += claim
-                    elif r.get("claim_stream") == "abn":
-                        print_exp += claim
+                if claim > 0 and (act in keys or "dog" in cat or r.get("claim_stream") == "abn"):
+                    buckets[key]["expenses"] += claim
 
-        dog_inc = round(dog_inc, 2)
-        dog_exp = round(dog_exp, 2)
-        dog_net = round(dog_inc - dog_exp, 2)
-        dog_pending_inc = round(dog_pending_inc, 2)
+        for bucket in buckets.values():
+            for field in ("income", "expenses", "pending_income"):
+                bucket[field] = round(bucket[field], 2)
+            bucket["net"] = round(bucket["income"] - bucket["expenses"], 2)
 
-        print_inc = round(print_inc, 2)
-        print_exp = round(print_exp, 2)
-        print_net = round(print_inc - print_exp, 2)
-        print_pending_inc = round(print_pending_inc, 2)
-
-        total_income = round(dog_inc + print_inc, 2)
-        total_expenses = round(dog_exp + print_exp, 2)
-        net_profit = round(dog_net + print_net, 2)
-        total_pending_inc = round(dog_pending_inc + print_pending_inc, 2)
-
-        return {
+        result: Dict[str, Any] = {
             "period": f"{start_date} to {end_date}",
             "currency": "AUD",
-            "dog_walking": {"income": dog_inc, "expenses": dog_exp, "net": dog_net, "pending_income": dog_pending_inc},
-            "printing_3d": {"income": print_inc, "expenses": print_exp, "net": print_net, "pending_income": print_pending_inc},
-            "total_income": total_income,
-            "total_expenses": total_expenses,
-            "net_profit": net_profit,
-            "pending_income": total_pending_inc,
+            **buckets,
+            "businesses": [
+                {"key": b.key, "name": b.name, "icon": b.icon, **buckets[b.key]} for b in biz.active_businesses()
+            ],
+            "total_income": round(sum(v["income"] for v in buckets.values()), 2),
+            "total_expenses": round(sum(v["expenses"] for v in buckets.values()), 2),
+            "net_profit": round(sum(v["net"] for v in buckets.values()), 2),
+            "pending_income": round(sum(v["pending_income"] for v in buckets.values()), 2),
         }
+        return result
 
     def get_spending_summary(self, month: Optional[str] = None) -> Dict[str, Any]:
         """

@@ -32,6 +32,7 @@ from src.agents.finance_agent import FinanceAgent
 from src.agents.receipt_progress import read_receipt_progress
 from src.interfaces.cli import load_config, seed_accounts
 from src.interfaces.dashboard_auth import DASHBOARD_ORIGIN, clear_session, get_session, issue_session
+from src.storage import businesses as biz
 from src.storage.categories import ATO_SUGGESTION_DISCLAIMER
 from src.storage.db import get_connection, init_db
 from src.storage.gdrive import drive_file_url
@@ -206,6 +207,7 @@ def build_dashboard_payload(
     fy = f"FY{year:04d}-{(year + 1) % 100:02d}"
 
     target_db = db_path or get_default_db_path()
+    biz.configure(target_db)
     conn = get_connection(target_db)
     init_db(conn)
     seed_accounts(conn)
@@ -244,7 +246,7 @@ def build_dashboard_payload(
         is_needs_review = (status not in ("recorded", "confirmed", "corrected") or has_flag) and not is_dup
         purpose = r.get("purpose") or "business"
         stream = r.get("claim_stream") or ("abn" if purpose == "business" else "personal")
-        activity = r.get("business_activity") or ("printing_3d" if stream == "abn" else "none")
+        activity = r.get("business_activity") or (biz.abn_activity_keys()[0] if stream == "abn" else "none")
         pct = float(r.get("business_pct") if r.get("business_pct") is not None else (100.0 if purpose == "business" else 0.0))
         amount = round(float(r["total_amount"] or 0.0), 2)
 
@@ -311,48 +313,28 @@ def build_dashboard_payload(
     personal_total = round(sum(r["personal_share"] for r in confirmed_expenses), 2)
     all_spent_total = round(sum(r["amount"] for r in confirmed_expenses), 2)
 
-    # ABN by business (Dog Walking & 3D Printing) for confirmed items
-    dog_walking_exp = round(
-        sum(
-            r["claim"]
-            for r in confirmed_expenses
-            if r["claim"] > 0
-            and r["claim_stream"] == "abn"
-            and (r["business_activity"] == "dog_walking" or "dog" in (r["category"] or "").lower())
-        ),
-        2,
-    )
-    printing_exp = round(
-        sum(
-            r["claim"]
-            for r in confirmed_expenses
-            if r["claim"] > 0
-            and r["claim_stream"] == "abn"
-            and r["business_activity"] != "dog_walking"
-            and "dog" not in (r["category"] or "").lower()
-        ),
-        2,
-    )
+    # ABN results per business (from the owner's /setup profile) for confirmed items
+    business_keys = biz.abn_activity_keys()
+    abn_exp = {k: 0.0 for k in business_keys}
+    for r in confirmed_expenses:
+        if r["claim"] > 0 and r["claim_stream"] == "abn":
+            abn_exp[biz.business_for(r["business_activity"], r["category"])] += r["claim"]
+    abn_exp = {k: round(v, 2) for k, v in abn_exp.items()}
     payg_exp = round(
         sum(r["claim"] for r in confirmed_expenses if r["claim"] > 0 and r["claim_stream"] == "payg"),
         2,
     )
 
     business_income = [r for r in income_receipts if not r["check"] and r["claim_stream"] == "abn"]
-    dog_walking_inc = round(
-        sum(
-            r["amount"] for r in business_income
-            if r["business_activity"] == "dog_walking" or "dog" in (r["category"] or "").lower()
-        ),
-        2,
-    )
-    printing_inc = round(
-        sum(
-            r["amount"] for r in business_income
-            if r["business_activity"] != "dog_walking" and "dog" not in (r["category"] or "").lower()
-        ),
-        2,
-    )
+    abn_inc = {k: 0.0 for k in business_keys}
+    for r in business_income:
+        abn_inc[biz.business_for(r["business_activity"], r["category"])] += r["amount"]
+    abn_inc = {k: round(v, 2) for k, v in abn_inc.items()}
+    business_pl = [
+        {"key": b.key, "name": b.name, "icon": b.icon, "income": abn_inc[b.key], "expenses": abn_exp[b.key],
+         "net": round(abn_inc[b.key] - abn_exp[b.key], 2)}
+        for b in biz.active_businesses()
+    ]
 
     def group_by_category(items, amount_key="amount"):
         totals = {}
@@ -386,9 +368,7 @@ def build_dashboard_payload(
     liability_accounts = [row for row in tb if row["type"] in ("credit", "current_liability")]
     equity_accounts = [row for row in tb if row["type"] in ("equity", "drawings")]
 
-    dog_net = round(dog_walking_inc - dog_walking_exp, 2)
-    printing_net = round(printing_inc - printing_exp, 2)
-    net_profit = round(dog_net + printing_net, 2)
+    net_profit = round(sum(b["net"] for b in business_pl), 2)
     net_worth = round(
         sum(b["net_balance"] for b in bank_accounts) + sum(l["net_balance"] for l in liability_accounts), 2
     )
@@ -435,10 +415,7 @@ def build_dashboard_payload(
             "business_total": business_total,
             "payg_total": payg_exp,
             "all_spent_total": all_spent_total,
-            "abn_by_business": {
-                "dog_walking": dog_walking_exp,
-                "printing_3d": printing_exp,
-            },
+            "abn_by_business": abn_exp,
             "where_money_goes": where_money_goes,
             "by_mytax_label": mytax_rows,
             "by_mytax_needs_review": mytax_review_rows,
@@ -447,16 +424,8 @@ def build_dashboard_payload(
         "books": {
             "net_profit": net_profit,
             "net_worth": net_worth,
-            "dog_walking_pl": {
-                "income": dog_walking_inc,
-                "expenses": dog_walking_exp,
-                "net": dog_net,
-            },
-            "printing_3d_pl": {
-                "income": printing_inc,
-                "expenses": printing_exp,
-                "net": printing_net,
-            },
+            "businesses": business_pl,
+            **{f"{b['key']}_pl": {k: b[k] for k in ("income", "expenses", "net")} for b in business_pl},
             "bank_accounts": bank_accounts,
             "liabilities": liability_accounts,
             "equity": equity_accounts,
@@ -465,6 +434,12 @@ def build_dashboard_payload(
             "spending": spending,
         },
         "companion": companion,
+        "activity_names": {b.key: b.name for b in biz.active_businesses()} | {"payg_work": "PAYG work"},
+        "category_names": {
+            c: f"{b.name} {kind}"
+            for b in biz.active_businesses()
+            for c, kind in ((b.supplies_category, "supplies"), (b.income_category, "income"))
+        },
     }
 
 

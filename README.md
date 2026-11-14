@@ -1,6 +1,6 @@
 # Neo-D LedgerCraft & Desk Companion (`WSTI_2026`)
 
-An ADHD-friendly receipt catch-up assistant for sole traders in Sydney, Australia. Send a receipt in a chat. A crew of four agents reads it, checks it, files it in a double-entry ledger and builds the ATO myTax summary. Womby the wombat celebrates every receipt with +10 XP. Nothing punishes you for being late. Built in **Australian Dollars (`$ AUD`)** for **Dog Walking** and **3D Printing** ABN activities.
+An ADHD-friendly receipt catch-up assistant for sole traders in Sydney, Australia. Send a receipt in a chat. A crew of four agents reads it, checks it, files it in a double-entry ledger and builds the ATO myTax summary. Womby the wombat celebrates every receipt with +10 XP. Nothing punishes you for being late. Built in **Australian Dollars (`$ AUD`)**. A one-time `/setup` in Telegram picks up to three businesses (cleaning, trades, photography, hair & beauty, rideshare, online shop, consulting, 3D printing, dog walking, or your own); the demo uses the owner's two businesses, **Dog Walking** and **3D Printing**.
 
 > **Most apps help you keep up. Neo-D helps you catch up.**
 
@@ -27,7 +27,7 @@ The public demo runs the same Gemini pipeline as the bot: Corgi reads any typed 
 | Area | Status |
 |---|---|
 | Receipt intake: typed notes, photos, PDFs, multi-receipt photos, bank statements (Telegram); notes, up to 10 photos or one PDF (web) | Live |
-| Best guess with one-tap change, ABN / PAYG / Personal streams, business share, 27 categories, official ATO myTax labels (incl. Repairs and maintenance, D2 travel, D9 donations, D10 tax agent) | Live |
+| One-time `/setup` for your businesses, best guess with one-tap change, ABN / PAYG / Personal streams, business share, 27 categories, official ATO myTax labels (incl. Repairs and maintenance, D2 travel, D9 donations, D10 tax agent) | Live |
 | Vendor memory, duplicate detection, "Needs review" flag, double-entry ledger | Live |
 | Womby companion: +10 XP per recorded receipt, no streaks, no penalties, reward box | Live |
 | 3D office with live agent activity and task board | Live |
@@ -35,7 +35,7 @@ The public demo runs the same Gemini pipeline as the bot: Corgi reads any typed 
 | Telegram commands: `/recent`, `/mytax`, `/pnl`, `/spending`, `/balance`, `/dashboard`, `/reward`, `/companion`, `/backup` and more | Live, owner only |
 | Physical desk companion (ESP32-C3, about $6.10 AUD in parts) | Design: bill of materials and 3D assembly guide, not yet built |
 
-Automated tests: **229 tests and 28 subtests pass** (14 November 2026).
+Automated tests: **234 tests and 28 subtests pass** (14 November 2026).
 
 **Cash basis.** The ledger records income when it reaches the bank and expenses when they are paid. Card and Afterpay/Zip purchases are posted as a liability. Unpaid client invoices (receivables) and unpaid supplier bills (payables) are not tracked, and card or BNPL repayments are not posted yet, so the Books tab understates net worth. The myTax summary is built from recorded receipts and is not affected. Many small businesses may use the cash basis; check with a registered tax agent.
 

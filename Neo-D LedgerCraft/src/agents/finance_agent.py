@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, model_validator
 
+from src.storage import businesses as biz
 from src.storage.categories import resolve_allocation
 
 
@@ -56,7 +57,7 @@ class ParsedReceipt(BaseModel):
     claim_stream: str = Field(default="abn", description="One of: 'abn', 'payg', or 'personal'")
     business_activity: str = Field(
         default="printing_3d",
-        description="One of: 'dog_walking', 'printing_3d', 'payg_work', or 'none'",
+        description="A business key listed in the rules, 'payg_work', or 'none'",
     )
     business_pct: float = Field(default=100.0, description="Business/deductible percentage from 0 to 100")
     tax_label: Optional[str] = None
@@ -121,12 +122,36 @@ RULES:
 9. Recognize prepared dishes, takeaway meals, drinks, and desserts in any language. Use Personal dining_coffee when the note describes a meal or snack without a grocery-shopping context. Use groceries when the source identifies supermarket shopping or ingredients.
 """
 
-RECEIPT_SYSTEM_PROMPT = SYSTEM_PROMPT + "\nReturn one JSON object matching this schema:\n" + json.dumps(
-    ParsedReceipt.model_json_schema(), separators=(",", ":")
-)
-BATCH_SYSTEM_PROMPT = SYSTEM_PROMPT + "\nReturn one JSON object matching this schema:\n" + json.dumps(
-    ParsedBatch.model_json_schema(), separators=(",", ":")
-)
+_DEFAULT_ABN_RULE = '   - "abn": Sole trader business expenses/income. Set business_activity to "printing_3d" (materials_3d_printing, income_3d_printing, tools_equipment, repairs_maintenance, shipping_freight, software_subscriptions, office_supplies) or "dog_walking" (dog_walking_supplies, income_dog_walking, travel_parking, car_fuel_maintenance).'
+_SHARED_ABN = "tools_equipment, repairs_maintenance, shipping_freight, software_subscriptions, office_supplies, travel_parking, car_fuel_maintenance"
+
+
+def system_prompt() -> str:
+    """SYSTEM_PROMPT with the ABN rule written for the owner's /setup businesses."""
+    if not biz.is_configured():
+        return SYSTEM_PROMPT
+    parts = [
+        f'"{b.key}" for {b.name} ({b.hints}; own categories {b.supplies_category}, {b.income_category})'
+        for b in biz.active_businesses()
+    ]
+    rule = (
+        '   - "abn": Sole trader business expenses/income. Set business_activity to the business it belongs to: '
+        + "; ".join(parts)
+        + f". Shared business categories usable for any of these businesses: {_SHARED_ABN}."
+    )
+    return SYSTEM_PROMPT.replace(_DEFAULT_ABN_RULE, rule)
+
+
+def receipt_system_prompt() -> str:
+    return system_prompt() + "\nReturn one JSON object matching this schema:\n" + json.dumps(
+        ParsedReceipt.model_json_schema(), separators=(",", ":")
+    )
+
+
+def batch_system_prompt() -> str:
+    return system_prompt() + "\nReturn one JSON object matching this schema:\n" + json.dumps(
+        ParsedBatch.model_json_schema(), separators=(",", ":")
+    )
 
 # Remove dates before scanning for amounts so a day or year cannot become a dollar value.
 _MONTH_NAME = (
@@ -396,7 +421,7 @@ class FinanceAgent:
                                 model=m,
                                 contents=prompt,
                                 config=types.GenerateContentConfig(
-                                    system_instruction=BATCH_SYSTEM_PROMPT,
+                                    system_instruction=batch_system_prompt(),
                                     response_mime_type="application/json",
                                     temperature=0.0,
                                 ),
@@ -445,7 +470,7 @@ class FinanceAgent:
                         model=m,
                         contents=[types.Part.from_bytes(data=file_bytes, mime_type=mime_type), prompt],
                         config=types.GenerateContentConfig(
-                            system_instruction=BATCH_SYSTEM_PROMPT,
+                            system_instruction=batch_system_prompt(),
                             response_mime_type="application/json",
                             temperature=0.0,
                         ),
@@ -535,7 +560,7 @@ class FinanceAgent:
 
         from google.genai import types
 
-        system_instruction = RECEIPT_SYSTEM_PROMPT + (
+        system_instruction = receipt_system_prompt() + (
             "\nCategorize typed notes using the meaning of informal words, abbreviations and item names. "
             "Use the named merchant if present. Otherwise use the item description as the vendor label. "
             "You may normalize capitalization, spacing and punctuation. Never invent a merchant brand. "
@@ -642,7 +667,7 @@ class FinanceAgent:
                     model=m,
                     contents=contents,
                     config=types.GenerateContentConfig(
-                        system_instruction=RECEIPT_SYSTEM_PROMPT,
+                        system_instruction=receipt_system_prompt(),
                         response_mime_type="application/json",
                         temperature=0.0,
                     ),
@@ -755,6 +780,20 @@ class FinanceAgent:
 
         lower = text.lower()
         business_context = _PREPARED_DISH.sub(" ", lower)
+        active = biz.abn_activity_keys()
+        default_act = "printing_3d" if "printing_3d" in active else active[0]
+        car_act = "dog_walking" if "dog_walking" in active else active[0]
+        own_match = next(
+            (
+                b for b in biz.active_businesses()
+                if b.key not in ("printing_3d", "dog_walking")
+                and any(
+                    h and re.search(rf"\b{re.escape(h)}\b", business_context)
+                    for h in [x.strip().lower() for x in b.hints.split(",")] + [b.name.lower()]
+                )
+            ),
+            None,
+        )
         is_dining = business_context != lower or bool(_DINING_CONTEXT.search(text))
         is_groceries = bool(_GROCERY_CONTEXT.search(text))
         if "afterpay" in lower or "pay in 4" in lower or "zippay" in lower or "zip pay" in lower:
@@ -860,7 +899,7 @@ class FinanceAgent:
             )
 
         # Priority 5: Business Activities and Standard Categories
-        elif any(word in business_context for word in ("dog", "walk", "pet", "leash")):
+        elif "dog_walking" in active and any(word in business_context for word in ("dog", "walk", "pet", "leash")):
             if any(k in lower for k in ("income", "fee", "client", "earned", "revenue")):
                 category = "income_dog_walking"
                 confidence = 0.88
@@ -876,7 +915,7 @@ class FinanceAgent:
                     uncertainty_note = "Pet item without explicit business designation — suggested for Dog Walking business; verify if for client walking or personal pet."
             claim_stream = "abn"
             business_activity = "dog_walking"
-        elif any(k in business_context for k in ("3d", "print", "nozzle", "plate", "maker", "pla", "resin", "filament")):
+        elif "printing_3d" in active and any(k in business_context for k in ("3d", "print", "nozzle", "plate", "maker", "pla", "resin", "filament")):
             if any(k in lower for k in ("income", "sale", "sold", "revenue", "client", "earned")):
                 category = "income_3d_printing"
             elif re.search(r"\b(repair|servic(e|ing))\b", lower):
@@ -887,6 +926,13 @@ class FinanceAgent:
             business_activity = "printing_3d"
             confidence = 0.88
             uncertainty_note = None
+        elif own_match is not None:
+            is_income = any(k in lower for k in ("income", "sale", "sold", "revenue", "earned", "paid by", "invoice paid"))
+            category = own_match.income_category if is_income else own_match.supplies_category
+            claim_stream = "abn"
+            business_activity = own_match.key
+            confidence = 0.82
+            uncertainty_note = None
         elif is_dining or is_groceries:
             category = "groceries" if is_groceries else "dining_coffee"
             claim_stream = "personal"
@@ -896,7 +942,7 @@ class FinanceAgent:
         elif re.search(r"\b(repair|servic(e|ing))\b", lower) and any(k in lower for k in ("printer", "equipment", "machine", "laptop")):
             category = "repairs_maintenance"
             claim_stream = "abn"
-            business_activity = "printing_3d"
+            business_activity = default_act
             confidence = 0.82
             uncertainty_note = None
         elif "work" in lower and any(k in lower for k in ("flight", "hotel", "taxi", "uber", "airfare", "accommodation")):
@@ -920,7 +966,7 @@ class FinanceAgent:
         elif "fuel" in lower or "petrol" in lower or "servo" in lower:
             category = "car_fuel_maintenance"
             claim_stream = "abn"
-            business_activity = "dog_walking"
+            business_activity = car_act
             confidence = 0.78
             uncertainty_note = "Mixed-use motor vehicle estimate (default 50% business) — verify logbook share."
         else:

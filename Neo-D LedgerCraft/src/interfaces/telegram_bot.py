@@ -5,7 +5,7 @@ Dedicated to zero-friction ADHD receipt & expense intake and 1-tap owner correct
 - Bank statement uploads (CSV/PDF/Image with AI auto-sync & deduplication)
 - Casual typed notes (e.g. "Fictional Demo Cafe coffee 6.50 today")
 - Conditional 1-Tap Inline Keyboard & /correct command for Category, Business %,
-  Stream (ABN/PAYG/Personal), Activity (Dog Walking / 3D Printing), Vendor, and explicit GST
+  Stream (ABN/PAYG/Personal), Business (from /setup), Vendor, and explicit GST
 - Full double-entry journal & ATO myTax recalculation on every correction without duplicate entries
 - Segregates Needs-Review items from Confirmed myTax claim totals
 Restricted to owner only. Strictly English and AUD ($ AUD).
@@ -18,6 +18,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import shlex
 import sqlite3
 import sys
@@ -45,16 +46,17 @@ from src.agents.wellbeing import coffee_check_in
 from src.interfaces.cli import load_config, seed_accounts
 from src.interfaces.dashboard_auth import LOGIN_SECONDS, create_login_url
 from src.interfaces.telegram_receipt import (
-    CATEGORY_ICONS,
-    CATEGORY_LABELS,
     CATEGORY_STREAM_ICONS,
+    category_icon,
+    category_label,
     format_existing_receipt_card,
     format_receipt_card,
     format_receipt_details,
 )
+from src.storage import businesses as biz
 from src.storage.categories import (
     ATO_SUGGESTION_DISCLAIMER,
-    VALID_ACTIVITIES,
+    valid_activities,
     VALID_STREAMS,
     format_activity_badge,
     format_stream_badge,
@@ -91,8 +93,8 @@ def build_correction_keyboard(
         rows: List[List[InlineKeyboardButton]] = []
         row: List[InlineKeyboardButton] = []
         for spec in cats:
-            icon = CATEGORY_ICONS.get(spec.key) or CATEGORY_STREAM_ICONS.get(spec.stream, "🏠")
-            name = CATEGORY_LABELS.get(spec.key, spec.key.replace("_", " ").title())
+            icon = category_icon(spec.key) or CATEGORY_STREAM_ICONS.get(spec.stream, "🏠")
+            name = category_label(spec.key, None)
             label = f"{icon} {name}"
             if len(label) > 28:
                 label = label[:27].rstrip() + "…"
@@ -112,6 +114,8 @@ def build_correction_keyboard(
         InlineKeyboardButton("✓ PAYG" if stream == "payg" else "👔 PAYG", callback_data=f"corr:{receipt_id}:stream:payg"),
         InlineKeyboardButton("✓ Personal" if stream == "personal" else "🏠 Personal", callback_data=f"corr:{receipt_id}:stream:personal"),
     ]
+    if not biz.has_payg() and stream != "payg":
+        stream_row.pop(1)  # owner said in /setup they have no PAYG job
 
     if not expanded:
         quick = [InlineKeyboardButton("✏️ Category", callback_data=f"corr:{receipt_id}:menu:controls")]
@@ -185,16 +189,14 @@ def build_correction_keyboard(
     keyboard = [
         stream_row,
         [
-            InlineKeyboardButton("🐕 Dog Walking", callback_data=f"corr:{receipt_id}:act:dog_walking"),
-            InlineKeyboardButton("🖨️ 3D Printing", callback_data=f"corr:{receipt_id}:act:printing_3d"),
-            InlineKeyboardButton("➖ No Activity", callback_data=f"corr:{receipt_id}:act:none"),
-        ],
+            InlineKeyboardButton(f"{b.icon} {b.name}"[:24], callback_data=f"corr:{receipt_id}:act:{b.key}")
+            for b in biz.active_businesses()
+        ] + [InlineKeyboardButton("➖ No Activity", callback_data=f"corr:{receipt_id}:act:none")],
         pct_row,
         [
-            InlineKeyboardButton("🖨️ 3D Materials", callback_data=f"corr:{receipt_id}:cat:materials_3d_printing"),
-            InlineKeyboardButton("🐕 Dog Supplies", callback_data=f"corr:{receipt_id}:cat:dog_walking_supplies"),
-            InlineKeyboardButton("🚗 Car/Fuel", callback_data=f"corr:{receipt_id}:cat:car_fuel_maintenance"),
-        ],
+            InlineKeyboardButton(f"{b.icon} {category_label(b.supplies_category)}"[:24], callback_data=f"corr:{receipt_id}:cat:{b.supplies_category}")
+            for b in biz.active_businesses()[:2]
+        ] + [InlineKeyboardButton("🚗 Car/Fuel", callback_data=f"corr:{receipt_id}:cat:car_fuel_maintenance")],
         [
             InlineKeyboardButton("💻 Software", callback_data=f"corr:{receipt_id}:cat:software_subscriptions"),
             InlineKeyboardButton("☕ Dining/Coffee", callback_data=f"corr:{receipt_id}:cat:dining_coffee"),
@@ -276,10 +278,13 @@ def parse_correction_tokens(tokens: List[str]) -> Dict[str, object]:
                 result["claim_stream"] = s_val
             elif k_low in ("act", "activity", "business_activity", "business"):
                 v_low = v_clean.lower()
-                if v_low in ("dogwalking", "dog_walking", "dog"):
-                    result["business_activity"] = "dog_walking"
-                elif v_low in ("printing3d", "printing_3d", "3d", "3d_printing"):
-                    result["business_activity"] = "printing_3d"
+                if v_low in ("dogwalking", "dog"):
+                    v_low = "dog_walking"
+                elif v_low in ("printing3d", "3d", "3d_printing"):
+                    v_low = "printing_3d"
+                named = next((b.key for b in biz.active_businesses() if v_low in (b.key, b.name.lower())), None)
+                if named:
+                    result["business_activity"] = named
                 elif v_low in ("payg", "payg_work"):
                     result["business_activity"] = "payg_work"
                 elif v_low == "none":
@@ -319,7 +324,7 @@ def parse_correction_tokens(tokens: List[str]) -> Dict[str, object]:
             result["business_activity"] = "dog_walking"
         elif t_low in ("printing_3d", "printing3d", "3d_printing"):
             result["business_activity"] = "printing_3d"
-        elif t_low in VALID_ACTIVITIES:
+        elif t_low in valid_activities():
             result["business_activity"] = t_low
         elif t_low in known_cats:
             result["category"] = t_low
@@ -354,6 +359,7 @@ class TelegramReceiptBot:
 
         resolved_db_path = db_path or self.cfg.get("storage", {}).get("db_path", "./data/ledger.db")
         self.db_path = resolved_db_path
+        biz.configure(resolved_db_path)
         self.conn = get_connection(resolved_db_path)
         init_db(self.conn)
         seed_accounts(self.conn)
@@ -464,14 +470,15 @@ class TelegramReceiptBot:
             f"• 🦒 *Girraffe — Knowledge Manager*: Keeps the double-entry ledger and confirmed Vendor Memory\n\n"
             f"⚡ *How it works*\n"
             f"• 📸 *Snap a receipt photo/PDF* or 💬 *type a quick note* (e.g. `Fictional Demo Cafe coffee 6.50` or `Fictional 3D Maker Supply nozzle kit 32.99`)\n"
-            f"• 🎛️ *Conditional 1-Tap Inline Buttons*: Adjust *Stream* (`ABN`/`PAYG`/`Personal`), *Activity* (`Dog Walking`/`3D Printing`), *Business %* (`100%`/`80%`/`50%`/`30%`/`0%`), or *Category* — books & tax totals recalculate instantly and Vendor Memory remembers your confirmed fix!\n"
+            f"• 🎛️ *Conditional 1-Tap Inline Buttons*: Adjust *Stream* (`ABN`/`PAYG`/`Personal`), *Business* ({" / ".join(f"`{b.name}`" for b in biz.active_businesses())}), *Business %* (`100%`/`80%`/`50%`/`30%`/`0%`), or *Category* — books & tax totals recalculate instantly and Vendor Memory remembers your confirmed fix!\n"
             f"• `/correct <id> ...` — Command-based correction (e.g. `/correct 1 pct=50 stream=abn activity=dog_walking gst=0`)\n"
             f"• `/recent` — List recent receipts and allocations\n"
             f"• `/dashboard` — Open your private finance dashboard\n"
             f"• `/categories` — View all ABN, PAYG, and Personal categories\n"
             f"• `/balance` — View Double-Entry Trial Balance\n"
             f"• `/mytax` (or `/total`) — View Recorded vs Needs-Review ATO myTax Summary\n"
-            f"• `/pnl` (or `/report`) — View Dog Walking vs 3D Printing Profit & Loss\n"
+            f"• `/pnl` (or `/report`) — Profit & Loss for each of your businesses\n"
+            f"• `/setup` — Choose your businesses (one-time, change any time)\n"
             f"• `/spending [month]` — Monthly spending breakdown (e.g. `/spending`, `/spending last`)\n"
             f"• `/reward` — View or customize your Reward Box treat (`{state['reward_name']}`)\n"
             f"• `/companion` — View Womby's desk companion status `( ^ ▽ ^ )`\n"
@@ -530,6 +537,104 @@ class TelegramReceiptBot:
             )
         lines.append("\n_Tip: Use `/correct <id> pct=50 category=...` or tap the inline buttons on any receipt card._")
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+    # ---- /setup: choose businesses once -------------------------------------------------
+
+    def _setup_keyboard(self, picked: list) -> InlineKeyboardMarkup:
+        picked_keys = [p if isinstance(p, str) else p["key"] for p in picked]
+        rows, row = [], []
+        for b in biz.PRESETS.values():
+            mark = "✅ " if b.key in picked_keys else ""
+            row.append(InlineKeyboardButton(f"{mark}{b.icon} {b.name}", callback_data=f"setup:toggle:{b.key}"))
+            if len(row) == 2:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+        for p in picked:
+            if isinstance(p, dict):
+                rows.append([InlineKeyboardButton(f"✅ ⭐ {p['name']} (remove)", callback_data=f"setup:toggle:{p['key']}")])
+        rows.append([InlineKeyboardButton("✏️ Other (type a name)", callback_data="setup:custom:_")])
+        rows.append([InlineKeyboardButton("Next ➡️", callback_data="setup:next:_")])
+        return InlineKeyboardMarkup(rows)
+
+    @staticmethod
+    def _setup_prompt(picked: list) -> str:
+        return (
+            f"🛠️ Neo: Which businesses do you run? Pick up to {biz.MAX_BUSINESSES}, then tap Next. "
+            f"({len(picked)} selected)"
+        )
+
+    async def setup_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            return
+        picked = [b.key if b.key in biz.PRESETS else {"key": b.key, "name": b.name} for b in biz.active_businesses()]
+        context.user_data["setup_picked"] = picked
+        context.user_data.pop("setup_await_name", None)
+        await update.message.reply_text(self._setup_prompt(picked), reply_markup=self._setup_keyboard(picked))
+
+    async def _setup_custom_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+        context.user_data.pop("setup_await_name", None)
+        picked = context.user_data.setdefault("setup_picked", [])
+        name = re.sub(r"\s+", " ", text).strip()[:40]
+        if len(picked) >= biz.MAX_BUSINESSES:
+            await update.message.reply_text(f"You already picked {biz.MAX_BUSINESSES}. Remove one first.")
+        elif name:
+            key = biz.custom_key(name)
+            if key not in [p if isinstance(p, str) else p["key"] for p in picked]:
+                picked.append({"key": key, "name": name})
+        await update.message.reply_text(self._setup_prompt(picked), reply_markup=self._setup_keyboard(picked))
+
+    async def handle_setup_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        if not self._is_authorized(update):
+            await query.answer("Unauthorized", show_alert=True)
+            return
+        _, action, value = (query.data.split(":", 2) + ["", ""])[:3]
+        picked = context.user_data.setdefault("setup_picked", [])
+        keys = [p if isinstance(p, str) else p["key"] for p in picked]
+
+        if action == "toggle":
+            if value in keys:
+                picked.pop(keys.index(value))
+            elif value in biz.PRESETS:
+                if len(picked) >= biz.MAX_BUSINESSES:
+                    await query.answer(f"Up to {biz.MAX_BUSINESSES} businesses", show_alert=True)
+                    return
+                picked.append(value)
+            await query.answer()
+            await query.edit_message_text(self._setup_prompt(picked), reply_markup=self._setup_keyboard(picked))
+        elif action == "custom":
+            context.user_data["setup_await_name"] = True
+            await query.answer()
+            await query.message.reply_text("✏️ Type your business name, for example: Mobile Mechanic")
+        elif action == "next":
+            if not picked:
+                await query.answer("Pick at least one business", show_alert=True)
+                return
+            await query.answer()
+            await query.edit_message_text(
+                "👔 Neo: Do you also work as an employee (PAYG)?",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Yes", callback_data="setup:payg:yes"),
+                    InlineKeyboardButton("No", callback_data="setup:payg:no"),
+                ]]),
+            )
+        elif action == "payg":
+            if not picked:
+                await query.answer("Run /setup again", show_alert=True)
+                return
+            biz.save_profile(picked, has_payg_job=(value == "yes"))
+            context.user_data.pop("setup_picked", None)
+            names = ", ".join(f"{b.icon} {b.name}" for b in biz.active_businesses())
+            payg = "PAYG buttons on" if biz.has_payg() else "PAYG buttons hidden (D9 donations and D10 tax agent stay available)"
+            await query.answer("Saved")
+            await query.edit_message_text(
+                f"✅ Neo: All set! Your businesses: {names}. {payg}.\n"
+                "Send your first receipt 📸 — you can change this any time with /setup."
+            )
+        else:
+            await query.answer("Unknown action")
 
     async def categories_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
@@ -770,6 +875,9 @@ class TelegramReceiptBot:
         text = update.message.text.strip()
         if not text or text.startswith("/"):
             return
+        if isinstance(getattr(context, "user_data", None), dict) and context.user_data.get("setup_await_name"):
+            await self._setup_custom_name(update, context, text)
+            return
 
         with self.cos.start_receipt_progress() as trace:
             await self._process_text_note(update.message, text, trace)
@@ -1005,26 +1113,19 @@ class TelegramReceiptBot:
         lines = [
             f"📊 *PROFIT & LOSS SUMMARY* ({pnl['period']})",
             f"_Strictly in Australian Dollars ({pnl['currency']})_\n",
-            "🐕 *Dog Walking ABN Activity*:",
-            f"• Recorded Income: `${pnl['dog_walking']['income']:.2f} AUD`",
-            f"• Expenses (Claimable): `${pnl['dog_walking']['expenses']:.2f} AUD`",
-            f"• Net Profit: `${pnl['dog_walking']['net']:.2f} AUD`",
         ]
-        if pnl["dog_walking"].get("pending_income", 0.0) > 0:
-            lines.append(f"• ⚠️ Pending Review Income (Excluded): `${pnl['dog_walking']['pending_income']:.2f} AUD`")
+        for entry in pnl["businesses"]:
+            lines.extend([
+                f"{entry['icon']} *{entry['name']} ABN Activity*:",
+                f"• Recorded Income: `${entry['income']:.2f} AUD`",
+                f"• Expenses (Claimable): `${entry['expenses']:.2f} AUD`",
+                f"• Net Profit: `${entry['net']:.2f} AUD`",
+            ])
+            if entry.get("pending_income", 0.0) > 0:
+                lines.append(f"• ⚠️ Pending Review Income (Excluded): `${entry['pending_income']:.2f} AUD`")
+            lines.append("")
 
         lines.extend([
-            "",
-            "🖨️ *3D Printing ABN Activity*:",
-            f"• Recorded Income: `${pnl['printing_3d']['income']:.2f} AUD`",
-            f"• Expenses (Claimable): `${pnl['printing_3d']['expenses']:.2f} AUD`",
-            f"• Net Profit: `${pnl['printing_3d']['net']:.2f} AUD`",
-        ])
-        if pnl["printing_3d"].get("pending_income", 0.0) > 0:
-            lines.append(f"• ⚠️ Pending Review Income (Excluded): `${pnl['printing_3d']['pending_income']:.2f} AUD`")
-
-        lines.extend([
-            "",
             "━━━━━━━━━━━━━━━━━━━",
             f"💰 *Total Revenue*: `${pnl['total_income']:.2f} AUD`",
             f"💸 *Total Business Expenses*: `${pnl['total_expenses']:.2f} AUD`",
@@ -1126,6 +1227,8 @@ class TelegramReceiptBot:
         app.add_handler(CommandHandler("report", self.pnl_command))
         app.add_handler(CommandHandler("spending", self.spending_command))
         app.add_handler(CommandHandler("backup", self.backup_command))
+        app.add_handler(CommandHandler("setup", self.setup_command))
+        app.add_handler(CallbackQueryHandler(self.handle_setup_callback, pattern=r"^setup:"))
         app.add_handler(CallbackQueryHandler(self.handle_correction_callback, pattern=r"^corr:"))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
         app.add_handler(MessageHandler(filters.PHOTO, self.handle_photo))

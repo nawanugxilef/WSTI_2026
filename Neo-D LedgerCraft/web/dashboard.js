@@ -9,7 +9,7 @@ const chartColors = ["#347d6b", "#5074a9", "#a26d37", "#9274a9", "#2d9da7", "#81
 const moneyFormatter = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" });
 const monthFormatter = new Intl.DateTimeFormat("en-AU", { month: "short", year: "numeric", timeZone: "UTC" });
 const streamNames = { abn: "ABN", payg: "PAYG", personal: "Personal" };
-const activityNames = { dog_walking: "Dog walking", printing_3d: "3D printing", payg_work: "PAYG work" };
+let activityNames = { dog_walking: "Dog walking", printing_3d: "3D printing", payg_work: "PAYG work" };
 const pageSize = 40;
 
 let data = null;
@@ -37,7 +37,7 @@ function dateLabel(isoDate) {
 function categoryLabel(category) {
   if (!category) return "Uncategorised";
   const labels = { materials_3d_printing: "3D printing materials", travel_parking: "Parking", dining_coffee: "Dining & coffee" };
-  return labels[category] || category.replace(/_/g, " ").replace(/^[a-z]/, (first) => first.toUpperCase());
+  return labels[category] || (data && data.category_names && data.category_names[category]) || category.replace(/_/g, " ").replace(/^[a-z]/, (first) => first.toUpperCase());
 }
 
 function driveUrl(value) {
@@ -226,10 +226,7 @@ function renderBooks() {
     return item;
   });
   fillList("books-categories", bars, "No recorded spending this month.");
-  fillList("books-activity", [
-    ["Dog walking", books.dog_walking_pl],
-    ["3D printing", books.printing_3d_pl],
-  ].map(([label, result]) => row(label, money(result.net), "Income " + money(result.income) + " · Expenses " + money(result.expenses))));
+  fillList("books-activity", (books.businesses || []).map((result) => row(result.icon + " " + result.name, money(result.net), "Income " + money(result.income) + " · Expenses " + money(result.expenses))));
   const accounts = [...books.bank_accounts, ...books.liabilities];
   byId("books-net-worth").textContent = accounts.length ? "Net position in ledger: " + money(books.net_worth) : "No balances recorded.";
   fillList("books-accounts", accounts.map((account) => row(account.name, money(account.net_balance))), "");
@@ -284,6 +281,7 @@ async function loadDashboard(year = fiscalYear.value, month = spendingMonth.valu
     const changed = firstLoad || JSON.stringify(result) !== JSON.stringify(data);
     if (changed) {
       data = result;
+      if (result.activity_names) activityNames = result.activity_names;
       fillSelect(fiscalYear, data.available_fys, data.fy_start_year, fyLabel);
       renderReceipts();
       renderMyTax();

@@ -15,22 +15,20 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 import yaml
 
+from src.storage import businesses as biz
+
 
 ATO_SUGGESTION_DISCLAIMER = "Suggested ATO myTax label only — not guaranteed deductibility; verify with ATO/tax agent."
 
 VALID_STREAMS = ("abn", "payg", "personal")
-VALID_ACTIVITIES = ("dog_walking", "printing_3d", "payg_work", "none")
 
-# Only these ABN categories are inherently exclusive to one ABN business_activity.
-# Shared ABN categories (office_supplies, tools_equipment, software_subscriptions,
-# shipping_freight, car_fuel_maintenance, travel_parking) are compatible with BOTH
-# dog_walking and printing_3d and must never overwrite a receipt's known activity.
-EXCLUSIVE_ABN_ACTIVITY_BY_CATEGORY = {
-    "materials_3d_printing": "printing_3d",
-    "income_3d_printing": "printing_3d",
-    "dog_walking_supplies": "dog_walking",
-    "income_dog_walking": "dog_walking",
-}
+
+def valid_activities() -> tuple:
+    return biz.known_activity_keys() + ("payg_work", "none")
+
+# Business-exclusive categories (a business's own supplies and income) come from
+# biz.exclusive_category_map(). Shared ABN categories (office, tools, software, shipping,
+# car, travel, repairs) fit every business and never overwrite a receipt's known activity.
 
 VALID_ABN_TAX_LABELS = {
     # Field names from the ATO myTax 2026 "Net income or loss from business" instructions.
@@ -106,9 +104,9 @@ def is_category_activity_compatible(
     if spec.stream == "payg":
         return act == "payg_work"
     if spec.stream == "abn":
-        if act not in ("dog_walking", "printing_3d"):
+        if act not in biz.known_activity_keys():
             return False
-        exclusive_act = EXCLUSIVE_ABN_ACTIVITY_BY_CATEGORY.get(cat_key)
+        exclusive_act = biz.exclusive_category_map().get(cat_key)
         if exclusive_act is not None:
             return act == exclusive_act
         return True
@@ -132,15 +130,11 @@ def recompute_compatible_category(
     spec = catalog.get(cat_key)
 
     if spec and spec.stream == stream:
-        if stream == "abn":
-            if act == "dog_walking" and cat_key == "materials_3d_printing":
-                return "dog_walking_supplies"
-            if act == "dog_walking" and cat_key == "income_3d_printing":
-                return "income_dog_walking"
-            if act == "printing_3d" and cat_key == "dog_walking_supplies":
-                return "materials_3d_printing"
-            if act == "printing_3d" and cat_key == "income_dog_walking":
-                return "income_3d_printing"
+        owner = biz.exclusive_category_map().get(cat_key)
+        target = biz.get_business(act)
+        if stream == "abn" and owner and target and owner != act:
+            is_income = cat_key == biz.get_business(owner).income_category
+            return target.income_category if is_income else target.supplies_category
         return cat_key
 
     if stream == "abn":
@@ -152,11 +146,8 @@ def recompute_compatible_category(
             return "dog_walking_supplies" if act == "dog_walking" else "office_supplies"
         if cat_key == "hobby_3d_printing":
             return "materials_3d_printing" if act == "printing_3d" else "office_supplies"
-        if act == "dog_walking":
-            return "dog_walking_supplies"
-        if act == "printing_3d":
-            return "materials_3d_printing"
-        return "office_supplies"
+        target = biz.get_business(act)
+        return target.supplies_category if target else "office_supplies"
 
     if stream == "payg":
         if cat_key in ("car_fuel_maintenance", "travel_parking", "transport_personal"):
@@ -190,8 +181,19 @@ def _default_categories_path() -> str:
     return os.path.join(base_dir, "config", "categories.yaml")
 
 
+_catalog_cache: Dict[tuple, Dict[str, CategorySpec]] = {}
+
+
 def load_category_catalog(yaml_path: Optional[str] = None) -> Dict[str, CategorySpec]:
     path = yaml_path or _default_categories_path()
+    key = (path, os.path.getmtime(path) if os.path.exists(path) else None, biz.abn_activity_keys())
+    if key not in _catalog_cache:
+        _catalog_cache.clear()
+        _catalog_cache[key] = _build_catalog(path)
+    return dict(_catalog_cache[key])
+
+
+def _build_catalog(path: str) -> Dict[str, CategorySpec]:
     catalog: Dict[str, CategorySpec] = {}
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
@@ -216,7 +218,7 @@ def load_category_catalog(yaml_path: Optional[str] = None) -> Dict[str, Category
                 else ("payg_work" if stream == "payg" else "none")
             )
             activity = str(meta.get("activity", default_act)).lower()
-            if activity not in VALID_ACTIVITIES:
+            if activity not in valid_activities():
                 activity = default_act
             default_pct = float(
                 meta.get(
@@ -234,6 +236,21 @@ def load_category_catalog(yaml_path: Optional[str] = None) -> Dict[str, Category
                 description=str(meta.get("description", key)),
             )
 
+    # Hide categories of built-in businesses the owner does not run, add the owner's own.
+    active = biz.abn_activity_keys()
+    for cat_key, owner in biz.exclusive_category_map().items():
+        if owner not in active:
+            catalog.pop(cat_key, None)
+    for b in biz.active_businesses():
+        if b.supplies_category not in catalog:
+            catalog[b.supplies_category] = CategorySpec(
+                b.supplies_category, "abn", b.key, 100.0, "Purchases and other costs",
+                f"{b.name} supplies and materials: {b.hints}",
+            )
+        if b.income_category not in catalog:
+            catalog[b.income_category] = CategorySpec(
+                b.income_category, "abn", b.key, 100.0, "Other business income", f"{b.name} income from clients",
+            )
     return catalog
 
 
@@ -315,8 +332,8 @@ def resolve_allocation(
 
     # 3. Determine activity (dog_walking / printing_3d / payg_work / none)
     act = (business_activity or "").strip().lower()
-    if act and act not in VALID_ACTIVITIES:
-        raise ValueError(f"Unsupported business_activity '{business_activity}'. Expected one of {VALID_ACTIVITIES}.")
+    if act and act not in valid_activities():
+        raise ValueError(f"Unsupported business_activity '{business_activity}'. Expected one of {valid_activities()}.")
 
     if stream == "personal":
         act = "none"
@@ -325,17 +342,17 @@ def resolve_allocation(
             act = "none" if allow_incomplete else "payg_work"
         else:
             act = "payg_work"
-    elif act in ("dog_walking", "printing_3d"):
+    elif act in biz.known_activity_keys():
         if spec and spec.stream == "abn" and not is_category_activity_compatible(cat_key, act, cat_map):
             if allow_incomplete:
                 act = "none"
     else:
         if allow_incomplete:
             act = "none"
-        elif spec and spec.stream == "abn" and spec.activity in ("dog_walking", "printing_3d"):
+        elif spec and spec.stream == "abn" and spec.activity in biz.known_activity_keys():
             act = spec.activity
         else:
-            act = "printing_3d"
+            act = biz.abn_activity_keys()[0]
 
     # Reconcile category with stream if incompatible
     if spec and spec.stream != stream:
@@ -381,10 +398,9 @@ def format_stream_badge(stream: str) -> str:
 
 def format_activity_badge(activity: str) -> str:
     a = (activity or "").lower()
-    if a == "dog_walking":
-        return "🐕 Dog Walking"
-    if a == "printing_3d":
-        return "🖨️ 3D Printing"
+    b = biz.get_business(a)
+    if b:
+        return f"{b.icon} {b.name}"
     if a == "payg_work":
         return "👔 PAYG Employment"
     return "🏠 Personal / None"

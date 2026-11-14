@@ -83,7 +83,7 @@ def main():
     corr_p.add_argument("--category", help="New category key (e.g. materials_3d_printing, dog_walking_supplies)")
     corr_p.add_argument("--pct", type=float, help="New Business % (0 to 100)")
     corr_p.add_argument("--stream", choices=["abn", "payg", "personal"], help="Tax stream: abn, payg, or personal")
-    corr_p.add_argument("--activity", choices=["dog_walking", "printing_3d", "payg_work", "none"], help="Business activity")
+    corr_p.add_argument("--activity", help="Business key from /setup (e.g. printing_3d, dog_walking), payg_work or none")
     corr_p.add_argument("--vendor", help="Corrected canonical vendor name")
 
     # 5. balance: show trial balance

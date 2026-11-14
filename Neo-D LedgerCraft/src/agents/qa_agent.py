@@ -43,7 +43,10 @@ class QAAgent:
     def __init__(self, gst_rate: float = 0.10, max_retries: int = 2):
         self.gst_rate = gst_rate
         self.max_retries = max_retries
-        self.catalog = load_category_catalog()
+
+    @property
+    def catalog(self):
+        return load_category_catalog()
 
     def inspect_receipt(
         self,

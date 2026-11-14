@@ -14,8 +14,9 @@ from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from src.agents.qa_agent import QAAgent, likely_duplicate_receipt_id
+from src.storage import businesses as biz
 from src.storage.categories import (
-    VALID_ACTIVITIES,
+    valid_activities,
     VALID_STREAMS,
     is_category_activity_compatible,
     is_tax_label_compatible,
@@ -33,8 +34,12 @@ class KnowledgeManager:
         self.main_conn = main_conn
         self.journal = JournalManager(main_conn)
         self.memory = VendorMemoryManager(main_conn)
-        self.catalog = load_category_catalog()
         self.qa = QAAgent()
+
+    @property
+    def catalog(self):
+        # Re-read so a /setup change applies without restarting the bot.
+        return load_category_catalog()
 
     def _ensure_account_exists(self, code: str, name: str, acc_type: str = "expense") -> str:
         cur = self.main_conn.execute("SELECT code FROM accounts WHERE code = ?", (code,))
@@ -300,15 +305,15 @@ class KnowledgeManager:
         missing_allocation_reasons: List[str] = []
         raw_act_in = str(data.get("business_activity") or "").strip().lower()
         if claim_stream == "abn":
-            if raw_act_in in ("dog_walking", "printing_3d") and not is_category_activity_compatible(
+            if raw_act_in in biz.known_activity_keys() and not is_category_activity_compatible(
                 cat_raw, raw_act_in, self.catalog
             ):
                 missing_allocation_reasons.append(
                     f"Category '{cat_raw}' is incompatible with business_activity '{raw_act_in}' — please confirm activity and category"
                 )
-            elif business_activity not in ("dog_walking", "printing_3d"):
+            elif business_activity not in biz.known_activity_keys():
                 missing_allocation_reasons.append(
-                    "Missing ABN business_activity — please select dog_walking or printing_3d"
+                    "Missing ABN business_activity — please choose which business this is for"
                 )
             if business_pct <= 0.0:
                 missing_allocation_reasons.append(
@@ -606,14 +611,14 @@ class KnowledgeManager:
 
         if business_activity is not None:
             a_in = str(business_activity).strip().lower()
-            if a_in not in VALID_ACTIVITIES:
-                raise ValueError(f"Invalid business_activity '{business_activity}'. Expected one of {VALID_ACTIVITIES}.")
+            if a_in not in valid_activities():
+                raise ValueError(f"Invalid business_activity '{business_activity}'. Expected one of {valid_activities()}.")
 
         # Validate explicit cross-field compatibility if multiple conflicting arguments were passed together
         if claim_stream is not None and business_activity is not None:
             s_norm = "abn" if str(claim_stream).strip().lower() == "business" else str(claim_stream).strip().lower()
             a_norm = str(business_activity).strip().lower()
-            if s_norm == "abn" and a_norm not in ("dog_walking", "printing_3d"):
+            if s_norm == "abn" and a_norm not in biz.known_activity_keys():
                 raise ValueError(f"Activity '{a_norm}' is incompatible with claim_stream 'abn'.")
             if s_norm == "payg" and a_norm != "payg_work":
                 raise ValueError(f"Activity '{a_norm}' is incompatible with claim_stream 'payg'.")
@@ -710,7 +715,7 @@ class KnowledgeManager:
         elif purpose is not None:
             p_low = purpose.strip().lower()
             target_stream = "personal" if p_low == "personal" else ("payg" if p_low == "payg" else "abn")
-        elif act_explicit and business_activity.strip().lower() in ("dog_walking", "printing_3d"):
+        elif act_explicit and business_activity.strip().lower() in biz.known_activity_keys():
             target_stream = "abn"
         elif act_explicit and business_activity.strip().lower() == "payg_work":
             target_stream = "payg"
@@ -767,14 +772,14 @@ class KnowledgeManager:
             confirmed_fields.add("activity")
         elif act_explicit:
             act_val = business_activity.strip().lower()
-            if act_val in ("dog_walking", "printing_3d"):
+            if act_val in biz.known_activity_keys():
                 target_activity = act_val
                 confirmed_fields.add("activity")
                 confirmed_fields.add("stream")
             else:
                 target_activity = "none"
                 confirmed_fields.discard("activity")
-        elif prev_stream == "abn" and cur_act in ("dog_walking", "printing_3d"):
+        elif prev_stream == "abn" and cur_act in biz.known_activity_keys():
             if cat_explicit and not is_category_activity_compatible(target_cat, cur_act, self.catalog):
                 # Category-only correction conflicts with prior activity (e.g. dog_walking -> materials_3d_printing):
                 # Do NOT silently flip activity to printing_3d; require explicit user choice.
@@ -849,9 +854,9 @@ class KnowledgeManager:
         if incompatible_cat_act_msg:
             missing_allocation_reasons.append(incompatible_cat_act_msg)
         if final_stream == "abn":
-            if final_activity not in ("dog_walking", "printing_3d") and not incompatible_cat_act_msg:
+            if final_activity not in biz.known_activity_keys() and not incompatible_cat_act_msg:
                 missing_allocation_reasons.append(
-                    "Missing ABN business_activity — please select dog_walking or printing_3d"
+                    "Missing ABN business_activity — please choose which business this is for"
                 )
             if final_pct <= 0.0:
                 missing_allocation_reasons.append(
@@ -890,17 +895,15 @@ class KnowledgeManager:
             cat_explicit and not act_explicit and not pct_explicit and not stream_explicit
         )
 
-        from src.storage.categories import EXCLUSIVE_ABN_ACTIVITY_BY_CATEGORY
-
         if final_stream == "abn":
             act_confirmed = (
                 ("activity" in confirmed_fields)
                 or act_explicit
-                or (final_cat in EXCLUSIVE_ABN_ACTIVITY_BY_CATEGORY)
+                or (final_cat in biz.exclusive_category_map())
                 or (
                     prev_stream == "abn"
                     and prev_conf >= 0.80
-                    and cur_act in ("dog_walking", "printing_3d")
+                    and cur_act in biz.known_activity_keys()
                     and not stream_changed
                     and not is_category_only_correction
                 )
@@ -1269,8 +1272,11 @@ class KnowledgeManager:
 
         if self._is_income_category(cat_lower):
             debit_account = "1000"
+            owner = biz.get_business(biz.business_for(act_lower, cat_lower))
             if "dog" in cat_lower or "walk" in cat_lower or act_lower == "dog_walking":
                 credit_account = self._ensure_account_exists("4100", "Dog Walking Services Revenue", "business_revenue")
+            elif owner and owner.key != "printing_3d":
+                credit_account = self._ensure_account_exists(owner.revenue_account, f"{owner.name} Revenue", "business_revenue")
             else:
                 credit_account = self._ensure_account_exists("4000", "3D Printing Sales", "business_revenue")
             legs = [

@@ -23,6 +23,7 @@ from types import SimpleNamespace
 from typing import Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from src.storage import businesses as biz
 from src.agents.chief_of_staff import ChiefOfStaff, IntakeSummary
 from src.agents.finance_agent import ExtractionUnavailableError, FinanceAgent, ParsedReceipt
 from src.agents.receipt_progress import ReceiptProgress, read_receipt_progress, receipt_progress_path
@@ -30,8 +31,8 @@ from src.agents.wellbeing import coffee_check_in
 from src.interfaces.cli import seed_accounts
 from src.interfaces.demo_photo_ocr import PhotoOcrUnavailable
 from src.interfaces.telegram_receipt import (
-    CATEGORY_ICONS,
-    CATEGORY_LABELS,
+    category_icon,
+    category_label,
     CATEGORY_STREAM_ICONS,
     format_existing_receipt_card,
     format_receipt_card,
@@ -585,8 +586,8 @@ class DemoRuntime:
         pct = payload.get("business_pct", 0 if stream == "personal" else None)
         if stream not in ("abn", "payg", "personal"):
             raise DemoError(400, "Choose ABN, PAYG or Personal.")
-        if stream == "abn" and activity not in ("dog_walking", "printing_3d"):
-            raise DemoError(400, "Choose Dog Walking or 3D Printing for ABN.")
+        if stream == "abn" and activity not in biz.abn_activity_keys():
+            raise DemoError(400, "Choose which business this is for.")
         if stream == "payg" and activity not in (None, "payg_work"):
             raise DemoError(400, "PAYG uses the work activity.")
         if stream == "personal" and activity not in (None, "none"):
@@ -724,8 +725,8 @@ class DemoRuntime:
         category_options = [
             {
                 "id": spec.key,
-                "label": CATEGORY_LABELS.get(spec.key, spec.key.replace("_", " ").title()),
-                "emoji": CATEGORY_ICONS.get(spec.key) or CATEGORY_STREAM_ICONS.get(spec.stream, "🏠"),
+                "label": category_label(spec.key, None),
+                "emoji": category_icon(spec.key) or CATEGORY_STREAM_ICONS.get(spec.stream, "🏠"),
             }
             for spec in self._category_catalog.values()
             if spec.stream == summary.claim_stream

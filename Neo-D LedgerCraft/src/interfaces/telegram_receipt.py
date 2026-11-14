@@ -7,6 +7,7 @@ import re
 from datetime import date
 from typing import TYPE_CHECKING
 
+from src.storage import businesses as biz
 from src.agents.qa_agent import likely_duplicate_receipt_id
 from src.storage.categories import VALID_ABN_TAX_LABELS, VALID_PAYG_TAX_LABELS
 
@@ -80,6 +81,34 @@ SOURCE_LABELS = {
     "owner_correction": "✏️ Owner correction",
 }
 ACTIVITY_LABELS = {"printing_3d": "3D Printing", "dog_walking": "Dog Walking"}
+
+
+def _owner_business(key: str):
+    for b in biz.active_businesses():
+        if key in (b.supplies_category, b.income_category):
+            return b
+    return None
+
+
+def category_label(key: str | None, default: str = "Uncategorised") -> str:
+    if key in CATEGORY_LABELS:
+        return CATEGORY_LABELS[key]
+    b = _owner_business(key or "")
+    if b:
+        return f"{b.name} income" if key == b.income_category else f"{b.name} supplies"
+    return key.replace("_", " ").title() if key and default is None else default
+
+
+def category_icon(key: str | None) -> str | None:
+    if key in CATEGORY_ICONS:
+        return CATEGORY_ICONS[key]
+    b = _owner_business(key or "")
+    return ("💰" if key == b.income_category else b.icon) if b else None
+
+
+def activity_label(key: str | None) -> str:
+    b = biz.get_business(key)
+    return b.name if b else "ABN"
 STREAM_LABELS = {"abn": "ABN sole trader", "payg": "PAYG employment", "personal": "Personal"}
 REVIEW_STATUSES = {"flagged", "needs_review", "pending", "unverified"}
 SAVED_STATUSES = {"recorded", "confirmed", "corrected"}
@@ -147,9 +176,9 @@ def _amount_line(summary: IntakeSummary) -> str:
 
 
 def _allocation_line(summary: IntakeSummary) -> str:
-    category = CATEGORY_LABELS.get(summary.category, "Uncategorised")
+    category = category_label(summary.category)
     if summary.claim_stream == "abn":
-        activity = ACTIVITY_LABELS.get(summary.business_activity, "ABN")
+        activity = activity_label(summary.business_activity)
         return f"{activity} · {summary.business_pct:g}% business · {category}"
     if summary.claim_stream == "payg":
         return f"PAYG · {summary.business_pct:g}% work · {category}"
