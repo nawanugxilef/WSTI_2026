@@ -166,6 +166,7 @@ def build_correction_keyboard(
             pct_row,
             [
                 InlineKeyboardButton("🚗 D1 Car", callback_data=f"corr:{receipt_id}:cat:work_car_travel"),
+                InlineKeyboardButton("✈️ D2 Travel", callback_data=f"corr:{receipt_id}:cat:work_travel"),
                 InlineKeyboardButton("👕 D3 Clothing", callback_data=f"corr:{receipt_id}:cat:work_uniform_clothing"),
             ],
             [

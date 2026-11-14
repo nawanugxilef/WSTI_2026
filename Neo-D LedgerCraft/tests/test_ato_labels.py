@@ -62,3 +62,18 @@ def test_rule_based_note_recognises_donation_and_tax_agent():
     parse = FinanceAgent._heuristic_parse_text
     assert parse(FinanceAgent.__new__(FinanceAgent), "Red Cross donation $50").category == "gifts_donations"
     assert parse(FinanceAgent.__new__(FinanceAgent), "Tax agent fee $220").category == "tax_affairs"
+
+
+def test_rule_based_note_recognises_repairs_and_work_travel():
+    from src.agents.finance_agent import FinanceAgent
+    agent = FinanceAgent.__new__(FinanceAgent)
+    repair = agent._heuristic_parse_text("3D printer repair $120 from Fix-It Tech")
+    assert (repair.category, repair.claim_stream) == ("repairs_maintenance", "abn")
+    trip = agent._heuristic_parse_text("Hotel for work conference $180")
+    assert (trip.category, trip.claim_stream) == ("work_travel", "payg")
+
+
+def test_new_categories_carry_their_ato_labels():
+    cat = load_category_catalog()
+    assert cat["repairs_maintenance"].tax_label == "Repairs and maintenance"
+    assert cat["work_travel"].tax_label == "D2 Work-related travel expenses"

@@ -146,6 +146,8 @@ def recompute_compatible_category(
     if stream == "abn":
         if cat_key in ("work_car_travel", "transport_personal"):
             return "car_fuel_maintenance"
+        if cat_key == "work_travel":
+            return "travel_parking"
         if cat_key in ("work_home_office_other", "self_education", "work_uniform_clothing", "gifts_donations", "tax_affairs"):
             return "dog_walking_supplies" if act == "dog_walking" else "office_supplies"
         if cat_key == "hobby_3d_printing":
@@ -162,9 +164,9 @@ def recompute_compatible_category(
         return "work_home_office_other"
 
     # stream == "personal"
-    if cat_key in ("materials_3d_printing", "tools_equipment", "shipping_freight"):
+    if cat_key in ("materials_3d_printing", "tools_equipment", "shipping_freight", "repairs_maintenance"):
         return "hobby_3d_printing"
-    if cat_key in ("car_fuel_maintenance", "travel_parking", "work_car_travel"):
+    if cat_key in ("car_fuel_maintenance", "travel_parking", "work_car_travel", "work_travel"):
         return "transport_personal"
     return cat_key if (spec and spec.stream == "personal") else "general"
 

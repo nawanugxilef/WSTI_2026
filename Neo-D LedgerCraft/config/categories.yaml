@@ -62,6 +62,12 @@ business_categories:
     activity: "printing_3d"
     default_business_pct: 100
     description: "Stationery, small office consumables, packaging labels, desk accessories"
+  repairs_maintenance:
+    tax_label: "Repairs and maintenance"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Repairs and servicing of business equipment, e.g. 3D printer repair or spare-part fitting"
 
 payg_categories:
   work_car_travel:
@@ -69,7 +75,13 @@ payg_categories:
     stream: "payg"
     activity: "payg_work"
     default_business_pct: 100
-    description: "PAYG employee work-related car or travel expenses"
+    description: "PAYG employee work-related car expenses (own or leased car)"
+  work_travel:
+    tax_label: "D2 Work-related travel expenses"
+    stream: "payg"
+    activity: "payg_work"
+    default_business_pct: 100
+    description: "PAYG work travel without your own car: flights, hotels, taxis, rideshare, tolls and parking for work trips"
   work_uniform_clothing:
     tax_label: "D3 Work clothing, laundry and dry-cleaning expenses"
     stream: "payg"
