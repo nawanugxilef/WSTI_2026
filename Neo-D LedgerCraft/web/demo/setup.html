@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Make your Neo bot</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root { --ink: #1d3029; --muted: #465e52; --line: #d3e1d7; --accent: #286347; --wash: #edf5ed; --paper: #fff; --done: #2f7a52; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--wash); color: var(--ink); font: 17px/1.5 "DM Sans", system-ui, sans-serif; }
+  main { max-width: 34rem; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.6rem; line-height: 1.2; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 16px; }
+  .progress { display: flex; gap: 6px; margin-bottom: 6px; }
+  .progress span { flex: 1; height: 8px; border-radius: 4px; background: var(--line); transition: background .3s; }
+  .progress span.on { background: var(--done); }
+  .count { font-size: .9rem; color: var(--muted); margin: 0 0 18px; }
+  ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  li { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  li .title { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  li .mark { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--wash); color: var(--muted); font-size: .9rem; }
+  li.done .mark { background: var(--done); color: #fff; }
+  li.done { opacity: .75; }
+  li.later { opacity: .55; }
+  li.now { border: 2px solid var(--accent); box-shadow: 0 4px 14px rgb(40 99 71 / .12); }
+  .body { display: none; margin: 10px 0 2px 38px; }
+  li.now .body { display: block; }
+  .body p { margin: 0 0 10px; }
+  .hint { font-size: .9rem; color: var(--muted); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 10px 16px; border-radius: 12px; border: 0; background: var(--accent); color: #fff; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+  .btn.soft { background: var(--wash); color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border: 1px dashed var(--accent); border-radius: 12px; background: #f6faf4; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; }
+  .chip button { min-height: 36px; padding: 6px 12px; border: 0; border-radius: 9px; background: var(--accent); color: #fff; font: 600 .85rem "DM Sans", sans-serif; cursor: pointer; }
+  .back { background: none; border: 0; color: var(--muted); font: inherit; font-size: .85rem; text-decoration: underline; cursor: pointer; margin-left: auto; }
+  .qr { display: flex; gap: 12px; align-items: center; margin: 4px 0 12px; }
+  .qr img { width: 96px; height: 96px; border-radius: 8px; border: 1px solid var(--line); }
+  .party { text-align: center; font-size: 2rem; margin: 0; }
+  :focus-visible { outline: 3px solid #f2b84b; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Make your own Neo bot</h1>
+  <p class="lead">5 small steps, about 2 minutes. Tick each one as you go. Your ticks are saved if you close this page.</p>
+  <div class="progress" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+  <p class="count" id="count" aria-live="polite"></p>
+
+  <ol id="steps">
+    <li data-step="1">
+      <div class="title"><span class="mark">1</span>Open BotFather in Telegram</div>
+      <div class="body">
+        <p>BotFather is Telegram's official helper for making bots.</p>
+        <div class="row"><a class="btn" href="https://t.me/BotFather" target="_blank" rel="noopener">Open BotFather ↗</a></div>
+        <div class="qr"><img src="/demo/botfather-qr.svg" alt="QR code that opens BotFather"><span class="hint">On a computer? Scan this with your phone camera.<br>No Telegram yet? <a href="https://telegram.org/apps" target="_blank" rel="noopener">Get it free</a>.</span></div>
+        <div class="row"><button class="btn" data-next>I'm in the chat ✓</button></div>
+      </div>
+    </li>
+    <li data-step="2">
+      <div class="title"><span class="mark">2</span>Send <code>/newbot</code></div>
+      <div class="body">
+        <p>Copy this and send it to BotFather. If you see a <b>Start</b> button first, tap it.</p>
+        <div class="row"><span class="chip">/newbot <button data-copy="/newbot">Copy</button></span></div>
+        <div class="row"><button class="btn" data-next>Sent ✓</button><button class="back" data-back>Go back</button></div>
+      </div>
+    </li>
+    <li data-step="3">
+      <div class="title"><span class="mark">3</span>Give it a name</div>
+      <div class="body">
+        <p>BotFather asks what to call your bot. Send this (or any name you like):</p>
+        <div class="row"><span class="chip">My Neo <button data-copy="My Neo">Copy</button></span></div>
+        <div class="row"><button class="btn" data-next>Sent ✓</button><button class="back" data-back>Go back</button></div>
+      </div>
+    </li>
+    <li data-step="4">
+      <div class="title"><span class="mark">4</span>Give it a username</div>
+      <div class="body">
+        <p>Now it asks for a username. I made a unique one for you:</p>
+        <div class="row"><span class="chip"><span id="username"></span> <button data-copy-id="username">Copy</button></span></div>
+        <p class="hint">BotFather says it's taken? Totally normal. <button class="back" id="another" style="margin:0">Make another one</button></p>
+        <div class="row"><button class="btn" data-next>BotFather said "Done!" ✓</button><button class="back" data-back>Go back</button></div>
+      </div>
+    </li>
+    <li data-step="5">
+      <div class="title"><span class="mark">5</span>Copy your token</div>
+      <div class="body">
+        <p>BotFather's "Done!" message has a long line like <code>123456789:AAH…</code>. That's your token.</p>
+        <p>Tap and hold it, then <b>Copy</b>. Keep it private, like a password. Don't paste it on any website.</p>
+        <div class="row"><button class="btn" data-next>Copied ✓</button><button class="back" data-back>Go back</button></div>
+      </div>
+    </li>
+  </ol>
+
+  <section id="finish" hidden>
+    <p class="party">🎉</p>
+    <h1 style="text-align:center">Your bot exists!</h1>
+    <p class="lead" style="text-align:center">Last bit: on your computer, run the setup and paste the token when it asks.</p>
+    <div class="row" style="justify-content:center"><span class="chip">docker compose run --rm setup <button data-copy="docker compose run --rm setup">Copy</button></span></div>
+    <p class="hint" style="text-align:center">New to this? Follow <a href="https://github.com/nawanugxilef/WSTI_2026/tree/main/Neo-D%20LedgerCraft#run-it-yourself-about-10-minutes" target="_blank" rel="noopener">Run it yourself</a>. It starts with installing Docker.</p>
+    <p style="text-align:center"><button class="back" id="restart" style="margin:0">Start this checklist again</button></p>
+  </section>
+</main>
+<script>
+  const KEY = "neo-setup-step";
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+  const steps = [...document.querySelectorAll("#steps > li")];
+  const bars = [...document.querySelectorAll(".progress span")];
+  let current = Math.min(Math.max(parseInt(store.get(KEY), 10) || 1, 1), steps.length + 1);
+
+  function newUsername() {
+    const digits = String(Math.floor(1000 + Math.random() * 9000));
+    const name = "Neo_" + digits + "_bot";
+    document.getElementById("username").textContent = name;
+    store.set("neo-setup-username", name);
+  }
+
+  function render(focus) {
+    steps.forEach((li, i) => {
+      const n = i + 1;
+      li.className = n < current ? "done" : n === current ? "now" : "later";
+      li.querySelector(".mark").textContent = n < current ? "✓" : n;
+      li.setAttribute("aria-current", n === current ? "step" : "false");
+    });
+    bars.forEach((bar, i) => bar.classList.toggle("on", i < current - 1));
+    const finished = current > steps.length;
+    document.getElementById("finish").hidden = !finished;
+    document.getElementById("count").textContent = finished ? "All 5 steps done. Nice work!" : "Step " + current + " of " + steps.length;
+    store.set(KEY, String(current));
+    if (focus) (finished ? document.querySelector("#finish h1") : steps[current - 1].querySelector(".btn"))?.focus?.();
+  }
+
+  document.addEventListener("click", async (event) => {
+    const target = event.target.closest("button");
+    if (!target) return;
+    if (target.hasAttribute("data-next")) { current += 1; render(true); }
+    if (target.hasAttribute("data-back")) { current = Math.max(1, current - 1); render(true); }
+    if (target.id === "another") newUsername();
+    if (target.id === "restart") { current = 1; render(true); }
+    const text = target.dataset.copy || (target.dataset.copyId && document.getElementById(target.dataset.copyId).textContent);
+    if (text) {
+      try { await navigator.clipboard.writeText(text); target.textContent = "Copied ✓"; }
+      catch { target.textContent = "Select & copy"; }
+      setTimeout(() => { target.textContent = "Copy"; }, 1600);
+    }
+  });
+
+  const saved = store.get("neo-setup-username");
+  if (saved && /^Neo_\d{4}_bot$/.test(saved)) document.getElementById("username").textContent = saved; else newUsername();
+  document.querySelector("#finish h1").tabIndex = -1;
+  render(false);
+</script>
+</body>
+</html>

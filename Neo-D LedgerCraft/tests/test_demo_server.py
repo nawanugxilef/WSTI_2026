@@ -717,3 +717,12 @@ def test_demo_archive_keeps_originals_per_session(demo_server):
     other = DemoClient(demo_server)
     other.open()
     assert other.request("GET", f"/demo/api/originals/{result['receipt_id']}")[0] == 404
+
+
+def test_bot_setup_checklist_page_is_served(demo_server):
+    client = DemoClient(demo_server)
+    status, headers, body = client.request("GET", "/setup")
+    assert status == 200 and headers["Content-Type"].startswith("text/html")
+    assert b"https://t.me/BotFather" in body and b"/newbot" in body
+    status, headers, _ = client.request("GET", "/demo/botfather-qr.svg")
+    assert status == 200 and headers["Content-Type"] == "image/svg+xml"

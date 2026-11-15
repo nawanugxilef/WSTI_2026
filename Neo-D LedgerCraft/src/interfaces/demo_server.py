@@ -55,6 +55,8 @@ _STATIC = {
     "/demo/womby.js": (DEMO / "womby.js", "text/javascript; charset=utf-8"),
     "/demo/chat.css": (DEMO / "chat.css", "text/css; charset=utf-8"),
     "/demo/womby.glb": (DEMO / "womby.glb", "model/gltf-binary"),
+    "/setup": (DEMO / "setup.html", "text/html; charset=utf-8"),
+    "/demo/botfather-qr.svg": (DEMO / "botfather-qr.svg", "image/svg+xml"),
     "/demo/samples/harbour-cafe.jpg": (DEMO / "samples/harbour-cafe.jpg", "image/jpeg"),
     "/demo/samples/paper-gum.jpg": (DEMO / "samples/paper-gum.jpg", "image/jpeg"),
     "/demo/samples/studio-supply.pdf": (DEMO / "samples/studio-supply.pdf", "application/pdf"),

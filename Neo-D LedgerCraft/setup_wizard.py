@@ -24,6 +24,7 @@ ENV_PATH = Path(__file__).resolve().parent / "data" / "neo.env"
 TELEGRAM = "https://api.telegram.org/bot{token}/{method}"
 GEMINI_MODELS = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1"
 LINK_SECONDS = 600
+SETUP_PAGE = "https://neo-wsti-demo.madewithfelix.app/setup"
 
 
 def telegram(token: str, method: str, **params) -> dict | None:
@@ -108,6 +109,9 @@ def step_bot(saved: dict) -> tuple[str, str]:
         print(f"✓ Already done: your bot @{bot.get('username', '')} is connected. Skipping step 1.")
         return token, bot.get("username", "")
     header(1, "Make your own Telegram bot", "2 minutes")
+    print("  Easiest: open this checklist with copy buttons, then come back here with your token:")
+    print(f"  {SETUP_PAGE}\n")
+    print("  Or follow along here:")
     print("  In Telegram, search for  @BotFather  and open it.")
     pause()
     print("\n  Send it this message:  /newbot")

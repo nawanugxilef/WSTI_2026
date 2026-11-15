@@ -55,6 +55,7 @@ dialog.innerHTML = `
           <p id="neo-demo-mode" hidden></p>
         </details>
         <button id="neo-demo-archive" type="button" class="neo-demo-archive-button">📁 Receipt archive</button>
+        <a class="neo-demo-archive-button" href="/setup" target="_blank" rel="noopener">🤖 Run your own Neo</a>
       </div>
       <div id="neo-demo-log" class="neo-demo-log" role="log" aria-label="Chat messages" aria-live="polite"></div>
       <footer class="neo-demo-footer">

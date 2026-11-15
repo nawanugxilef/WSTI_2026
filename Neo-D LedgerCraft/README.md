@@ -20,7 +20,7 @@ You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) and t
    docker compose run --rm setup
    ```
    It walks you through three steps:
-   - **Telegram bot:** chat with `@BotFather`, send `/newbot`, and paste the token it gives you.
+   - **Telegram bot:** chat with `@BotFather`, send `/newbot`, and paste the token it gives you. A checklist with copy buttons helps: [neo-wsti-demo.madewithfelix.app/setup](https://neo-wsti-demo.madewithfelix.app/setup).
    - **Gemini key:** create a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and paste it (optional; without it photos can't be read).
    - **Link your account:** press **Start** in your new bot. From then on the bot answers only you.
 4. Start Neo:
