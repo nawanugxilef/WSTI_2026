@@ -104,12 +104,13 @@ def demo_server():
 
 def test_demo_landing_routes_only_and_isolation_headers(demo_server):
     client = DemoClient(demo_server)
-    for path in ("/", "/demo"):
-        status, headers, body = client.request("GET", path)
-        assert status == 200
-        assert b'/demo/app.js' in body and b'/demo/chat.css' in body
-        assert b'href="/dashboard"' not in body
-        assert headers["Cache-Control"] == "no-store"
+    status, headers, body = client.request("GET", "/demo")
+    assert status == 200
+    assert b'/demo/app.js' in body and b'/demo/chat.css' in body
+    assert b'href="/dashboard"' not in body
+    assert headers["Cache-Control"] == "no-store"
+    status, _, start = client.request("GET", "/")
+    assert status == 200 and b'href="/demo"' in start and b'href="/setup"' in start
     for path in ("/dashboard", "/api/dashboard", "/api/export.csv", "/demo/sample_receipts.json", "/demo/api/../.env"):
         assert client.request("GET", path)[0] == 404
     assert client.request("GET", "/demo/api/session")[0] == 401
@@ -745,3 +746,22 @@ def test_demo_dashboard_shows_only_this_sessions_ledger(demo_server):
     other = DemoClient(demo_server)
     other.open()
     assert other.request("GET", "/demo/api/dashboard")[2]["receipts"] == []
+
+
+def test_seeded_sessions_start_with_the_fictional_receipts():
+    runtime = DemoRuntime("fixture", lambda: FixtureFinance(FIXTURES), seed_samples=True)
+    server = DemoServer(0, runtime)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        client = DemoClient(server)
+        client.open()
+        receipts = client.request("GET", "/demo/api/dashboard")[2]["receipts"]
+        assert len(receipts) == 12 and all(r["vendor"].startswith("[FICTIONAL DEMO]") for r in receipts)
+        assert client.request("GET", "/demo/api/session")[2]["session"]["xp"] == 0
+        assert client.request("GET", "/api/office/receipt-progress")[2]["events"] == []
+    finally:
+        server.shutdown()
+        worker.join()
+        server.server_close()
+        runtime.close()

@@ -69,7 +69,7 @@ def _demo_dashboard_page() -> bytes:
     """The owner dashboard, pointed at the visitor's demo session and without owner-only tools."""
     html = (DEMO.parent / "index.html").read_text(encoding="utf-8")
     hide = "details.utility, #export-link, #sign-out, #install-entry, #open-companion, .sign-in-code { display: none !important; }"
-    banner = ('<p class="notice" style="margin:12px 0">Demo dashboard: the fictional receipts you sent in this demo session. '
+    banner = ('<p class="notice" style="margin:12px 0">Demo dashboard: 12 fictional sample receipts plus the ones you send in the chat. '
               '<a href="/demo">Back to the chat</a></p>')
     return (html.replace('<script src="/dashboard.js" defer></script>',
                          f'<style>{hide}</style><script>window.NEO_DASHBOARD_API = "/demo/api/dashboard";</script>'
@@ -230,7 +230,9 @@ class DemoHandler(BaseHTTPRequestHandler):
         try:
             self._check_host()
             route = urlsplit(self.path).path
-            if route in ("/", "/demo"):
+            if route == "/":
+                self._send(200, "text/html; charset=utf-8", (DEMO / "start.html").read_bytes())
+            elif route == "/demo":
                 self._send(200, "text/html; charset=utf-8", self.server.page)
             elif route in _STATIC:
                 path, mime = _STATIC[route]
@@ -327,6 +329,7 @@ def main() -> None:
         args.mode, finance_factory,
         photo_reader=read_photo_text if args.mode == "local" else None,
         gemini_samples=FixtureFinance(fixtures) if args.mode == "gemini" else None,
+        seed_samples=True,
     )
     try:
         with DemoServer(args.port, runtime, public_origin=args.public_origin, tailnet_ip=args.tailnet_ip) as server:

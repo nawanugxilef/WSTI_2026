@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from src.agents.receipt_progress import ReceiptProgress
 from src.agents.chief_of_staff import ChiefOfStaff
 from src.agents.finance_agent import FinanceAgent
 from src.agents.receipt_progress import read_receipt_progress
@@ -953,9 +954,16 @@ def init_demo_database(db_file: str, reset: bool = False) -> None:
     conn = get_connection(db_file)
     init_db(conn)
     seed_accounts(conn)
-    cos = ChiefOfStaff(main_conn=conn, finance_agent=FinanceAgent(api_key=""))
+    seed_fictional_receipts(ChiefOfStaff(main_conn=conn, finance_agent=FinanceAgent(api_key="")), demo_data)
+    conn.close()
 
-    cur = conn.execute("SELECT COUNT(*) as c FROM receipts")
+
+def seed_fictional_receipts(cos, demo_data: dict | None = None) -> None:
+    """Record the 12 [FICTIONAL DEMO] receipts from config/demo_fictional_data.json into an empty ledger."""
+    if demo_data is None:
+        with open(os.path.join(PROJECT_ROOT, "config", "demo_fictional_data.json"), "r", encoding="utf-8") as f:
+            demo_data = json.load(f)
+    cur = cos.main_conn.execute("SELECT COUNT(*) as c FROM receipts")
     if cur.fetchone()["c"] == 0:
         for item in demo_data.get("sample_receipts", []):
             vendor = item.get("vendor", "[FICTIONAL DEMO] Vendor")
@@ -967,10 +975,9 @@ def init_demo_database(db_file: str, reset: bool = False) -> None:
             if tax is not None:
                 note_str += f" gst={float(tax):.2f}"
             try:
-                cos.process_note(note_str)
+                cos.process_note(note_str, progress=ReceiptProgress(None))  # sample data: no office animation
             except Exception as e:
                 logger.warning("Could not auto-seed demo receipt: %s", e)
-    conn.close()
 
 
 def run_server(port: int | None = None, host: str | None = None):

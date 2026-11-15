@@ -373,7 +373,9 @@ class DemoRuntime:
         clock: Callable[[], float] = time.monotonic, session_seconds: int = SESSION_SECONDS,
         photo_reader: Callable[[bytes], str] | None = None,
         gemini_samples: FixtureFinance | None = None,
+        seed_samples: bool = False,
     ):
+        self.seed_samples = seed_samples  # give each new session the 12 fictional receipts
         self.mode = mode
         self.finance_factory = finance_factory
         self.photo_reader = photo_reader
@@ -461,7 +463,25 @@ class DemoRuntime:
                 files = tempfile.TemporaryDirectory(prefix="session-", dir=self._root.name)
                 session = Session(files=files, expires=now + self.session_seconds)
                 self._sessions[token] = session
-            return token, self._snapshot(session, now)
+                seed = self.seed_samples
+            else:
+                seed = False
+            snapshot = self._snapshot(session, now)
+        if seed:
+            self._seed_samples(session)
+        return token, snapshot
+
+    @staticmethod
+    def _seed_samples(session: Session) -> None:
+        from src.interfaces.web_server import seed_fictional_receipts
+
+        try:
+            with closing(get_connection(session.database)) as connection:
+                init_db(connection)
+                seed_accounts(connection)
+                seed_fictional_receipts(DemoOrchestrator(connection, FinanceAgent(api_key="")))
+        except Exception:
+            logger.warning("Could not add the fictional sample receipts to a demo session")
 
     def session(self, token: str | None) -> dict:
         with self._lock:
