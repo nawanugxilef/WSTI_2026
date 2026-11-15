@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neo-D LedgerCraft</title>
+<meta name="description" content="A receipt catch-up assistant for Australian sole traders with ADHD. Built for WSTI Festi 2026.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root { --ink: #1d3029; --muted: #465e52; --line: #d3e1d7; --accent: #286347; --wash: #edf5ed; --paper: #fff; --sun: #f2b84b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--wash); color: var(--ink); font: 17px/1.55 "DM Sans", system-ui, sans-serif; }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  .wrap { max-width: 56rem; margin: 0 auto; padding: 0 16px; }
+  header.hero { background: var(--ink); color: #fff; padding: 56px 0 48px; }
+  .kicker { color: var(--sun); font-weight: 700; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 8px; }
+  h1 { font-size: clamp(2rem, 6vw, 3rem); line-height: 1.1; margin: 0 0 12px; }
+  .hero p.lead { font-size: 1.15rem; color: #d3e1d7; max-width: 38rem; margin: 0 0 24px; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 10px; }
+  .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 12px 20px; border-radius: 12px; font-weight: 700; text-decoration: none; }
+  .btn.primary { background: var(--sun); color: var(--ink); }
+  .btn.ghost { border: 2px solid #8fb5a0; color: #fff; }
+  .hero .small { color: #a9c4b5; font-size: .85rem; margin: 14px 0 0; }
+  main section { padding: 36px 0 8px; }
+  h2 { font-size: 1.5rem; margin: 0 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .card p, .card ul { margin: 0; color: var(--muted); }
+  .card ul { padding-left: 1.1em; }
+  .card li + li { margin-top: 4px; }
+  .step { display: flex; gap: 12px; align-items: flex-start; }
+  .num { flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; }
+  .quote { font-size: 1.25rem; font-weight: 700; margin: 0; }
+  .timeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .timeline li { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  .timeline b { color: var(--accent); }
+  footer { margin-top: 40px; padding: 24px 0 40px; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); }
+  :focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="kicker">WSTI Festi 2026 · Build with AI</p>
+    <h1>Neo-D LedgerCraft</h1>
+    <p class="lead">Catch up on receipts without the shame. A receipt assistant for Australian sole traders with ADHD: snap a receipt, and Neo sorts it into your tax records.</p>
+    <div class="ctas">
+      <a class="btn primary" href="https://neo-wsti-demo.madewithfelix.app/demo">Try the demo, no install →</a>
+      <a class="btn ghost" href="https://neo-wsti-demo.madewithfelix.app/setup">Run your own Neo</a>
+    </div>
+    <p class="small">The demo uses fictional receipts only. Files are deleted after 30 minutes.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section>
+    <h2>The problem</h2>
+    <p class="sub">Sole traders with ADHD lose receipts and miss work deductions. Not because they don't care: starting the paperwork is the hard part.</p>
+    <div class="grid">
+      <div class="card"><h3>Who it affects</h3><p>Australian sole traders and side-hustlers with ADHD who mix work and personal spending, often alongside a PAYG job.</p></div>
+      <div class="card"><h3>Why tools don't help</h3><p>Most finance apps assume you kept up. Fall behind and they show you everything at once, so the app gets closed again.</p></div>
+      <div class="card"><p class="quote">Most apps help you keep up. Neo helps you catch up.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <p class="sub">One step for you. The AI crew does the rest.</p>
+    <div class="grid">
+      <div class="card step"><span class="num">1</span><div><h3>Send it</h3><p>A photo, a PDF or a quick note like "Bunnings hammer $45.90" in Telegram.</p></div></div>
+      <div class="card step"><span class="num">2</span><div><h3>Neo sorts it</h3><p>AI reads the receipt, suggests work or personal and the ATO myTax label, and checks the maths, GST and duplicates.</p></div></div>
+      <div class="card step"><span class="num">3</span><div><h3>One tap to fix</h3><p>Change anything with a button. Neo remembers your answer for next time. Every receipt earns XP; nothing is ever taken away.</p></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What gets better, and how we'd measure it</h2>
+    <div class="grid">
+      <div class="card"><h3>Better for people</h3><ul><li>Work deductions captured instead of lost</li><li>Tax time is small steps all year, not one big dreaded task</li><li>No shame for falling behind</li></ul></div>
+      <div class="card"><h3>How we'd measure it</h3><ul><li>Receipts logged per week, per user</li><li>Share of receipts with a confirmed ATO label</li><li>Time to clear a backlog of receipts</li><li>Users still logging after 4 weeks</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Our data</h2>
+    <div class="grid">
+      <div class="card"><h3>Demo receipts</h3><p>Fictional receipts we made, marked <code>[FICTIONAL DEMO]</code>. No real people or businesses.</p></div>
+      <div class="card"><h3>Tax labels</h3><p>Public ATO myTax labels (for example D5 Other work-related expenses, D9 Gifts or donations, business income and expenses).</p></div>
+      <div class="card"><h3>Assumptions</h3><p>Amounts in AUD, GST at 10%, cash basis: income counts when received. Not tax advice; users check before they lodge.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Privacy</h2>
+    <div class="grid">
+      <div class="card"><ul><li>No sign-up and no personal details in the demo</li><li>Demo files live on the server for 30 minutes, then they're deleted</li><li>No sensitive or unnecessary personal information in this project</li></ul></div>
+      <div class="card"><ul><li>Each bot answers only its owner</li><li>Receipt originals stay in the owner's own Google Drive or on their own computer</li><li>Nothing connects to Council systems</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Responsible AI</h2>
+    <div class="grid">
+      <div class="card"><h3>AI we used</h3><ul><li><b>Gemini</b>, inside the app, reads receipt photos and notes</li><li><b>Google Antigravity, Claude and ChatGPT</b> helped write and review the code</li></ul></div>
+      <div class="card"><h3>Where a person checks</h3><ul><li>The owner confirms or changes every suggestion with one tap</li><li>A QA agent re-checks maths, GST and duplicates; unsure receipts are marked "needs review", never posted silently</li><li>The owner reviews the tax summary before lodging</li></ul></div>
+      <div class="card"><h3>Known risks</h3><ul><li>AI can misread a shop name or amount: the details stay visible and editable</li><li>Wrong category: the label is shown on every receipt and is one tap to change</li><li>Demo photos are sent to Gemini to be read: fictional data only</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Built 7–17 November 2026</h2>
+    <p class="sub">A new build for this challenge, from scratch.</p>
+    <ol class="timeline">
+      <li><b>7 Nov</b> · Started at the Parramatta Build Day. First code committed that night.</li>
+      <li><b>8–13 Nov</b> · AI crew, double-entry ledger, ATO labels, web demo, automated tests.</li>
+      <li><b>14–15 Nov</b> · Setup for any business type, run-your-own wizard, receipt archive in the demo.</li>
+      <li><b>17 Nov</b> · Submission.</li>
+    </ol>
+    <p class="sub" style="margin-top:12px">Every change is public with its date: <a href="https://github.com/nawanugxilef/WSTI_2026/commits/main">commit history on GitHub</a>.</p>
+  </section>
+
+  <section>
+    <h2>Try it two ways</h2>
+    <div class="grid">
+      <div class="card"><h3>Web demo</h3><p>No install. Send a fictional receipt or a note and watch it get read, checked and recorded.</p><p style="margin-top:10px"><a class="btn primary" href="https://neo-wsti-demo.madewithfelix.app/demo">Open the demo</a></p></div>
+      <div class="card"><h3>Your own Neo</h3><p>Make your own Telegram bot with a 2-minute checklist, then run Neo on your own computer with a setup wizard.</p><p style="margin-top:10px"><a href="https://neo-wsti-demo.madewithfelix.app/setup">Start the checklist →</a></p></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">Neo-D LedgerCraft · WSTI Festi 2026 · Fictional data in all demos · Not tax advice · <a href="https://github.com/nawanugxilef/WSTI_2026">Source code</a></div>
+</footer>
+</body>
+</html>

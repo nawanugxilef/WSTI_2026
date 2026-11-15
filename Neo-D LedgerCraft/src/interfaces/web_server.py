@@ -520,7 +520,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/office-public":
-            self._serve_file(os.path.join(OFFICE_STATIC_DIR, "index.html"), "text/html; charset=utf-8")
+            # Public home page of neo.madewithfelix.app (the edge Worker maps "/" here); the office lives in the demo.
+            self._serve_file(os.path.join(PROJECT_ROOT, "web", "landing.html"), "text/html; charset=utf-8")
             return
 
         if path in ("/office-calendar.js", "/office-board.js"):

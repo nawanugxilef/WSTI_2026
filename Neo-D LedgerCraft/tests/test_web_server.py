@@ -111,6 +111,13 @@ class TestWebServer(unittest.TestCase):
                 if content_type == "image/png":
                     self.assertTrue(body.startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_public_home_is_the_landing_page(self):
+        status, headers, body = self._dashboard_request("GET", "/office-public")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"].split(";")[0], "text/html")
+        for section in (b"Our data", b"Privacy", b"Responsible AI", b"Built 7", b"/demo"):
+            self.assertIn(section, body)
+
     def test_dashboard_routes_require_owner_session(self):
         for route in ("/api/dashboard", "/api/export.csv", "/api/dashboard/intake", "/api/dashboard/reward"):
             with self.subTest(route=route):
