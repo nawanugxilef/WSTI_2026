@@ -36,6 +36,9 @@
   .back { background: none; border: 0; color: var(--muted); font: inherit; font-size: .85rem; text-decoration: underline; cursor: pointer; margin-left: auto; }
   .qr { display: flex; gap: 12px; align-items: center; margin: 4px 0 12px; }
   .qr img { width: 96px; height: 96px; border-radius: 8px; border: 1px solid var(--line); }
+  ol.next { list-style: decimal; padding-left: 22px; display: grid; gap: 12px; margin: 0 0 14px; }
+  ol.next li { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  ol.next .btn { margin-top: 8px; }
   .note { margin: 18px 0 8px; padding: 12px 14px; border-radius: 14px; background: #fff7e0; border: 1px solid #f0d58a; }
   .note p { margin: 0 0 6px; }
   .party { text-align: center; font-size: 2rem; margin: 0; }
@@ -98,9 +101,14 @@
   <section id="finish" hidden>
     <p class="party">🎉</p>
     <h1 style="text-align:center">Your bot exists!</h1>
-    <p class="lead" style="text-align:center">Last bit: on your computer, run the setup and paste the token when it asks.</p>
-    <div class="row" style="justify-content:center"><span class="chip">docker compose run --rm setup <button data-copy="docker compose run --rm setup">Copy</button></span></div>
-    <p class="hint" style="text-align:center">New to this? Follow <a href="https://github.com/nawanugxilef/WSTI_2026/tree/main/Neo-D%20LedgerCraft#run-it-yourself-about-10-minutes" target="_blank" rel="noopener">Run it yourself</a>. It starts with installing Docker.</p>
+    <p class="lead" style="text-align:center">Now put Neo on your computer. Three small things:</p>
+    <ol class="next">
+      <li><b>Get Docker Desktop</b> (free, one time).<br><a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener">Download Docker ↗</a></li>
+      <li><b>Download Neo</b> and unzip it.<br><a class="btn" href="https://github.com/nawanugxilef/WSTI_2026/archive/refs/heads/main.zip">⬇ Download Neo (ZIP)</a></li>
+      <li><b>Open</b> <code>WSTI_2026-main</code> → <code>Neo-D LedgerCraft</code>. Type <code>powershell</code> in the folder's address bar and press Enter. Run this, then paste your token when it asks:
+        <div class="row" style="margin-top:8px"><span class="chip">docker compose run --rm setup <button data-copy="docker compose run --rm setup">Copy</button></span></div></li>
+    </ol>
+    <p class="hint" style="text-align:center">Mac or Linux? Open a terminal in that folder instead. Full guide: <a href="https://github.com/nawanugxilef/WSTI_2026/tree/main/Neo-D%20LedgerCraft#run-it-yourself-about-10-minutes" target="_blank" rel="noopener">Run it yourself</a>.</p>
     <div class="note">
       <p><b>💡 Good to know:</b> Neo runs on that computer, so it answers while the computer is on.</p>
       <p class="hint">Turned off or asleep? No stress: Telegram holds your receipts for up to 24 hours and Neo catches up when it's back. An old PC or laptop left on at home works great. Turn off sleep mode so it stays awake.</p>
