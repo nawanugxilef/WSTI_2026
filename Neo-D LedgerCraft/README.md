@@ -29,7 +29,13 @@ You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) and t
    ```
 5. In Telegram, send `/setup` to choose your businesses, then send your first receipt.
 
-**Keep the computer on.** Neo runs on your computer, so it answers while that computer is on. An old PC or laptop left on at home works well; turn off sleep mode, and set Docker Desktop to start when you sign in. If it's off for a while, Telegram holds your messages for up to 24 hours and Neo catches up when it's back.
+**Keep the computer on.** Neo runs on your computer, so it answers while that computer is on. An old PC or laptop left on at home works well; turn off sleep mode. If it's off for a while, Telegram holds your messages for up to 24 hours and Neo catches up when it's back.
+
+**After a restart Neo comes back by itself.** Docker restarts Neo whenever Docker starts (`restart: unless-stopped` in `compose.yaml`), and retries until the internet is up. One setting makes that happen:
+- **Windows / Mac:** Docker Desktop → Settings → General → tick **Start Docker Desktop when you sign in**. Docker Desktop starts after you sign in, so a PC that restarts (for example after updates) needs a sign-in before Neo is back.
+- **Linux:** `sudo systemctl enable docker` once; Neo then starts at boot without signing in.
+
+To check, restart the computer, sign in, wait a minute and send `/help` to your bot. `docker compose ps` should show `neo` as running. If you stop Neo yourself with `docker compose stop`, it stays off until you run `docker compose up -d neo` again.
 
 Everything stays in the `data/` folder on your computer: the ledger, your settings (`data/neo.env`) and the receipt originals (`data/receipts/`). Google Drive is optional and not needed for this setup. The web dashboard is not included in the self-hosted bot yet; use `/mytax`, `/pnl` and `/recent` in Telegram. Without Docker: `pip install -r requirements.txt`, then `python setup_wizard.py` and `python -m src.interfaces.telegram_bot`.
 

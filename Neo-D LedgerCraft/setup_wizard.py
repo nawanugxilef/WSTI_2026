@@ -195,6 +195,8 @@ def main() -> int:
     print("  Then say hi in Telegram with /setup. Your data stays on this computer (data folder).")
     print("\n  💡 Neo answers while this computer is on. Off or asleep? Telegram holds your")
     print("     receipts for up to 24 hours and Neo catches up. Tip: turn off sleep mode.")
+    print("\n  🔁 After a restart Neo starts again by itself, as long as Docker starts too.")
+    print("     Docker Desktop → Settings → General → tick 'Start Docker Desktop when you sign in'.")
     return 0
 
 
