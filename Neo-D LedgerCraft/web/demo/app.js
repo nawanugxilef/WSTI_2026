@@ -198,6 +198,50 @@ function asksForDate(result) {
     && Boolean(result.vendor) && Number.isFinite(result.total_amount) && result.total_amount > 0;
 }
 
+// A typed note Neo couldn't fully read: ask only for what's missing, then send it again.
+function missingDetails(result) {
+  if (result.status !== "needs_review" || result.receipt_id || result.name) return [];
+  const missing = [];
+  if (!result.vendor) missing.push("vendor");
+  if (!(Number.isFinite(result.total_amount) && result.total_amount > 0)) missing.push("total");
+  if (!result.date) missing.push("date");
+  return missing;
+}
+
+function createDetailsQuestion(result, missing) {
+  const form = node("form", "", "neo-demo-date-options");
+  const field = (type, label, value) => {
+    const input = node("input");
+    input.type = type;
+    input.required = true;
+    input.setAttribute("aria-label", label);
+    input.placeholder = label;
+    if (value) input.value = value;
+    form.append(input);
+    return input;
+  };
+  const vendor = missing.includes("vendor") ? field("text", "Shop or item", "") : null;
+  const total = missing.includes("total") ? field("number", "Amount $", "") : null;
+  if (total) { total.min = "0.01"; total.step = "0.01"; total.inputMode = "decimal"; }
+  const now = new Date();
+  const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
+  const date = missing.includes("date") ? field("date", "Date", today) : null;
+  const submit = node("button", "Record it");
+  submit.type = "submit";
+  form.append(submit);
+  const question = { text: "", form };
+  dateQuestion = question;
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const amount = total ? Number(total.value) : result.total_amount;
+    const text = (vendor ? vendor.value.trim() : result.vendor) + " $" + amount.toFixed(2)
+      + " on " + (date ? date.value : result.date);
+    question.text = text;
+    sendIntake(text, [], { question, label: text });
+  });
+  return form;
+}
+
 function createDateQuestion(text) {
   const form = node("form", "", "neo-demo-date-options");
   const today = node("button", "Today");
@@ -437,6 +481,9 @@ function showResults(job) {
       line.append(node("p", originalNote ? "What date was this purchase?"
         : "Please send the note with one transaction date, for example Coffee 5.5 on today."));
       if (originalNote) line.append(createDateQuestion(originalNote));
+    } else if (missingDetails(result).length) {
+      line.append(node("p", "I couldn't read everything in that note. Fill in what's missing and I'll record it:"));
+      line.append(createDetailsQuestion(result, missingDetails(result)));
     } else {
       const receipt = node("div", "", "neo-demo-receipt");
       renderReceipt(receipt, result);

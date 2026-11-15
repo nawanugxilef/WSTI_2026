@@ -160,3 +160,16 @@ class TestFinanceExtraction(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_emoji_are_removed_from_notes_before_parsing():
+    from unittest.mock import patch
+
+    from src.agents.finance_agent import FinanceAgent
+
+    agent = FinanceAgent(api_key="")
+    assert agent.parse_note("Car 🚗 $5000").total_amount == 5000
+    agent._client = object()
+    with patch.object(FinanceAgent, "_call_gemini_text", return_value="parsed") as call:
+        agent.parse_note("Coffee ☕️ 5.50")
+    assert call.call_args.args[0] == "Coffee 5.50"

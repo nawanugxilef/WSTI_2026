@@ -26,6 +26,8 @@ from src.storage import businesses as biz
 from src.storage.categories import resolve_allocation
 
 
+_EMOJI = re.compile(r"[\U0001F000-\U0001FAFF☀-➿️‍]")
+
 class ExtractionUnavailableError(RuntimeError):
     """
     Raised when an image or PDF receipt cannot be read because multimodal OCR
@@ -347,6 +349,8 @@ class FinanceAgent:
         either using Gemini or standard rule-based heuristic when offline.
         The Telegram caller may supply the Sydney date when it received the note.
         """
+        # Emoji like "Car 🚗 5000" made the model drop the amount; they carry no receipt data.
+        text = re.sub(r"\s+", " ", _EMOJI.sub(" ", text)).strip() or text
         if self._client:
             return self._call_gemini_text(
                 text, qa_notes=qa_notes, vendor_examples=vendor_examples, capture_date=capture_date
