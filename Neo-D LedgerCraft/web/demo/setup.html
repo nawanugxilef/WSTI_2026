@@ -36,6 +36,8 @@
   .back { background: none; border: 0; color: var(--muted); font: inherit; font-size: .85rem; text-decoration: underline; cursor: pointer; margin-left: auto; }
   .qr { display: flex; gap: 12px; align-items: center; margin: 4px 0 12px; }
   .qr img { width: 96px; height: 96px; border-radius: 8px; border: 1px solid var(--line); }
+  .note { margin: 18px 0 8px; padding: 12px 14px; border-radius: 14px; background: #fff7e0; border: 1px solid #f0d58a; }
+  .note p { margin: 0 0 6px; }
   .party { text-align: center; font-size: 2rem; margin: 0; }
   :focus-visible { outline: 3px solid #f2b84b; outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -99,6 +101,10 @@
     <p class="lead" style="text-align:center">Last bit: on your computer, run the setup and paste the token when it asks.</p>
     <div class="row" style="justify-content:center"><span class="chip">docker compose run --rm setup <button data-copy="docker compose run --rm setup">Copy</button></span></div>
     <p class="hint" style="text-align:center">New to this? Follow <a href="https://github.com/nawanugxilef/WSTI_2026/tree/main/Neo-D%20LedgerCraft#run-it-yourself-about-10-minutes" target="_blank" rel="noopener">Run it yourself</a>. It starts with installing Docker.</p>
+    <div class="note">
+      <p><b>💡 Good to know:</b> Neo runs on that computer, so it answers while the computer is on.</p>
+      <p class="hint">Turned off or asleep? No stress: Telegram holds your receipts for up to 24 hours and Neo catches up when it's back. An old PC or laptop left on at home works great. Turn off sleep mode so it stays awake.</p>
+    </div>
     <p style="text-align:center"><button class="back" id="restart" style="margin:0">Start this checklist again</button></p>
   </section>
 </main>

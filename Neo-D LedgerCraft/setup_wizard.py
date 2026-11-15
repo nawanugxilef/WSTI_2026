@@ -193,6 +193,8 @@ def main() -> int:
     print("\n  One last thing. Start Neo with:\n")
     print(f"      {start}\n")
     print("  Then say hi in Telegram with /setup. Your data stays on this computer (data folder).")
+    print("\n  💡 Neo answers while this computer is on. Off or asleep? Telegram holds your")
+    print("     receipts for up to 24 hours and Neo catches up. Tip: turn off sleep mode.")
     return 0
 
 
