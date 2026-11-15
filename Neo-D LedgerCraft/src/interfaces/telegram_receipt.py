@@ -7,6 +7,7 @@ import re
 from datetime import date
 from typing import TYPE_CHECKING
 
+from src.storage.local_archive import is_local_id
 from src.storage import businesses as biz
 from src.agents.qa_agent import likely_duplicate_receipt_id
 from src.storage.categories import VALID_ABN_TAX_LABELS, VALID_PAYG_TAX_LABELS
@@ -158,6 +159,10 @@ def _drive_saved(summary: IntakeSummary) -> bool:
     return summary.gdrive_status == "uploaded" and bool(summary.gdrive_file_id)
 
 
+def _saved_where(summary: IntakeSummary) -> str:
+    return "this computer" if is_local_id(summary.gdrive_file_id) else "Drive"
+
+
 def _amount_line(summary: IntakeSummary) -> str:
     total = summary.total_amount
     if summary.currency.upper() != "AUD" or total is None or not math.isfinite(total):
@@ -222,7 +227,7 @@ def format_receipt_card(summary: IntakeSummary) -> str:
         else:
             lines = ["Status: Receipt not posted"]
         if _drive_saved(summary):
-            lines.append("Original saved to Drive.")
+            lines.append(f"Original saved to {_saved_where(summary)}.")
         return "\n".join(lines)
 
     vendor = _safe_preview(summary.vendor, 35) or "Unknown vendor"
@@ -250,7 +255,7 @@ def format_receipt_card(summary: IntakeSummary) -> str:
     else:
         status = {"recorded": "Recorded", "confirmed": "Confirmed", "corrected": "Updated"}.get(summary.status, "Check receipt")
     if _drive_saved(summary) and not review_required:
-        status += " · Drive saved"
+        status += " · Drive saved" if _saved_where(summary) == "Drive" else " · Saved on this computer"
     lines.append(f"Status: {status}")
     return "\n".join(lines)
 

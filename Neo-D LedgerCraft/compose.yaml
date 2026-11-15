@@ -1,0 +1,16 @@
+# 1. docker compose run --rm setup   (connect your Telegram bot and Gemini key)
+# 2. docker compose up -d neo         (start Neo; it restarts with your computer)
+services:
+  neo:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data   # ledger, settings and receipt originals stay on your computer
+  setup:
+    build: .
+    profiles: ["setup"]
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./data:/app/data
+    command: ["python", "setup_wizard.py"]

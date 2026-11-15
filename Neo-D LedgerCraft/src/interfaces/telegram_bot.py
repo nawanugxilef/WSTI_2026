@@ -65,6 +65,7 @@ from src.storage.categories import (
 )
 from src.storage.db import get_connection, init_db
 from src.storage.gdrive import GDriveAdapter, drive_file_url
+from src.storage.local_archive import LocalArchive
 from src.storage.journal import JournalManager
 
 logging.basicConfig(
@@ -365,11 +366,15 @@ class TelegramReceiptBot:
         seed_accounts(self.conn)
 
         gdrive_cfg = self.cfg.get("google_drive", {})
-        self.gdrive = GDriveAdapter(
-            receipts_folder_id=gdrive_cfg.get("receipts_folder_id"),
-            backups_folder_id=gdrive_cfg.get("backups_folder_id"),
-            statements_folder_id=gdrive_cfg.get("statements_folder_id"),
-        )
+        if os.environ.get("NEO_RECEIPT_STORAGE", "").strip().lower() == "local":
+            # Self-hosted install from the setup wizard: originals stay next to the ledger.
+            self.gdrive = LocalArchive(os.path.join(os.path.dirname(os.path.abspath(resolved_db_path)), "receipts"))
+        else:
+            self.gdrive = GDriveAdapter(
+                receipts_folder_id=gdrive_cfg.get("receipts_folder_id"),
+                backups_folder_id=gdrive_cfg.get("backups_folder_id"),
+                statements_folder_id=gdrive_cfg.get("statements_folder_id"),
+            )
 
         self.cos = ChiefOfStaff(main_conn=self.conn, gdrive=self.gdrive, finance_agent=finance_agent)
         self.jm = JournalManager(self.conn)
@@ -492,6 +497,11 @@ class TelegramReceiptBot:
         if not self._is_authorized(update) or update.effective_chat.type != ChatType.PRIVATE:
             return
         if not update.effective_user or update.effective_user.id != self.owner_chat_id:
+            return
+        if isinstance(getattr(self, "gdrive", None), LocalArchive):
+            await update.message.reply_text(
+                "The web dashboard isn't part of the self-hosted bot yet. Use /mytax, /pnl and /recent here."
+            )
             return
         try:
             url = await asyncio.to_thread(create_login_url, self.db_path)

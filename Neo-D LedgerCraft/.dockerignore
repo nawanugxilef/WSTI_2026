@@ -1,0 +1,9 @@
+.venv/
+**/__pycache__/
+data/
+tests/
+docs/
+.agents/
+.env
+*.env
+env.txt

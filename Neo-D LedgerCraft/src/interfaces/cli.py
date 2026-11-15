@@ -20,7 +20,7 @@ from src.storage.journal import JournalManager
 
 def load_env():
     """Loads variables from .env or env.txt into os.environ if present and not a placeholder."""
-    for fname in [".env", "env.txt"]:
+    for fname in [".env", "env.txt", "data/neo.env"]:  # data/neo.env is written by setup_wizard.py
         env_path = os.path.join(os.path.dirname(__file__), f"../../{fname}")
         if os.path.exists(env_path):
             with open(env_path, "r") as f:

@@ -4,6 +4,33 @@ Autonomous multi-agent financial assistant for sole traders in Australia (`$ AUD
 
 > **Note:** All example transactions in documentation and tests are **fictional demo data (`[FICTIONAL DEMO]`)**.
 
+## Try it two ways
+
+1. **Web demo (no install):** open the chat at the demo site and send a fictional receipt photo or a note like `Bunnings hammer $45.90`. Files are deleted after 30 minutes.
+2. **Run it yourself:** your own Telegram bot on your own computer, with the setup wizard below.
+
+## Run it yourself (about 10 minutes)
+
+You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) and the Telegram app. No coding.
+
+1. Download this repository (green **Code** button → **Download ZIP**) and unzip it.
+2. Open a terminal in the `Neo-D LedgerCraft` folder.
+3. Run the wizard:
+   ```bash
+   docker compose run --rm setup
+   ```
+   It walks you through three steps:
+   - **Telegram bot:** chat with `@BotFather`, send `/newbot`, and paste the token it gives you.
+   - **Gemini key:** create a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and paste it (optional; without it photos can't be read).
+   - **Link your account:** press **Start** in your new bot. From then on the bot answers only you.
+4. Start Neo:
+   ```bash
+   docker compose up -d neo
+   ```
+5. In Telegram, send `/setup` to choose your businesses, then send your first receipt.
+
+Everything stays in the `data/` folder on your computer: the ledger, your settings (`data/neo.env`) and the receipt originals (`data/receipts/`). Google Drive is optional and not needed for this setup. The web dashboard is not included in the self-hosted bot yet; use `/mytax`, `/pnl` and `/recent` in Telegram. Without Docker: `pip install -r requirements.txt`, then `python setup_wizard.py` and `python -m src.interfaces.telegram_bot`.
+
 ---
 
 ## 🏛️ Architecture: 4-Agent Pipeline
