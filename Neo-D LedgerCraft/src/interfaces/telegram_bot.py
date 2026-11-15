@@ -460,8 +460,10 @@ class TelegramReceiptBot:
 
         chat_id = update.effective_chat.id
         state = self._get_companion_state()
+        user = getattr(update, "effective_user", None)
+        first = re.sub(r"[*_`\[\]]", "", str(getattr(user, "first_name", "") or "")).strip()[:40]  # keep Markdown safe
         msg = (
-            f"🤖 *Welcome back, Boss!* Meet your *Neo-D LedgerCraft* crew and Womby, your desk companion.\n"
+            f"🤖 *Welcome back{', ' + first if first else ''}!* Meet your *Neo-D LedgerCraft* crew and Womby, your desk companion.\n"
             f"Chat ID: `{chat_id}`\n\n"
             f"*Your AI crew*\n"
             f"• 🤖 *Neo — Chief of Finance*: Takes in receipts, archives originals and coordinates the crew\n"

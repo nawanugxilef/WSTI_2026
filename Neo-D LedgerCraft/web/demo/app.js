@@ -133,6 +133,8 @@ function node(tag, text, className) {
   return element;
 }
 
+const WELCOME = "Hi, I'm Neo! Attach a receipt photo or PDF, or type a quick note like \"Bunnings hammer $45.90\". I'll record it for tax time. No commands needed.";
+
 function addMessage(sender, content) {
   const bubble = node("article", "", "neo-demo-bubble neo-demo-bubble--" + sender);
   bubble.append(node("span", sender === "neo" ? "Neo" : "You", "neo-demo-author"));
@@ -564,6 +566,7 @@ async function connect() {
     }
     updateSession(snapshot.session);
     updateJob(snapshot.job, false);
+    if (!log.children.length) addMessage("neo", WELCOME);
   })();
   try {
     await connecting;
@@ -868,7 +871,15 @@ note.addEventListener("keydown", (event) => {
 });
 byId("form").addEventListener("submit", (event) => {
   event.preventDefault();
-  sendIntake(note.value.trim(), [...files]);
+  const text = note.value.trim();
+  if (text.startsWith("/") && !files.length) {  // Telegram-style commands: answer here instead of reading them as a receipt
+    addMessage("you", text);
+    addMessage("neo", /^\/(start|help)/i.test(text) ? WELCOME : "That command is for the Telegram bot. Here, just attach a receipt or type a note like \"Bunnings hammer $45.90\".");
+    note.value = "";
+    updateControls();
+    return;
+  }
+  sendIntake(text, [...files]);
 });
 window.visualViewport?.addEventListener("resize", fitKeyboard);
 window.visualViewport?.addEventListener("scroll", fitKeyboard);
