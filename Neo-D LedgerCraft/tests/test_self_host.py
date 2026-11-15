@@ -71,3 +71,13 @@ def test_wizard_links_first_private_chat_and_writes_env(tmp_path, monkeypatch):
     wizard.write_env({"TELEGRAM_OWNER_CHAT_ID": "4242", "NEO_RECEIPT_STORAGE": "local"}, env)
     text = env.read_text(encoding="utf-8")
     assert "TELEGRAM_OWNER_CHAT_ID=4242" in text and "NEO_RECEIPT_STORAGE=local" in text
+
+
+def test_wizard_resumes_without_repeating_finished_steps(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(wizard, "ENV_PATH", tmp_path / "neo.env")
+    monkeypatch.setattr(wizard, "telegram", lambda token, method, **p: {"username": "SamNeoBot"} if token == "good" else None)
+    wizard.write_env({"TELEGRAM_BOT_TOKEN": "good", "GEMINI_API_KEY": "kept"}, wizard.ENV_PATH)
+    saved = wizard.read_env(wizard.ENV_PATH)
+    assert wizard.step_bot(saved) == ("good", "SamNeoBot")
+    assert wizard.step_gemini(saved) == "kept"
+    assert capsys.readouterr().out.count("Already done") == 2
