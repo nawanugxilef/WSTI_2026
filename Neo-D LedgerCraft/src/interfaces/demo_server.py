@@ -11,7 +11,7 @@ from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import IPv4Address, IPv4Network
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from src.interfaces.demo_photo_ocr import read_photo_text
 from src.interfaces.demo_runtime import (
@@ -56,11 +56,28 @@ _STATIC = {
     "/demo/chat.css": (DEMO / "chat.css", "text/css; charset=utf-8"),
     "/demo/womby.glb": (DEMO / "womby.glb", "model/gltf-binary"),
     "/setup": (DEMO / "setup.html", "text/html; charset=utf-8"),
+    "/dashboard.css": (DEMO.parent / "dashboard.css", "text/css; charset=utf-8"),
+    "/dashboard.js": (DEMO.parent / "dashboard.js", "text/javascript; charset=utf-8"),
     "/demo/botfather-qr.svg": (DEMO / "botfather-qr.svg", "image/svg+xml"),
     "/demo/samples/harbour-cafe.jpg": (DEMO / "samples/harbour-cafe.jpg", "image/jpeg"),
     "/demo/samples/paper-gum.jpg": (DEMO / "samples/paper-gum.jpg", "image/jpeg"),
     "/demo/samples/studio-supply.pdf": (DEMO / "samples/studio-supply.pdf", "application/pdf"),
 }
+
+
+def _demo_dashboard_page() -> bytes:
+    """The owner dashboard, pointed at the visitor's demo session and without owner-only tools."""
+    html = (DEMO.parent / "index.html").read_text(encoding="utf-8")
+    hide = "details.utility, #export-link, #sign-out, #install-entry, #open-companion, .sign-in-code { display: none !important; }"
+    banner = ('<p class="notice" style="margin:12px 0">Demo dashboard: the fictional receipts you sent in this demo session. '
+              '<a href="/demo">Back to the chat</a></p>')
+    return (html.replace('<script src="/dashboard.js" defer></script>',
+                         f'<style>{hide}</style><script>window.NEO_DASHBOARD_API = "/demo/api/dashboard";</script>'
+                         '<script src="/dashboard.js" defer></script>', 1)
+            .replace('<h1>Neo Dashboard</h1>', '<h1>Neo Dashboard · Demo</h1>', 1)
+            .replace('<a class="quiet-button" href="/">Office</a>', '<a class="quiet-button" href="/demo">Chat</a>', 1)
+            .replace('<main class="frame">', '<main class="frame">' + banner, 1)
+            .encode("utf-8"))
 
 
 def _landing_page() -> bytes:
@@ -224,6 +241,13 @@ class DemoHandler(BaseHTTPRequestHandler):
                 self._json(200, self.server.runtime.session(self._token()))
             elif route == "/api/office/receipt-progress":
                 self._json(200, self.server.runtime.progress(self._token()))
+            elif route == "/demo/dashboard":
+                self._send(200, "text/html; charset=utf-8", _demo_dashboard_page())
+            elif route == "/demo/api/dashboard":
+                query = parse_qs(urlsplit(self.path).query)
+                fy = query.get("fy", [""])[0]
+                month = query.get("month", [""])[0] or None
+                self._json(200, self.server.runtime.dashboard(self._token(), int(fy) if fy.isdigit() else None, month))
             elif route == "/demo/api/originals":
                 self._json(200, self.server.runtime.originals(self._token()))
             elif match := re.fullmatch(r"/demo/api/originals/([0-9]{1,6})", route):

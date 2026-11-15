@@ -1,3 +1,6 @@
+// The web demo sets NEO_DASHBOARD_API to read its own temporary session ledger.
+const DEMO = Boolean(window.NEO_DASHBOARD_API);
+const DASHBOARD_API = window.NEO_DASHBOARD_API || "/api/dashboard";
 "use strict";
 
 const byId = (id) => document.getElementById(id);
@@ -243,6 +246,10 @@ function gate(title, message, signIn = false, retry = false) {
 }
 
 function requireSignIn(message = "Use /dashboard in Neo’s Telegram chat to get a one-time link or code.") {
+  if (DEMO) {
+    gate("Your demo session has ended", "Open the demo chat, send a fictional receipt, then come back to this tab.");
+    return;
+  }
   if (data) {
     location.replace("/dashboard");
     return;
@@ -268,7 +275,7 @@ async function loadDashboard(year = fiscalYear.value, month = spendingMonth.valu
   byId("refresh").disabled = true;
 
   try {
-    const response = await fetch("/api/dashboard?" + query, requestOptions("GET"));
+    const response = await fetch(DASHBOARD_API + "?" + query, requestOptions("GET"));
     if (id !== requestId) return;
     if (response.status === 401) {
       requireSignIn();

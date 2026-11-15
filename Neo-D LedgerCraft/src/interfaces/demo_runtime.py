@@ -750,6 +750,14 @@ class DemoRuntime:
                 raise DemoError(404, "This receipt file was not found in your demo session.")
             return match.name.split("__", 1)[1], match.read_bytes()
 
+    def dashboard(self, token: str | None, fy_start_year: int | None = None, month: str | None = None) -> dict:
+        """The owner dashboard payload, built from this visitor's temporary demo ledger."""
+        from src.interfaces.web_server import build_dashboard_payload
+
+        with self._lock:
+            database = self._require(token, self._clock()).database
+        return build_dashboard_payload(str(database), fy_start_year, month)
+
     def _result(self, summary: IntakeSummary, upload: Upload | None) -> dict:
         if upload:
             extraction = ("fixture" if self.mode == "local" else self.mode) if summary.status != "extraction_unavailable" else None

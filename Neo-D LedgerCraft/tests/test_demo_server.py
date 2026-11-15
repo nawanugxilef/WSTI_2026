@@ -726,3 +726,22 @@ def test_bot_setup_checklist_page_is_served(demo_server):
     assert b"https://t.me/BotFather" in body and b"/newbot" in body
     status, headers, _ = client.request("GET", "/demo/botfather-qr.svg")
     assert status == 200 and headers["Content-Type"] == "image/svg+xml"
+
+
+def test_demo_dashboard_shows_only_this_sessions_ledger(demo_server):
+    client = DemoClient(demo_server)
+    client.open()
+    _, _, body = client.request("GET", "/demo/samples/studio-supply.pdf")
+    client.intake({"files": [file("studio-supply.pdf", body)]})
+    status, _, payload = client.request("GET", "/demo/api/dashboard")
+    assert status == 200
+    assert [r["vendor"] for r in payload["receipts"]] == ["[FICTIONAL DEMO] Studio Supply"]
+    assert "mytax" in payload and "books" in payload
+
+    status, headers, page = client.request("GET", "/demo/dashboard")
+    assert status == 200 and b'NEO_DASHBOARD_API = "/demo/api/dashboard"' in page
+    assert client.request("GET", "/dashboard.js")[0] == 200
+
+    other = DemoClient(demo_server)
+    other.open()
+    assert other.request("GET", "/demo/api/dashboard")[2]["receipts"] == []
