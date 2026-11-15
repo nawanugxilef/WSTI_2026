@@ -689,6 +689,8 @@ class DemoRuntime:
                             check_in = coffee_check_in(connection, result["receipt_id"], capture_date or _sydney_today())
                             if check_in:
                                 result["message"] += "\n\n" + check_in
+                        if upload and result.get("receipt_id") and result["status"] != "error":
+                            result["has_original"] = self._save_original(session, result["receipt_id"], upload)
                     except Exception:
                         logger.warning("One demo receipt could not be processed")
                         trace.finish("error")
@@ -705,6 +707,48 @@ class DemoRuntime:
                 job.state = state
                 self._active -= 1
                 self._sweep(self._clock())
+
+    @staticmethod
+    def _originals_dir(session: Session) -> Path:
+        return Path(session.files.name) / "originals"
+
+    def _save_original(self, session: Session, receipt_id: int, upload: Upload) -> bool:
+        # Demo stand-in for the owner's Google Drive folder; deleted with the session.
+        folder = self._originals_dir(session)
+        folder.mkdir(exist_ok=True)
+        if not any(folder.glob(f"{receipt_id:06d}__*")):
+            (folder / f"{receipt_id:06d}__{upload.name}").write_bytes(upload.data)
+        return True
+
+    def originals(self, token: str | None) -> dict:
+        with self._lock:
+            session = self._require(token, self._clock())
+            folder = self._originals_dir(session)
+            paths = sorted(folder.glob("*__*")) if folder.is_dir() else []
+            database = session.database
+        items = []
+        if paths and database.is_file():
+            with closing(get_connection(database)) as connection:
+                for path in paths:
+                    receipt_id = int(path.name.split("__", 1)[0])
+                    row = connection.execute(
+                        "SELECT vendor, date, total_amount FROM receipts WHERE id = ?", (receipt_id,),
+                    ).fetchone()
+                    items.append({
+                        "receipt_id": receipt_id, "name": path.name.split("__", 1)[1], "size": path.stat().st_size,
+                        "vendor": row["vendor"] if row else None, "date": row["date"] if row else None,
+                        "total_amount": row["total_amount"] if row else None,
+                    })
+        return {"originals": items}
+
+    def original(self, token: str | None, receipt_id: int) -> tuple[str, bytes]:
+        with self._lock:
+            session = self._require(token, self._clock())
+            folder = self._originals_dir(session)
+            match = next(iter(sorted(folder.glob(f"{receipt_id:06d}__*"))), None) if folder.is_dir() else None
+            if match is None:
+                raise DemoError(404, "This receipt file was not found in your demo session.")
+            return match.name.split("__", 1)[1], match.read_bytes()
 
     def _result(self, summary: IntakeSummary, upload: Upload | None) -> dict:
         if upload:

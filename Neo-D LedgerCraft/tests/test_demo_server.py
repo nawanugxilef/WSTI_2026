@@ -699,3 +699,21 @@ def test_third_coffee_gets_a_check_in_and_every_coffee_is_still_recorded(demo_se
     assert [r["status"] for r in results] == ["recorded"] * 4
     assert ["Everything okay?" in r["message"] for r in results] == [False, False, True, False]
     assert client.request("GET", "/demo/api/session")[2]["session"]["xp"] == 40
+
+
+def test_demo_archive_keeps_originals_per_session(demo_server):
+    client = DemoClient(demo_server)
+    client.open()
+    _, _, body = client.request("GET", "/demo/samples/studio-supply.pdf")
+    result = client.intake({"files": [file("studio-supply.pdf", body)]})["job"]["results"][0]
+    assert result["has_original"] is True
+
+    status, _, listing = client.request("GET", "/demo/api/originals")
+    items = listing["originals"]
+    assert status == 200 and [(i["receipt_id"], i["name"]) for i in items] == [(result["receipt_id"], "studio-supply.pdf")]
+    status, headers, original = client.request("GET", f"/demo/api/originals/{result['receipt_id']}")
+    assert status == 200 and headers["Content-Type"] == "application/pdf" and original == body
+
+    other = DemoClient(demo_server)
+    other.open()
+    assert other.request("GET", f"/demo/api/originals/{result['receipt_id']}")[0] == 404

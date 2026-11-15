@@ -54,6 +54,7 @@ dialog.innerHTML = `
           </div>
           <p id="neo-demo-mode" hidden></p>
         </details>
+        <button id="neo-demo-archive" type="button" class="neo-demo-archive-button">📁 Receipt archive</button>
       </div>
       <div id="neo-demo-log" class="neo-demo-log" role="log" aria-label="Chat messages" aria-live="polite"></div>
       <footer class="neo-demo-footer">
@@ -302,8 +303,42 @@ function categoryPicker(settings, result, opener, confirmCurrent) {
   (selected || choices.firstElementChild)?.focus();
 }
 
+function originalLink(receiptId, label) {
+  const link = node("a", label, "neo-demo-original");
+  link.href = "/demo/api/originals/" + receiptId;
+  link.target = "_blank";
+  link.rel = "noopener";
+  return link;
+}
+
+async function showArchive() {
+  try {
+    await connect();
+    const { originals } = await api("originals");
+    const content = node("div", "", "neo-demo-archive");
+    content.append(node("strong", "📁 Receipt archive"));
+    content.append(node("p", "Demo only: files stay on this server for 30 minutes. In the real app, originals go to your own Google Drive folder.", "neo-demo-help"));
+    if (!originals.length) content.append(node("p", "No receipt files yet. Attach a photo or PDF first."));
+    const list = node("ul");
+    for (const item of originals) {
+      const row = node("li");
+      const kind = /\.pdf$/i.test(item.name) ? "📄" : "🖼️";
+      const vendor = item.vendor ? item.vendor.replace(/^\[FICTIONAL DEMO\]\s*/i, "") : item.name;
+      const amount = typeof item.total_amount === "number" ? " · $" + item.total_amount.toFixed(2) : "";
+      row.append(originalLink(item.receipt_id, kind + " " + vendor + (item.date ? " · " + item.date : "") + amount));
+      list.append(row);
+    }
+    if (originals.length) content.append(list);
+    addMessage("neo", content);
+  } catch (error) {
+    setError(error.message);
+  }
+}
+byId("archive").addEventListener("click", showArchive);
+
 function renderReceipt(container, result) {
   container.replaceChildren(node("p", result.message || "Neo finished checking this receipt."));
+  if (result.has_original && result.receipt_id) container.append(originalLink(result.receipt_id, "📁 Open original"));
   const status = result.receipt_status ?? result.status;
   const needsReview = status === "needs_review";
   const posted = editableStates.has(status);

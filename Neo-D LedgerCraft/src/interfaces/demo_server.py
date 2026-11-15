@@ -222,6 +222,12 @@ class DemoHandler(BaseHTTPRequestHandler):
                 self._json(200, self.server.runtime.session(self._token()))
             elif route == "/api/office/receipt-progress":
                 self._json(200, self.server.runtime.progress(self._token()))
+            elif route == "/demo/api/originals":
+                self._json(200, self.server.runtime.originals(self._token()))
+            elif match := re.fullmatch(r"/demo/api/originals/([0-9]{1,6})", route):
+                name, data = self.server.runtime.original(self._token(), int(match.group(1)))
+                mime = {".pdf": "application/pdf", ".png": "image/png"}.get(Path(name).suffix.lower(), "image/jpeg")
+                self._send(200, mime, data)
             else:
                 raise DemoError(404, "Demo page not found.")
         except DemoError as error:
