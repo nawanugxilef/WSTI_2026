@@ -3758,7 +3758,12 @@ window.OFFICE_PERSONALITIES = {
     intro: 'I take in receipts and notes, save originals to Google Drive, and coordinate the team.',
     emoji: '🤖',
     personality: 'Calm and organised. Never rushes you and never judges.',
-    hobby: 'Colour-coding folders.'
+    hobby: 'Colour-coding folders.',
+    waiting: [
+      "Got it. Handing this to the team.",
+      "No rush. I have the paperwork.",
+      "Lining this up for Corgi…"
+    ]
   },
   finance: {
     name: 'Corgi',
@@ -3767,7 +3772,13 @@ window.OFFICE_PERSONALITIES = {
     emoji: '🐶',
     photo: 'data:image/png;base64,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',
     personality: 'Eager and quick. Happiest with a clear receipt.',
-    hobby: 'Fetching totals and chasing GST.'
+    hobby: 'Fetching totals and chasing GST.',
+    waiting: [
+      "Ooh, a receipt! Reading it now…",
+      "Hmm, this bit is hard to read. Looking closer…",
+      "Found the total. Now hunting for the GST…",
+      "Nearly there. Tail is wagging!"
+    ]
   },
   qa: {
     name: 'Bear',
@@ -3776,7 +3787,13 @@ window.OFFICE_PERSONALITIES = {
     emoji: '🐻‍❄️',
     photo: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAADAFBMVEVHcEyxlcidkdHGv+TAuOHZ0+6nmtnDtOK5st3l4PPl4fPMxuiyrNeuoN3Sy+jNwurRwubm4vPay+PVzuvx7/iypeC0qtqzpeCvotWgk9GZjsyvo9ne2PD29frw7vjv7fe9reTj3vHy8fjW0O2vpdKzrtiyrNbe2e+zqtPSxOje2vCcjsrPu+PUwufCseHd1u6bjMrq5/SwqNjNvuS+uODTyeTXw9/YzuzOxOra0u2bkM63rdXv7vjZ0OqtoM3KweT19fr09Pn39vrTweXUxOe+uN/VyurJwuW8t928qdXW0O3KxOa6tdzZ0+7g2vC/q9fv7ffCvOHUyOrl4PPTzezEvuLTzevf2fDi3fHJvuNCPFTb0+7X0uvSxurY0e3XzezVxujb1u+1qNbd1+/Yzuvh3PHl4vPn4/Sdi8nJtd/V0OvYz+23q9TQw+nr6fbm4/Pb0ezt6/bq6PVDPVXFwOPTz+vTw+bNyOfDveK1q9jRweTx8PjSv+TNwebk3/HBrdnOyejRwufRzOnz8vjUzuy3r9q2p9bp5vXQv+Tb1O21rtjPvOPGueKfi8pAOlLSxem5sdzZyevYx+rd2fDQyui5qNO8r9zNuuK5rtWxptCkjs23p9XEr9q2otazqdjAu+DQwebay+y2qNOzrdbOw+bCr9vKuODEuODPxueii8vGs92aisjIu+S/sN/BteDWzOvHwuS2qdnMx+e5rtvz8/m4tNrSxue5qNfRxOelmc+1pdHNvuTKu964qdm5q9q9s9/CueCvqdS6sdWknNPCr9e3sNe8rtqyodKtoc+Qh7qrmc1mXnRNSF27qt+cja6+tduklM6sm9GpoNGtoNulmdeekdDMveOXjsaWjMCEepXDvdnCsuLayuvGttq9qtm6ptSMgJyspNWtotOumtTPy9+pk89WT2bLx+CKgrXBtNjFtuTZ1OhzbYlCQVm7rMtvZX+5tsazpcSxnNStn72MhLC6q8ysnc6TibbEv9Cjkraqnrutpr+BfpKyrcBcVHC+usoWpWzAAAAAx3RSTlMAKHfb25x3CtttY9vfd7oUnc5PKKk3HiikYzeVY5Xv+RTbs1pa0al3UIvvd++pd6nRPKmz5eV3xzJGT22B5b2z///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////+gDbWMgAABYJJREFUWMPt1mdUU2cYB3Bstai1FrWuavfeey81A0K2geSGIAkJEQgRAoEQjElMRHPDCJIEQYaMsCUQQIZAK8OALMWFC/eso7t2t75v0OOx53CD9vQb/w/32//3PvfmnpvHw2MiE/mf8+RTjGWPPzbb8177z6xULXHliUemP3w3xcWfTgNXzymGpaC8dDRLGONGPGcxVJGhb81/Ofp2HQowT09zfztz+CIaK2YllbXtjv6osFTFmOXO+KKsvj3EaLGs+1cfAtsYkTGGUBa20X348KF9zZrRke+og+NjDFEaRCwWT8cAPr90qfdoFIOhUm2Dtdv1dapoQ6hGTLOAvIABfPLTUY3BYIiJiYwEyrqbTw9Mr2JEhiI0S3BwMNU4BQP4iMbSaDQsFisqNNQQExkNkSXLYmhIVKQBsQRTqUEgGIAnIqbRaBwOjSYWI4iGFQUQYMhSuDKj2Ajqvr4Sie/MsYG5HBGPR4Xh8YJFFo4YgUb0lUPgyeoldb6JiYl+iRIM4CGjLCKEz6+pqeHzIyKovGALDdEA4lxv7y4uWan38/NjsyUPYgAhNUQicbkrRIhQg0U0MEXUxd7D1UoCG9TZcZgAaK9IG82KFcvBIBE8EUesYSEXf+neEzvaxwIeaG4U4HU63SqYtDQ4BRQQDWLh7olPdPXj2PdjAOoChUJR4AokgBAiM4o4NI7IGCSJiwPHs/VWLKCqFadQ4HCrC9CCAp2uGQ7BBwR4faiBEhi2dW08FpAiSC8041bjcBDRKRTNjcuJYIqQIFD3lQTG6dfG15Enjw28LkhPHykcwaEo6kIUeLxAAH4QIrh7tqtfRyZ7YwCvCcxm/Pc/osmZyckuQ4FX6JobG8utVque7ep7OxwYQDI48pRcPvBzaWZmZjI+fSRdgaLqYrW6uK4u3qoH4zscsf5TxwZeXYNrk4Nc2FlaWtr2zfGRwkLB8DC3qorr7U2uA+eDulKJAXiBwQcCAuTy38LDd/bL5Ufw5vSClJSUspQqroMM+0omMx8DuK8kM/mIyWQa+F0m2A1H2W02m0vLqqur25X+Dlc/Px8TOJgXfrx/4B8kOjr61wAwyoU1eHyr3W7fAYTY0T6BgAXszdPmtl1hGcDHM/RcvykgoA2nQDeB7CC0+8cqwfEEH58ZGIBwAz2Xd/Tqn3/B79J3JtO3yegatLu+vn7jDgJT6apjAguFOfRh4hH5tWt/0BBL4KndO8ELUfkVCBDymbBPoVCeGxv4WJhDalXb/zb1f80XUX3VubmVlSVNX9bWJqzfSCHc7Dc8PzbwqLCoZ1XVsb6rTZdX8RP92NrcXPqJploAAMGHQID1JNuzGIA053xxin1wcPBYVVqNvpiu1dKbmjYIhVsSktZTwPkNDbaOFzG+6vOkPRU95dxj9kH7ZTWx/DidTic15QhvAeD8jhmTMP+bs66npvZwrcXcKm4xl0QiASDjFtBAoSR1LHDz79y5PQwkdW93W+OJPhIUSDkQEEKgwbav621368Erb4ZtDXMluyUjAxIZRUWgn5DkbLCd7tr4rvsVY1JY2FaY6z0tLdAAgFRqszmdtqEtPkyye2BhdkVFKphg12aQlqKMDKlUmuV0OjvO1jKV3nr3S8qiH85nZ1dkDx08uH07QOD5WVlZzjNnS8q868rnuJ9gcmnJibw8bXfCgQP7D6QO9W2WZnV2dnbtD0fV7Jnj2fm80MzwysrwMi5z/4JFpJ6+7NShXWe61vsbZYHvj29Re4lY0DrcOlwume0xNZdOOnkyb+g0Jd8xf/zL4pxpHxhDaj4Dr5y6tLJEqy3Z1K50WOfe3Z4670N4fQfcDgh4euzZ97bveoXoULRVbX1v0r1uzJ6L35DJgrz+29ru6ekxkYlg5gZEoLy+aGqmbwAAAABJRU5ErkJggg==',
     personality: "Careful and patient. Double-checks so you don't have to.",
-    hobby: 'Spot-the-difference puzzles.'
+    hobby: 'Spot-the-difference puzzles.',
+    waiting: [
+      "Let me check that twice.",
+      "Date, total, GST. One at a time…",
+      "Does the maths add up? Counting again…",
+      "Have we seen this one before? Checking…"
+    ]
   },
   knowledge_manager: {
     name: 'Girraffe',
@@ -3785,7 +3802,12 @@ window.OFFICE_PERSONALITIES = {
     emoji: '🦒',
     photo: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAADAFBMVEVHcEzRnljLfVq5ZFrYmE3qkzznl0TFhWPqt1rprFPknGLDej3jsFjrqVD2yV/3y2DFb2LsslLVf2Him0vdlGHooErAalnCb1vttFTVe17hgi/osle+aVjKh1TelGzHhEXxsEzruFn90WLSemHSgFnagWLZgmPailvNeVrCh03uulnlhzHNuOTohy/TweXSgjvRoXLjkVLHst/ko07ipXPAhErKczHdk0ncg2PqjzfghDHfgjHZnmnanXL80GHinUvtuFn90WLjhzXchznkrFX3yV/foVDiqVPfjD3joE3MkYXYiDzfgjDvvVvnp1HkplHhplLgnU3hlUTPloflo07hlke/Z1XEbVhDPVVBO1Pfnk7gpFHorFTlqVPghjXrslbimUjiijnliDPoizTPel/KjoLzwlzosFb1xl7chjj6zmHxv1vgkEDjhTDqqFDonkjln0zqkjrgmknFclrRlIDJbzPayevXxejQvuPqtlnklkLghzbfiTrWeS7omEK0ZU7Ib1jWfV/LclvNdVvBaVevYUnHbjDfoG/kmUXjkT7qr1Tcj0Ldlknkm0jhp13jjGfnjjndlVDXgDi+bFfVfTTpoUvZfC/PezfKcC/ZgGGsXkbYjUPppE3bjD7ptFjYi0Dmr1fciTzgk0TXh1fQnIreh2Tck0fSikXqizLMczLwtVXJf1jchGPUweXps1fZjVTajFzdqHXRhV/dj03Zl23GdjbDa1bTeV7aikbQlXTcooTZk0bSgTrcgjPgnWXDc1HRfj/RdjLUe1Dyq0jNdkrVmoCcjaa5ZFXkol7im16nWkPGemr1u1PZhETer6PVikzpt3DguLjnomPjslnAgUbBdDjUhk7XmXjpvF25aVGvn8DavdHHb065qcfkoVXRsczGtNnWq7HTqrtzaoTjrGP3yWfhrGrLiXbDf0nQmFfJuNvLprm8rs66alPFdEDcn1r1tk5UTGRlSFTYhnO+bkDMcj3OmJaxlKFNP1TfvMSqm7vVn5toXnjZvtd0TVSPW1iD5BwkAAAAaXRSTlMAFLAUNJ+fCmV3KChZn7OpMkZQbXeVUOCLhmnR8p9GHvy9lZXbi9uf0RTv7zzRgb2zqVDlWuXR22OL5VrRlf////////////////////////////////////////////////////////652KgUAAAEbElEQVRYw+2WVVQbWRyH08IuVm/PbuV0T9fd3ZIQaQQSAjGymyARaEKMJDQhWEKAIMHdIRR3d3fr2bpsvevubnfgPTN0X/bs4XuYefp99zdzZu79o1CbbLLJ/5v79u0BV7cdD2xzuZO4yyOZmbVbXQ4RPdFo9LGdrls2Krin32wWmyNlIC6TEWUyNHHHxiQHTPEWrZYGpU9nZp6GFJ5oz527kTfgcLi5uZBgwVxc27IoW+tCDAm53xWZwKmP05fbDPXviLf0i7vW8sdCaDQsFuvs8OW57neDboc/7Vr+mPkhGn2xOYEbr+1aWz6Mho1sCwzc5khwKHBl5chu5ydoZwapzBPvEYkXmzkJfbkZniAPxUOr+HyHD/HWrLVs+gjoie2EBLSwM4PLJm4zEaqPragiAPhujgRvU6m6RWVgamjoB0zmUEVFJJZJ1Z0IIUL5tioCiUQS0Pc7EmyZpUqoi3yBQEDKyADLVX3EpDI7w0LW1yeRGD4+9O0OX7+7TiIZpPsw3oVgMEgZs7rOSCwtDBsZShCs5ZXbYf4BHbWHxTq6DnCQCITQNiy2qSkV9AJ5esejMJ+A8/PJFArlnTWAguEj4KcGNk1Pf7PSRKfTlR3ie2G/IptGrcZgfH191xXAwB/rGVtIbSMolWViC7wg++SpU1YMBJBQKCwfeoZEQmVeYFQpy9Tx2sOwv/L7xwEngzDrAAPrmgQyfM0oy1drtXfDCZ7S6/VfzF0dCgJgFq6pKcDRo9NdGDvKylepztfBCp5pbf3M399/js1mW0GZX60aja8m3TZ8tj5flc6OjYUVvGAwXObx/P3r7fafb88ZjuutNoDGZstXdY+PIxCgPjfc+JbH431iLwVFbhv0f2bXDdfZgtJV7NwvLw3E3gUrOPfT9cvfacW1mTW/gCZX9fqhtNLhOr9k1flLcXEz4fCCQi9y9/fFLbUtLeK/ebzfWltvlpaWptmNseNxcYkTCAR4fPCUxdJvLi4uNv/1xw2D4WZlZWWa3GgE+RIyAkGUdJWbwAE7UX9//PLvt67favfyqiyXpwwkJpYkhoe/Di8IKDRx5ufnOVwTl7tKJld7AcrJKauJJUs/ZAnfhBUIRyN+nDElcEAJ01R0cDQeDwTV5JSUkqWlHOFB+C1ZNDoZERExc2XKcmUiKhgIpHg8vjo6K/yrksI3PBDs6U8KC4qSkpKAJA+HwwVHSaXAEB2cFZ6Vl4foUDj4tKKgERiKCgKAABcVEBAQBZpkibwLyR4Iz9ZXJotiYgq8AcAB8sAjEo2OyJP3Ijzans2ZbAQKyOCtwOGEQpFIlDNiTFa7IRT4kavx0pzec715MQqFQihqaFBM1PupWPuQjgfpfmlpZLm8/uzLhaBJQUMDbmQgO9vqjvh03ttts7GDgvK3uqRES3PyGnurja++dmAjs4r7gw/VtLe/hHL2k5eXk8lyYzpr42POLicU6nGMxma325PVL3qg7gynx2pqsjG+z/2bgW3Xw1v3bI6tm/zn+QcmHuHov2yxSgAAAABJRU5ErkJggg==',
     personality: 'Quiet, with a very long memory.',
-    hobby: 'Keeping the bookshelf tidy.'
+    hobby: 'Keeping the bookshelf tidy.',
+    waiting: [
+      "Finding the right shelf for this…",
+      "Checking my notes for this shop…",
+      "Debits here, credits there. Balancing…"
+    ]
   },
   boss: {
     name: 'Felix',
@@ -4598,6 +4620,30 @@ window.OFFICE_PERSONALITIES = {
       }
       apply({ agents }, label);
     }
+    // While a step takes a while, the character doing it thinks out loud, in their own voice.
+    let waitingKey = '', waitingSince = 0, waitingCount = 0;
+    const waitingTimer = setInterval(() => {
+      const event = recentReceiptEvent;
+      if (!event || event.stage === 'terminal' || !RECEIPT_STAGES[event.stage] || !isLatestReceiptEvent(event)
+          || Date.parse(event.at) < Date.now() - 120000) {
+        waitingKey = '';
+        return;
+      }
+      const key = event.run_id + ':' + event.seq;
+      const now = performance.now();
+      if (key !== waitingKey) {
+        waitingKey = key;
+        waitingSince = now;
+        waitingCount = 0;
+        return;
+      }
+      const [id] = RECEIPT_STAGES[event.stage];
+      const lines = agents[id] && agents[id].personality.waiting;
+      if (!lines || !lines.length || waitingCount >= 8 || now - waitingSince < 2200) return;
+      renderBubble(agents[id], 2600).textContent = lines[waitingCount++ % lines.length];
+      waitingSince = now + 600;
+    }, 700);
+
     function advanceReceiptProgress() {
       if (!live || receiptTimer || !queuedReceiptEvents.length) return;
       for (const runId of activeReceiptStages.keys()) {
@@ -4975,6 +5021,7 @@ window.OFFICE_PERSONALITIES = {
         cancelAnimationFrame(raf);
         clearInterval(pollTimer);
         clearTimeout(receiptTimer);
+        clearInterval(waitingTimer);
         container.removeEventListener('neo-office:receipt-context', registerDemoReceiptContext);
         container.removeEventListener('neo-office:refresh-progress', poll);
         ro.disconnect(); io.disconnect();

@@ -68,6 +68,48 @@ business_categories:
     activity: "printing_3d"
     default_business_pct: 100
     description: "Repairs and servicing of business equipment, e.g. 3D printer repair or spare-part fitting"
+  rent_expenses:
+    tax_label: "Rent expenses"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Rent for business premises, a studio, workshop, market stall or storage unit"
+  contractors:
+    tax_label: "Contractor, sub-contractor and commission expenses"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Payments to contractors, subcontractors and commissions paid for business work"
+  advertising_marketing:
+    tax_label: "All other expenses"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Ads, flyers, business cards, signage, website promotion, social media ads"
+  phone_internet:
+    tax_label: "All other expenses"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 50
+    description: "Mobile phone plan, phone calls and internet used for the business (default 50% business estimate)"
+  insurance:
+    tax_label: "All other expenses"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Business insurance such as public liability, professional indemnity or equipment cover"
+  bank_fees:
+    tax_label: "All other expenses"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Business bank account fees, merchant and card payment fees, payment platform fees"
+  professional_fees:
+    tax_label: "All other expenses"
+    stream: "abn"
+    activity: "printing_3d"
+    default_business_pct: 100
+    description: "Bookkeeper, accountant, legal advice, licences, registrations and professional memberships"
 
 payg_categories:
   work_car_travel:

@@ -28,7 +28,7 @@ def valid_activities() -> tuple:
 
 # Business-exclusive categories (a business's own supplies and income) come from
 # biz.exclusive_category_map(). Shared ABN categories (office, tools, software, shipping,
-# car, travel, repairs) fit every business and never overwrite a receipt's known activity.
+# car, travel, repairs, rent, contractors, advertising, phone, insurance, fees) fit every business and never overwrite a receipt's known activity.
 
 VALID_ABN_TAX_LABELS = {
     # Field names from the ATO myTax 2026 "Net income or loss from business" instructions.
@@ -36,6 +36,8 @@ VALID_ABN_TAX_LABELS = {
     "Depreciation expenses",
     "Motor vehicle expenses",
     "Repairs and maintenance",
+    "Rent expenses",
+    "Contractor, sub-contractor and commission expenses",
     "All other expenses",
     "Other business income",
 }

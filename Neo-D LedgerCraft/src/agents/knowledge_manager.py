@@ -1301,7 +1301,21 @@ class KnowledgeManager:
                     JournalLeg(account_code=credit_account, debit=0.0, credit=total, description=payment_desc),
                 ]
             else:
-                if "shipping" in cat_lower or "freight" in cat_lower:
+                if cat_lower == "rent_expenses":
+                    exp_account = self._ensure_account_exists("5600", "Rent", "expense")
+                elif cat_lower == "contractors":
+                    exp_account = self._ensure_account_exists("5610", "Contractors & Commissions", "expense")
+                elif cat_lower == "advertising_marketing":
+                    exp_account = self._ensure_account_exists("5620", "Advertising & Marketing", "expense")
+                elif cat_lower == "phone_internet":
+                    exp_account = self._ensure_account_exists("5630", "Phone & Internet", "expense")
+                elif cat_lower == "insurance":
+                    exp_account = self._ensure_account_exists("5640", "Insurance", "expense")
+                elif cat_lower == "bank_fees":
+                    exp_account = self._ensure_account_exists("5650", "Bank & Payment Fees", "expense")
+                elif cat_lower == "professional_fees":
+                    exp_account = self._ensure_account_exists("5660", "Accounting & Professional Fees", "expense")
+                elif "shipping" in cat_lower or "freight" in cat_lower:
                     exp_account = self._ensure_account_exists("5200", "Shipping & Postage", "expense")
                 elif "software" in cat_lower or "subscription" in cat_lower:
                     exp_account = self._ensure_account_exists("5300", "Software & Cloud Services", "expense")

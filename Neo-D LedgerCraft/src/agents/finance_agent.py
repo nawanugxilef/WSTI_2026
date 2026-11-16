@@ -125,7 +125,10 @@ RULES:
 """
 
 _DEFAULT_ABN_RULE = '   - "abn": Sole trader business expenses/income. Set business_activity to "printing_3d" (materials_3d_printing, income_3d_printing, tools_equipment, repairs_maintenance, shipping_freight, software_subscriptions, office_supplies) or "dog_walking" (dog_walking_supplies, income_dog_walking, travel_parking, car_fuel_maintenance).'
-_SHARED_ABN = "tools_equipment, repairs_maintenance, shipping_freight, software_subscriptions, office_supplies, travel_parking, car_fuel_maintenance"
+_SHARED_ABN = (
+    "tools_equipment, repairs_maintenance, shipping_freight, software_subscriptions, office_supplies, travel_parking, "
+    "car_fuel_maintenance, rent_expenses, contractors, advertising_marketing, phone_internet, insurance, bank_fees, professional_fees"
+)
 
 
 def system_prompt() -> str:
