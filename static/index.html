@@ -4639,9 +4639,9 @@ window.OFFICE_PERSONALITIES = {
       }
       const [id] = RECEIPT_STAGES[event.stage];
       const lines = agents[id] && agents[id].personality.waiting;
-      if (!lines || !lines.length || waitingCount >= 8 || now - waitingSince < 2200) return;
+      if (!lines || !lines.length || waitingCount >= 8 || now - waitingSince < 1000) return;
       renderBubble(agents[id], 2600).textContent = lines[waitingCount++ % lines.length];
-      waitingSince = now + 600;
+      waitingSince = now + 1400;
     }, 700);
 
     function advanceReceiptProgress() {
