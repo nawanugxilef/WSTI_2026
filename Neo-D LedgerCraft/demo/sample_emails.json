@@ -1,0 +1,30 @@
+[
+  {
+    "id": "demo:1",
+    "from": "Fictional Filament Co <orders@fictional-filament.example>",
+    "subject": "[FICTIONAL DEMO] Tax invoice #FF-1042",
+    "date": "2026-11-10",
+    "body": "Thanks for your order. Tax invoice FF-1042. 2 x PLA filament 1kg spool. Total $54.00 AUD including GST $4.91. Paid by card."
+  },
+  {
+    "id": "demo:2",
+    "from": "Fictional Demo Cafe <hello@fictional-cafe.example>",
+    "subject": "[FICTIONAL DEMO] Your receipt from Fictional Demo Cafe",
+    "date": "2026-11-12",
+    "body": "Receipt. Flat white and banana bread. Total $11.50 AUD. Thanks for visiting!"
+  },
+  {
+    "id": "demo:3",
+    "from": "Fictional Pet Supplies <noreply@fictional-pets.example>",
+    "subject": "[FICTIONAL DEMO] Order confirmation - dog walking leads",
+    "date": "2026-11-13",
+    "body": "Your order is confirmed. 3 x dog leads for walking clients. Total $36.00 AUD including GST $3.27."
+  },
+  {
+    "id": "demo:4",
+    "from": "Fictional News Weekly <news@fictional-news.example>",
+    "subject": "[FICTIONAL DEMO] This week's top stories",
+    "date": "2026-11-14",
+    "body": "Five stories you missed this week. Read more on our site."
+  }
+]
