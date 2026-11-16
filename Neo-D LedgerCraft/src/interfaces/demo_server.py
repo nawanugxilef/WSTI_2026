@@ -83,7 +83,11 @@ def _demo_dashboard_page() -> bytes:
 
 
 # Characters a visitor can pick for the owner. Lion and fox are built into the office page; the rest are files.
-OWNER_PETS = ("lion", "fox", "koala", "cat", "panda", "tiger", "bunny", "penguin")
+OWNER_PETS = (
+    "lion", "fox", "koala", "cat", "panda", "tiger", "bunny",
+    "penguin", "elephant", "monkey", "pig", "cow", "deer", "beaver",
+    "hog", "parrot", "chick", "bee", "fish", "crab", "caterpillar",
+)
 for _pet in OWNER_PETS:
     _STATIC[f"/demo/pets/animal-{_pet}.png"] = (DEMO / "pets" / f"animal-{_pet}.png", "image/png")
     if _pet not in ("lion", "fox"):
