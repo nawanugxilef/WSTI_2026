@@ -36,6 +36,9 @@
   .timeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
   .timeline li { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
   .timeline b { color: var(--accent); }
+  .video { position: relative; display: block; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); }
+  .video img { display: block; width: 100%; height: auto; }
+  .video .play { position: absolute; inset: 0; margin: auto; width: 72px; height: 72px; border-radius: 50%; background: var(--sun); color: var(--ink); display: grid; place-items: center; font-size: 1.8rem; box-shadow: 0 6px 20px rgb(0 0 0 / .25); }
   footer { margin-top: 40px; padding: 24px 0 40px; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); }
   :focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 </style>
@@ -55,6 +58,15 @@
 </header>
 
 <main class="wrap">
+  <section>
+    <h2>Watch the 3-minute pitch</h2>
+    <a class="video" href="https://youtu.be/qvZY3KdFXI8" target="_blank" rel="noopener">
+      <img src="https://i.ytimg.com/vi/qvZY3KdFXI8/maxresdefault.jpg" alt="Neo-D LedgerCraft pitch video on YouTube" width="1280" height="720" loading="lazy">
+      <span class="play" aria-hidden="true">▶</span>
+    </a>
+    <p class="sub" style="margin-top:8px">Opens on YouTube. Fictional data only.</p>
+  </section>
+
   <section>
     <h2>The problem</h2>
     <p class="sub">Sole traders with ADHD lose receipts and miss work deductions. Not because they don't care: starting the paperwork is the hard part.</p>
