@@ -423,11 +423,11 @@ function renderReceipt(container, result) {
       if (open) categoryPicker(settings, result, categoryButton, needsReview);
       else settings.replaceChildren();
     });
-    container.append(categoryButton);
   }
+  let nameButton;
   if ((posted || needsReview) && result.vendor) {
     // Fix a typo in the name after the receipt is already recorded.
-    const nameButton = node("button", "", "neo-demo-action neo-demo-name-button");
+    nameButton = node("button", "", "neo-demo-action neo-demo-name-button");
     nameButton.type = "button";
     nameButton.setAttribute("aria-expanded", "false");
     const tag = node("span", "🏷️");
@@ -462,10 +462,10 @@ function renderReceipt(container, result) {
       input.focus();
       input.select();
     });
-    container.append(nameButton);
   }
+  const extras = [categoryButton, nameButton].filter(Boolean);
   if (!canAllocate) {
-    container.append(settings);
+    container.append(...extras, settings);
     return;
   }
   if (needsReview) {
@@ -492,7 +492,7 @@ function renderReceipt(container, result) {
     });
     actions.append(button);
   }
-  container.append(actions, settings);
+  container.append(actions, ...extras, settings);
 }
 
 async function correctReceipt(container, result, allocation, opener) {
