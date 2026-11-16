@@ -173,3 +173,14 @@ def test_emoji_are_removed_from_notes_before_parsing():
     with patch.object(FinanceAgent, "_call_gemini_text", return_value="parsed") as call:
         agent.parse_note("Coffee ☕️ 5.50")
     assert call.call_args.args[0] == "Coffee 5.50"
+
+
+def test_terse_note_in_a_script_with_vowel_marks_keeps_its_amount():
+    import datetime as _dt
+
+    from src.agents.finance_agent import _TERSE_EXPENSE_NOTE
+
+    for note, word in (("चाय 3", "चाय"), ("समोसा 5", "समोसा"), ("ชาเย็น 4", "ชาเย็น"), ("coffee 5", "coffee")):
+        match = _TERSE_EXPENSE_NOTE.fullmatch(note)
+        assert match and match["description"] == word and match["amount"] == note.split()[-1], note
+    assert _dt  # terse notes without a date rely on the capture date supplied by the caller

@@ -175,7 +175,9 @@ _BARE_NOTE_AMOUNT = re.compile(
     r"(?<![\w.,/$€£¥-])((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{1,2}|\d+,\d{1,2})(?![\w.,/-])"
 )
 _DEMO_PREFIX = r"(?:\[FICTIONAL DEMO\][ \t]+)?"
-_NOTE_WORD = r"(?:3d|[^\W\d_][^\W\d_]*(?:[.'’&-][^\W\d_]*)*)"
+# A letter, or a combining vowel sign: Hindi, Thai and other scripts write vowels as marks that \w does not match.
+_NOTE_LETTER = r"(?:[^\W\d_]|[̀-ًͯ-ٟऀ-ॣ॰-෿฀-๏])"
+_NOTE_WORD = rf"(?:3d|{_NOTE_LETTER}+(?:[.'’&-]{_NOTE_LETTER}*)*)"
 _NOTE_AMOUNT_TAIL = rf"[ \t]+(?:AUD[ \t]*\$?|A\$|\$)?[ \t]*(?P<amount>{NUMBER_PATTERN})"
 _COFFEE_WORD = r"(?:coffee|coffe|cofee)"
 _TERSE_EXPENSE_NOTE = re.compile(

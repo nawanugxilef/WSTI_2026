@@ -71,7 +71,7 @@ dialog.innerHTML = `
             </button>
             <input id="neo-demo-picker" type="file" multiple accept=".jpg,.jpeg,.png,.heic,.heif,.pdf,image/jpeg,image/png,image/heic,image/heif,application/pdf" hidden>
             <label class="neo-demo-sr" for="neo-demo-note">Receipt note or caption</label>
-            <textarea id="neo-demo-note" rows="1" maxlength="300" placeholder="e.g. coffee 5"></textarea>
+            <textarea id="neo-demo-note" rows="1" maxlength="300" placeholder="coffee 5 · 咖啡 5 · चाय 3"></textarea>
             <button id="neo-demo-send" type="submit" aria-label="Send" disabled>
               <svg class="neo-demo-send-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 9.5 14.5M21 3l-7 18-4.5-6.5L3 10l18-7Z"/></svg>
             </button>
@@ -136,7 +136,7 @@ function node(tag, text, className) {
   return element;
 }
 
-const WELCOME = "Hi, I'm Neo! Attach a receipt photo or PDF, or just type it your way: \"coffee 5\", \"panipuri 5\", \"咖啡 5\". No $ sign needed, and other languages work too. I'll work out the rest for tax time.";
+const WELCOME = "Hi, I'm Neo! Attach a receipt photo or PDF, or just type it your way: \"coffee 5\", \"panipuri 5\", \"咖啡 5\", \"चाय 3\". No $ sign, no shop name, your own language: the AI works out the rest for tax time.";
 
 function addMessage(sender, content) {
   const bubble = node("article", "", "neo-demo-bubble neo-demo-bubble--" + sender);
