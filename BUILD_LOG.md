@@ -58,6 +58,10 @@ The development roadmap completed and underway during the contest build period:
 - **One-Command Deploy:** A single server command deploys the web demo, Telegram bot and owner dashboard from this repository to AWS EC2 (`m7i-flex.large`, Ubuntu 24.04, Sydney).
 - **Test Suite:** 217 tests and 28 subtests passing on 13 November 2026.
 
+### 2.55 Inbox Scout (Nov 17, 2026)
+- **Email receipts:** New module `src/email_scout`. Gemini reads likely receipt emails from Gmail (read-only), records new receipts in the Neo ledger and marks ones already logged as repeat. Tested with fictional emails; not yet run against a real Gmail account.
+- **Test Suite:** 249 tests and 28 subtests passing on 17 November 2026.
+
 ### 2.6 Pitch Night Preparation & Hardware Sync (Nov 17–20, 2026)
 - **Pitch Night Interactive Demo:** Interactive stage demo featuring live web receipt intake and ATO deduction reporting review.
 - **Physical Companion Preview:** Hardware kit card assembly guide (`docs/hardware_bom_and_kitcard_spec.md` and `docs/assembly_guide_3d.html`) and serial protocol specification for physical desk companion boxes.

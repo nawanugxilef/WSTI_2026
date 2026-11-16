@@ -1,5 +1,7 @@
 # Neo-D LedgerCraft & Desk Companion: Comprehensive Dossier for NotebookLM
 
+> **Status, 17 November 2026:** the physical desk companion described here is a design only. It has not been built. The software (Telegram bot, web demo, dashboard, 3D office) is live. Email receipts are handled by the Inbox Scout module, run from the command line.
+
 ---
 
 ## 1. Executive Summary & Core Elevator Pitch

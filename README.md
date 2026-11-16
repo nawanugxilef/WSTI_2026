@@ -33,9 +33,10 @@ The public demo runs the same Gemini pipeline as the bot: Corgi reads any typed 
 | 3D office with live agent activity and task board | Live |
 | Owner dashboard (installable on a phone): Receipts, myTax, Books, CSV export | Live, owner only |
 | Telegram commands: `/recent`, `/mytax`, `/pnl`, `/spending`, `/balance`, `/dashboard`, `/reward`, `/companion`, `/backup` and more | Live, owner only |
+| Inbox Scout: Gemini reads receipt emails (Gmail, read-only), records new ones and marks ones already in the ledger as repeat | Built 17 Nov: command line; tested with fictional emails, not yet with a real Gmail account |
 | Physical desk companion (ESP32-C3, about $6.10 AUD in parts) | Design: bill of materials and 3D assembly guide, not yet built |
 
-Automated tests: **234 tests and 28 subtests pass** (14 November 2026).
+Automated tests: **249 tests and 28 subtests pass** (17 November 2026).
 
 **Cash basis.** The ledger records income when it reaches the bank and expenses when they are paid. Card and Afterpay/Zip purchases are posted as a liability. Unpaid client invoices (receivables) and unpaid supplier bills (payables) are not tracked, and card or BNPL repayments are not posted yet, so the Books tab understates net worth. The myTax summary is built from recorded receipts and is not affected. Many small businesses may use the cash basis; check with a registered tax agent.
 
