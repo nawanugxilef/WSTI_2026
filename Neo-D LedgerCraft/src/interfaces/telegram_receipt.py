@@ -41,7 +41,7 @@ CATEGORY_LABELS = {
     "health_medical": "Health & medical",
     "transport_personal": "Personal transport",
     "entertainment": "Entertainment",
-    "hobby_3d_printing": "3D printing hobby",
+    "hobby_3d_printing": "Hobby",
     "transfer": "Transfer",
     "general": "General",
 }
