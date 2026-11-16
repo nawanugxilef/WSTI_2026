@@ -575,12 +575,27 @@ async function api(path, method = "GET", payload) {
   return result;
 }
 
+function receiptDetail(result) {
+  if (!result?.vendor || !Number.isFinite(result.total_amount)) return "";
+  const vendor = result.vendor.replace(/^\[FICTIONAL DEMO\]\s*/i, "");
+  const label = (result.category_options || []).find((option) => option.id === result.category)?.label
+    || String(result.category || "").replace(/_/g, " ");
+  const lead = { recorded: "Filed", corrected: "Filed", flagged: "Filed, flagged", needs_review: "Needs a check", duplicate: "Already filed" }[result.status];
+  return lead ? lead + ": " + vendor + " · $" + result.total_amount.toFixed(2) + (label ? " · " + label : "") : "";
+}
+
 function updateJob(job, animate = true) {
   clearTimeout(pollTimer);
   const context = job && intakeContext?.jobId === job.id ? intakeContext : null;
   if (context && job.run_ids?.length) {
     office?.dispatchEvent(new CustomEvent("neo-office:receipt-context", {
       detail: { runIds: job.run_ids, kind: context.kind, note: context.note },
+    }));
+  }
+  if (job?.results?.length && job.run_ids?.length) {
+    // Tell the office what was actually read from each receipt, so the scene shows real values.
+    office?.dispatchEvent(new CustomEvent("neo-office:receipt-context", {
+      detail: { runIds: job.run_ids, details: job.results.map(receiptDetail) },
     }));
   }
   if (job) office?.dispatchEvent(new Event("neo-office:refresh-progress"));

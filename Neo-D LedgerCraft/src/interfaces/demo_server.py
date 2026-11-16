@@ -77,7 +77,7 @@ def _demo_dashboard_page() -> bytes:
                          f'<style>{hide}</style><script>window.NEO_DASHBOARD_API = "/demo/api/dashboard";</script>'
                          '<script src="/dashboard.js" defer></script>', 1)
             .replace('<h1>Neo Dashboard</h1>', '<h1>Neo Dashboard · Demo</h1>', 1)
-            .replace('<a class="quiet-button" href="/">Office</a>', '<a class="quiet-button" href="/demo">Chat</a>', 1)
+            .replace('<a class="quiet-button" href="/">Office</a>', '<a class="quiet-button" href="/demo">← Back to chat</a>', 1)
             .replace('<main class="frame">', '<main class="frame">' + banner, 1)
             .encode("utf-8"))
 

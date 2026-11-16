@@ -4544,15 +4544,28 @@ window.OFFICE_PERSONALITIES = {
       return lastSequenceByRun.get(event.run_id) === event.seq;
     }
     function registerDemoReceiptContext(event) {
-      const { runIds, kind, note } = event.detail || {};
+      const { runIds, kind, note, details } = event.detail || {};
       if (!Array.isArray(runIds)) return;
       const caption = typeof note === 'string' ? note.trim().slice(0, 120) : '';
-      for (const value of runIds.slice(0, 10)) {
+      let fresh = '';
+      for (const [index, value] of runIds.slice(0, 10).entries()) {
         if (typeof value !== 'string' || !/^[0-9a-f]{32}$/i.test(value)) continue;
         const runId = value.toLowerCase();
         if (!demoReceiptContexts.has(runId)) {
           demoReceiptContexts.set(runId, { pdf: kind === 'pdf', caption, sequence: 0 });
         }
+        // What was read from this receipt (vendor, total, category), sent by the demo chat when it is known.
+        const detail = Array.isArray(details) && typeof details[index] === 'string' ? details[index].trim().slice(0, 120) : '';
+        const context = demoReceiptContexts.get(runId);
+        if (detail && context.detail !== detail) {
+          context.detail = detail;
+          fresh = detail;
+        }
+      }
+      if (fresh) {
+        renderReceiptProgress();
+        const speaker = fresh.startsWith('Needs a check') ? agents.qa : agents.knowledge_manager;
+        renderBubble(speaker, 6000).textContent = fresh;
       }
       while (demoReceiptContexts.size > 80) demoReceiptContexts.delete(demoReceiptContexts.keys().next().value);
       for (let i = queuedReceiptEvents.length - 1; i >= 0; i--) {
@@ -4580,7 +4593,8 @@ window.OFFICE_PERSONALITIES = {
           ? RECEIPT_OUTCOMES[event.outcome] || 'Receipt processing finished'
           : RECEIPT_STAGES[event.stage][4];
         const completedDemo = event.stage === 'terminal' && demoReceiptContexts.has(event.run_id);
-        label = `${isLatestReceiptEvent(event) && !completedDemo ? 'Live' : 'Recent'} · ${summary}`;
+        const detail = event.stage === 'terminal' && demoReceiptContexts.get(event.run_id)?.detail;
+        label = `${isLatestReceiptEvent(event) && !completedDemo ? 'Live' : 'Recent'} · ${detail || summary}`;
       }
       apply({ agents }, label);
     }
