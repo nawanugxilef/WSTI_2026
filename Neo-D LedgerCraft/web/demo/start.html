@@ -103,7 +103,7 @@
       <input id="other" maxlength="40" placeholder="e.g. Mobile coffee cart">
     </div>
     <button class="btn" type="submit">Open my office →</button>
-    <p class="hint">All optional. Your name and character stay in this browser and become the owner in your office. <a href="/demo" id="skip">Skip</a></p>
+    <p class="hint">All optional. Your name and character stay in this browser and become the owner in your office. <a href="/demo" id="skip">Skip</a> · <a href="/" id="reset">Clear my answers</a></p>
   </form>
   <p class="note"><b>New:</b> <a href="/demo/inbox">Inbox Scout: find receipts in email →</a></p>
   <p class="note">The browser demo uses fictional data only. Files are deleted after 30 minutes.</p>
@@ -131,6 +131,12 @@
   });
   if (location.hash === "#about") openForm();  // sent here by /demo on a first visit
   document.getElementById("skip").addEventListener("click", () => save("neo-demo-intro", "1"));
+  document.getElementById("reset").addEventListener("click", (event) => {
+    event.preventDefault();
+    ["neo-demo-name", "neo-demo-pet", "neo-demo-business", "neo-demo-other", "neo-demo-intro"].forEach((k) => save(k, ""));
+    location.href = "/#about";
+    location.reload();
+  });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const other = document.getElementById("other").value.trim();
