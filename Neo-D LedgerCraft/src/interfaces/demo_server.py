@@ -96,7 +96,9 @@ for _pet in OWNER_PETS:
 _OFFICE_SCRIPT = "<script>\n// Agentic AI Office: a small Three.js office"
 # The owner character takes the first name and animal the visitor chose on the start page (kept in their browser).
 _OWNER_NAME_SCRIPT = (
-    '<script>try{const n=(localStorage.getItem("neo-demo-name")||"").trim().slice(0,20);'
+    # First visit: ask the three intro questions on the start page before the office opens.
+    '<script>try{if(!localStorage.getItem("neo-demo-intro"))location.replace("/#about");'
+    'const n=(localStorage.getItem("neo-demo-name")||"").trim().slice(0,20);'
     'if(n)window.OFFICE_PERSONALITIES.boss.name=n;'
     'const p=localStorage.getItem("neo-demo-pet");'
     'if(' + json.dumps(list(OWNER_PETS)) + '.includes(p)){window.NEO_OWNER_PET="animal-"+p+".glb";'

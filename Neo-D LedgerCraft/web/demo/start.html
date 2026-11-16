@@ -121,11 +121,16 @@
   const showOther = () => { document.getElementById("other-wrap").hidden = work.value !== "other"; };
   work.addEventListener("change", showOther);
   showOther();
-  document.querySelector("a.choice.main").addEventListener("click", (event) => {
-    event.preventDefault();
+  const openForm = () => {
     form.hidden = false;
     document.getElementById("name").focus();
+  };
+  document.querySelector("a.choice.main").addEventListener("click", (event) => {
+    event.preventDefault();
+    openForm();
   });
+  if (location.hash === "#about") openForm();  // sent here by /demo on a first visit
+  document.getElementById("skip").addEventListener("click", () => save("neo-demo-intro", "1"));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const other = document.getElementById("other").value.trim();
@@ -133,6 +138,7 @@
     save("neo-demo-pet", form.querySelector("input[name=pet]:checked").value);
     save("neo-demo-business", work.value === "other" && !other ? "example" : work.value);
     save("neo-demo-other", work.value === "other" ? other : "");
+    save("neo-demo-intro", "1");
     location.href = "/demo";
   });
 </script>
