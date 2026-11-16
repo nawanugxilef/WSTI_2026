@@ -627,14 +627,23 @@ class DemoRuntime:
     @_in_session_profile
     def correct(self, token: str | None, payload: object) -> dict:
         if not isinstance(payload, dict) or payload.keys() - {
-            "receipt_id", "claim_stream", "business_activity", "business_pct", "category",
+            "receipt_id", "claim_stream", "business_activity", "business_pct", "category", "vendor",
         }:
-            raise DemoError(400, "Send a receipt and its updated category or allocation.")
+            raise DemoError(400, "Send a receipt and its updated name, category or allocation.")
         receipt_id = payload.get("receipt_id")
         if type(receipt_id) is not int or not 0 < receipt_id < 2**63:
             raise DemoError(400, "Choose a valid demo receipt.")
         category_edit = "category" in payload
-        if category_edit:
+        if "vendor" in payload:
+            # Fix a typo in the shop or item name; nothing else about the receipt changes.
+            vendor = payload["vendor"]
+            if payload.keys() != {"receipt_id", "vendor"} or not isinstance(vendor, str):
+                raise DemoError(400, "Send only the corrected name.")
+            vendor = re.sub(r"\s+", " ", vendor).strip()
+            if not 0 < len(vendor) <= 80:
+                raise DemoError(400, "Use a name of 1 to 80 characters.")
+            changes = {"vendor": vendor}
+        elif category_edit:
             category = payload["category"]
             if payload.keys() != {"receipt_id", "category"} or not isinstance(category, str):
                 raise DemoError(400, "Choose a valid category for this receipt.")

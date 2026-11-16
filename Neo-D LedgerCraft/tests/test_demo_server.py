@@ -800,3 +800,18 @@ def test_visitor_business_choice_gives_its_own_profile_and_fresh_ledger(demo_ser
     assert [b["key"] for b in DemoClient(demo_server).open()["session"]["businesses"]] == ["printing_3d", "dog_walking"]
     status, _, page = client.request("GET", "/demo")
     assert b"neo-demo-name" in page and b"NEO_OWNER_PET" in page
+
+
+def test_demo_fixes_a_typed_name_and_downloads_the_csv(demo_server):
+    client = DemoClient(demo_server)
+    client.open()
+    done = client.intake({"text": "[FICTIONAL DEMO] cofww $5.00 on 2024-05-01"})
+    receipt = done["job"]["results"][0]
+    status, _, fixed = client.request("POST", "/demo/api/correct", {"receipt_id": receipt["receipt_id"], "vendor": "  Coffee  "})
+    assert status == 200 and fixed["result"]["vendor"] == "Coffee" and fixed["result"]["total_amount"] == 5.0
+    assert client.request("POST", "/demo/api/correct", {"receipt_id": receipt["receipt_id"], "vendor": ""})[0] == 400
+    status, headers, body = client.request("GET", "/demo/api/export.csv?fy=2023")
+    assert status == 200 and headers["Content-Type"].startswith("text/csv") and "attachment" in headers["Content-Disposition"]
+    assert b"Coffee" in body and b"cofww" not in body
+    assert b'href="/demo/dashboard">Dashboard</a>' in client.request("GET", "/demo")[2]
+    assert DemoClient(demo_server).request("GET", "/demo/api/export.csv")[0] == 401

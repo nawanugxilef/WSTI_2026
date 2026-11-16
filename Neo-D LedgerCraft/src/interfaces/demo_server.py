@@ -70,7 +70,7 @@ _STATIC = {
 def _demo_dashboard_page() -> bytes:
     """The owner dashboard, pointed at the visitor's demo session and without owner-only tools."""
     html = (DEMO.parent / "index.html").read_text(encoding="utf-8")
-    hide = "details.utility, #export-link, #sign-out, #install-entry, #open-companion, .sign-in-code { display: none !important; }"
+    hide = "details.utility, #sign-out, #install-entry, #open-companion, .sign-in-code { display: none !important; }"
     banner = ('<p class="notice" style="margin:12px 0">Demo dashboard: 12 fictional sample receipts for your kind of work, plus the ones you send in the chat. '
               '<a href="/demo">Back to the chat</a></p>')
     return (html.replace('<script src="/dashboard.js" defer></script>',
@@ -108,7 +108,7 @@ _OWNER_NAME_SCRIPT = (
 
 def _landing_page() -> bytes:
     html = (OFFICE / "index.html").read_text(encoding="utf-8")
-    return (html.replace('<a href="/dashboard">Dashboard</a>', "", 1)
+    return (html.replace('<a href="/dashboard">Dashboard</a>', '<a href="/demo/dashboard">Dashboard</a>', 1)
             .replace(_OFFICE_SCRIPT, _OWNER_NAME_SCRIPT + _OFFICE_SCRIPT, 1)
             .replace("</head>", '<link rel="stylesheet" href="/demo/chat.css">\n'
                      '<script type="module" src="/demo/app.js"></script>\n</head>', 1)
@@ -277,6 +277,12 @@ class DemoHandler(BaseHTTPRequestHandler):
                 fy = query.get("fy", [""])[0]
                 month = query.get("month", [""])[0] or None
                 self._json(200, self.server.runtime.dashboard(self._token(), int(fy) if fy.isdigit() else None, month))
+            elif route == "/demo/api/export.csv":
+                from src.interfaces.web_server import dashboard_csv
+
+                fy = parse_qs(urlsplit(self.path).query).get("fy", [""])[0]
+                name, data = dashboard_csv(self.server.runtime.dashboard(self._token(), int(fy) if fy.isdigit() else None))
+                self._send(200, "text/csv; charset=utf-8", data, attachment=name)
             elif route == "/demo/api/originals":
                 self._json(200, self.server.runtime.originals(self._token()))
             elif match := re.fullmatch(r"/demo/api/originals/([0-9]{1,6})", route):

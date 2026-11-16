@@ -296,16 +296,31 @@ function receiptSettings(container, result, stream, opener) {
     shares.sort((a, b) => b - a);
   }
   const share = requiredSelect(stream === "abn" ? "Business use" : "Work use",
-    shares.map((pct) => [String(pct), pct + "%"]), current?.business_pct);
+    [...shares.map((pct) => [String(pct), pct + "%"]), ["own", "Another amount…"]], current?.business_pct);
+  const own = node("label", "Your own %");
+  const ownInput = node("input");
+  ownInput.type = "number";
+  ownInput.min = "1";
+  ownInput.max = "100";
+  ownInput.step = "1";
+  ownInput.inputMode = "numeric";
+  ownInput.placeholder = "e.g. 65";
+  own.append(ownInput);
+  own.hidden = true;
+  share.select.addEventListener("change", () => {
+    own.hidden = share.select.value !== "own";
+    ownInput.required = !own.hidden;
+    if (!own.hidden) ownInput.focus();
+  });
   if (activity) form.append(activity.field);
   const save = node("button", "Update receipt");
   save.type = "submit";
-  form.append(share.field, save);
+  form.append(share.field, own, save);
   container.replaceChildren(form);
   (activity?.select || share.select).focus();
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const payload = { claim_stream: stream, business_pct: Number(share.select.value) };
+    const payload = { claim_stream: stream, business_pct: Number(share.select.value === "own" ? ownInput.value : share.select.value) };
     if (activity) payload.business_activity = activity.select.value;
     correctReceipt(container.parentElement, result, payload, opener);
   });
@@ -409,6 +424,45 @@ function renderReceipt(container, result) {
       else settings.replaceChildren();
     });
     container.append(categoryButton);
+  }
+  if ((posted || needsReview) && result.vendor) {
+    // Fix a typo in the name after the receipt is already recorded.
+    const nameButton = node("button", "", "neo-demo-action neo-demo-name-button");
+    nameButton.type = "button";
+    nameButton.setAttribute("aria-expanded", "false");
+    const tag = node("span", "🏷️");
+    tag.setAttribute("aria-hidden", "true");
+    nameButton.append(tag, node("span", "Fix name"));
+    nameButton.addEventListener("click", () => {
+      const open = nameButton.getAttribute("aria-expanded") === "false";
+      categoryButton?.setAttribute("aria-expanded", "false");
+      nameButton.setAttribute("aria-expanded", String(open));
+      if (!open) {
+        settings.replaceChildren();
+        return;
+      }
+      const form = node("form");
+      const field = node("label", "Shop or item name");
+      const input = node("input");
+      input.type = "text";
+      input.required = true;
+      input.maxLength = 80;
+      input.value = result.vendor;
+      field.append(input);
+      const save = node("button", "Save name");
+      save.type = "submit";
+      form.append(field, save);
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const vendor = input.value.trim();
+        if (vendor && vendor !== result.vendor) correctReceipt(container, result, { vendor }, nameButton);
+        else settings.replaceChildren();
+      });
+      settings.replaceChildren(form);
+      input.focus();
+      input.select();
+    });
+    container.append(nameButton);
   }
   if (!canAllocate) {
     container.append(settings);

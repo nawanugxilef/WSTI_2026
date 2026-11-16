@@ -547,51 +547,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if path == "/api/dashboard":
                 self._dashboard_json(200, payload)
                 return
-            output = io.StringIO()
-            writer = csv.writer(output)
-            writer.writerow(
-                [
-                    "ID",
-                    "Date",
-                    "Vendor",
-                    "Status",
-                    "Stream",
-                    "Activity",
-                    "Category",
-                    "Business_Pct",
-                    "GST_Status",
-                    "Claimable_GST_AUD",
-                    "Suggested_Tax_Label",
-                    "Amount_AUD",
-                    "Claimable_AUD",
-                    "Personal_Share_AUD",
-                    "Duplicate",
-                ]
-            )
-            for r in payload["receipts"]:
-                writer.writerow(
-                    [
-                        r["id"],
-                        r["date"],
-                        _safe_csv_text(r["vendor"]),
-                        _safe_csv_text(r["status"]),
-                        _safe_csv_text(r["claim_stream"].upper()),
-                        _safe_csv_text(r["business_activity"]),
-                        _safe_csv_text(r["category"]),
-                        f"{r['business_pct']:.0f}%",
-                        _safe_csv_text(r["gst_status"]),
-                        f"{r['tax_amount']:.2f}",
-                        _safe_csv_text(r.get("tax_label") or ""),
-                        f"{r['amount']:.2f}",
-                        f"{r['claim']:.2f}",
-                        f"{r['personal_share']:.2f}",
-                        r["duplicate"],
-                    ]
-                )
-            csv_bytes = output.getvalue().encode("utf-8-sig")
+            filename, csv_bytes = dashboard_csv(payload)
             self.send_response(200)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Disposition", f'attachment; filename="Neo-D_LedgerCraft_{payload["fy"]}_AUD.csv"')
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(csv_bytes)
@@ -956,6 +915,52 @@ def init_demo_database(db_file: str, reset: bool = False) -> None:
     seed_accounts(conn)
     seed_fictional_receipts(ChiefOfStaff(main_conn=conn, finance_agent=FinanceAgent(api_key="")), demo_data)
     conn.close()
+
+
+def dashboard_csv(payload: dict) -> tuple[str, bytes]:
+    """The receipts of a dashboard payload as a CSV file: (file name, bytes)."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "ID",
+            "Date",
+            "Vendor",
+            "Status",
+            "Stream",
+            "Activity",
+            "Category",
+            "Business_Pct",
+            "GST_Status",
+            "Claimable_GST_AUD",
+            "Suggested_Tax_Label",
+            "Amount_AUD",
+            "Claimable_AUD",
+            "Personal_Share_AUD",
+            "Duplicate",
+        ]
+    )
+    for r in payload["receipts"]:
+        writer.writerow(
+            [
+                r["id"],
+                r["date"],
+                _safe_csv_text(r["vendor"]),
+                _safe_csv_text(r["status"]),
+                _safe_csv_text(r["claim_stream"].upper()),
+                _safe_csv_text(r["business_activity"]),
+                _safe_csv_text(r["category"]),
+                f"{r['business_pct']:.0f}%",
+                _safe_csv_text(r["gst_status"]),
+                f"{r['tax_amount']:.2f}",
+                _safe_csv_text(r.get("tax_label") or ""),
+                f"{r['amount']:.2f}",
+                f"{r['claim']:.2f}",
+                f"{r['personal_share']:.2f}",
+                r["duplicate"],
+            ]
+        )
+    return f'Neo-D_LedgerCraft_{payload["fy"]}_AUD.csv', output.getvalue().encode("utf-8-sig")
 
 
 def seed_fictional_receipts(cos, demo_data: dict | None = None) -> None:
