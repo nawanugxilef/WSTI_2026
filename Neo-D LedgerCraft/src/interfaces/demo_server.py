@@ -71,7 +71,7 @@ def _demo_dashboard_page() -> bytes:
     """The owner dashboard, pointed at the visitor's demo session and without owner-only tools."""
     html = (DEMO.parent / "index.html").read_text(encoding="utf-8")
     hide = "details.utility, #export-link, #sign-out, #install-entry, #open-companion, .sign-in-code { display: none !important; }"
-    banner = ('<p class="notice" style="margin:12px 0">Demo dashboard: 12 fictional sample receipts plus the ones you send in the chat. '
+    banner = ('<p class="notice" style="margin:12px 0">Demo dashboard: 12 fictional sample receipts for your kind of work, plus the ones you send in the chat. '
               '<a href="/demo">Back to the chat</a></p>')
     return (html.replace('<script src="/dashboard.js" defer></script>',
                          f'<style>{hide}</style><script>window.NEO_DASHBOARD_API = "/demo/api/dashboard";</script>'

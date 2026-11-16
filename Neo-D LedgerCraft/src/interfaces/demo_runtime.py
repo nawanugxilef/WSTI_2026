@@ -227,7 +227,15 @@ class FixtureFinance(FinanceAgent):
         fixture = self._fixtures.get(hashlib.sha256(file_bytes or b"").hexdigest())
         if fixture is None:
             raise ExtractionUnavailableError("This file does not match a fictional demo sample.")
-        return fixture.model_copy(deep=True)
+        receipt = fixture.model_copy(deep=True)
+        mine = biz.active_businesses()[0]
+        if receipt.business_activity in ("printing_3d", "dog_walking") and receipt.business_activity not in biz.abn_activity_keys():
+            # The downloadable samples were written for the example businesses; book them to this visitor's own.
+            sample = biz.PRESETS[receipt.business_activity]
+            if receipt.category == sample.supplies_category:
+                receipt.category = mine.supplies_category
+            receipt.business_activity = mine.key
+        return receipt
 
 
 class GeminiRequestBudget:
@@ -370,6 +378,39 @@ class Session:
         return Path(self.files.name) / "ledger.db"
 
 
+def universal_samples(business: biz.Business) -> list[ParsedReceipt]:
+    """Twelve fictional receipts that fit any kind of sole-trader work, booked to the visitor's own business."""
+    def abn(vendor, day, total, gst, category):
+        return ParsedReceipt(
+            vendor=f"[FICTIONAL DEMO] {vendor}", date=day, total_amount=total, tax_amount=gst, gst_status="explicit",
+            category=category, purpose="business", claim_stream="abn", business_activity=business.key,
+            business_pct=100, confidence=0.95, notes="Fictional sample",
+        )
+
+    def other(vendor, day, total, category, stream):
+        return ParsedReceipt(
+            vendor=f"[FICTIONAL DEMO] {vendor}", date=day, total_amount=total, category=category,
+            purpose="business" if stream == "payg" else "personal", claim_stream=stream,
+            business_activity="payg_work" if stream == "payg" else "none",
+            business_pct=100 if stream == "payg" else 0, confidence=0.95, notes="Fictional sample",
+        )
+
+    return [
+        abn(f"{business.name} Supplies Co", "2026-08-12", 44.00, 4.00, business.supplies_category),
+        abn("Harbour Office Supplies", "2026-08-14", 22.00, 2.00, "office_supplies"),
+        other("Harbour Corner Cafe", "2026-08-15", 6.50, "dining_coffee", "personal"),
+        other("Corner Grocer", "2026-08-16", 34.20, "groceries", "personal"),
+        abn("CloudBooks Software", "2026-08-20", 19.80, 1.80, "software_subscriptions"),
+        abn("Parramatta Fuel Stop", "2026-09-02", 61.60, 5.60, "car_fuel_maintenance"),
+        other("Short Course Online", "2026-09-05", 120.00, "self_education", "payg"),
+        abn("Western Tool Hire", "2026-09-10", 88.00, 8.00, "tools_equipment"),
+        abn("Client payment", "2026-09-15", 330.00, 30.00, business.income_category),
+        other("City Power and Water", "2026-09-22", 96.00, "utilities", "personal"),
+        other("Workwear Depot", "2026-10-03", 59.00, "work_uniform_clothing", "payg"),
+        other("Riverside Pharmacy", "2026-10-11", 18.40, "health_medical", "personal"),
+    ]
+
+
 def demo_profile(business: str | None, other: str | None) -> dict | None:
     """A visitor's business choice as a profile: a preset key, or their own words for "Other"."""
     if business in biz.PRESETS:
@@ -503,7 +544,7 @@ class DemoRuntime:
                 files = tempfile.TemporaryDirectory(prefix="session-", dir=self._root.name)
                 session = Session(files=files, expires=now + self.session_seconds, profile=profile)
                 self._sessions[token] = session
-                seed = self.seed_samples and profile is None  # the samples are 3D printing and dog walking
+                seed = self.seed_samples
             else:
                 seed = False
             snapshot = self._snapshot(session, now)
@@ -516,10 +557,18 @@ class DemoRuntime:
         from src.interfaces.web_server import seed_fictional_receipts
 
         try:
-            with closing(get_connection(session.database)) as connection:
+            with closing(get_connection(session.database)) as connection, biz.use_profile(session.profile):
                 init_db(connection)
                 seed_accounts(connection)
-                seed_fictional_receipts(DemoOrchestrator(connection, FinanceAgent(api_key="")))
+                orchestrator = DemoOrchestrator(connection, FinanceAgent(api_key=""))
+                if session.profile is None:
+                    seed_fictional_receipts(orchestrator)
+                else:
+                    for receipt in universal_samples(biz.active_businesses()[0]):
+                        orchestrator.km.record_receipt(
+                            data=receipt.model_dump(), file_hash=None, local_path=None,
+                            gdrive_file_id=None, gdrive_status="not_applicable",
+                        )
         except Exception:
             logger.warning("Could not add the fictional sample receipts to a demo session")
 

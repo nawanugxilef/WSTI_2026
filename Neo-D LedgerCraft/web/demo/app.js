@@ -288,7 +288,7 @@ function receiptSettings(container, result, stream, opener) {
   const form = node("form");
   const current = result.claim_stream === stream ? result : null;
   const businesses = session?.businesses?.length ? session.businesses.map((b) => [b.key, b.name])
-    : [["dog_walking", "Dog Walking"], ["printing_3d", "3D Printing"]];
+    : [["custom_my_business", "My business"]];
   const activity = stream === "abn" ? requiredSelect("Activity", businesses, current?.business_activity) : null;
   const shares = [100, 80, 50, 30];
   if (current?.business_pct > 0 && !shares.includes(current.business_pct)) {
@@ -544,14 +544,14 @@ function stored(key) {
 }
 function profileQuery() {
   const business = stored("neo-demo-business"), other = stored("neo-demo-other");
-  if (business === "other") return other ? "?other=" + encodeURIComponent(other) : "";
-  return business ? "?business=" + encodeURIComponent(business) : "";
+  // No choice made: a neutral business, so the demo fits any kind of work.
+  if (!business || business === "other" || business === "example") return "?other=" + encodeURIComponent(other || "My business");
+  return "?business=" + encodeURIComponent(business);
 }
 function profileMatches(current) {
   const business = stored("neo-demo-business"), keys = (current.businesses || []).map((b) => b.key);
-  if (!profileQuery() || !keys.length) return true;
-  if (business === "other") return keys[0].startsWith("custom_");
-  if (business === "example") return keys.length === 2;
+  if (!keys.length) return true;
+  if (!business || business === "other" || business === "example") return keys.length === 1 && keys[0].startsWith("custom_");
   return keys.length === 1 && keys[0] === business;
 }
 function welcome() {
