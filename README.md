@@ -1,6 +1,6 @@
 # Neo-D LedgerCraft & Desk Companion (`WSTI_2026`)
 
-An ADHD-friendly receipt catch-up assistant for sole traders in Sydney, Australia. Send a receipt in a chat. A crew of four agents reads it, checks it, files it in a double-entry ledger and builds the ATO myTax summary. Womby the wombat celebrates every receipt with +10 XP. Nothing punishes you for being late. Built in **Australian Dollars (`$ AUD`)**. A one-time `/setup` in Telegram picks up to three businesses (cleaning, trades, photography, hair & beauty, rideshare, online shop, consulting, 3D printing, dog walking, or your own); the demo uses the owner's two businesses, **Dog Walking** and **3D Printing**.
+An ADHD-friendly receipt catch-up assistant for sole traders in Sydney, Australia. Send a receipt in a chat. A crew of four agents reads it, checks it, files it in a double-entry ledger and builds the ATO myTax summary. Womby the wombat celebrates every receipt with +10 XP. Nothing punishes you for being late. Built in **Australian Dollars (`$ AUD`)**. A one-time `/setup` in Telegram picks up to three businesses (cleaning, trades, photography, hair & beauty, rideshare, online shop, consulting, 3D printing, dog walking, or your own).
 
 > **Most apps help you keep up. Neo-D helps you catch up.**
 
