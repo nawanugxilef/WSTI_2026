@@ -44,7 +44,7 @@ Automated tests: **234 tests and 28 subtests pass** (14 November 2026).
 ## Quick Navigation
 
 - 🤖 **[`AGENTS.md`](./AGENTS.md)** — Workspace rules and architecture index for coding agents.
-- 📦 **[`CHATGPT_MASTER_CONTEXT.md`](./Neo-D%20LedgerCraft/docs/CHATGPT_MASTER_CONTEXT.md)** — Consolidated project dossier for one-file review.
+- 📬 **[`docs/inbox_scout.md`](./Neo-D%20LedgerCraft/docs/inbox_scout.md)** — Inbox Scout: Gemini finds receipts in Gmail (read-only) and files them in the Neo ledger.
 - 🌐 **[`docs/wsti_online_demo.md`](./Neo-D%20LedgerCraft/docs/wsti_online_demo.md)** — How the public web demo works, its limits and data handling.
 - ☁️ **[`docs/deploy_aws.md`](./Neo-D%20LedgerCraft/docs/deploy_aws.md)** — AWS EC2 deployment runbook.
 - 📓 **[`docs/notebooklm_project_brief.md`](./docs/notebooklm_project_brief.md)** — Presentation dossier.
