@@ -56,6 +56,7 @@ _STATIC = {
     "/demo/chat.css": (DEMO / "chat.css", "text/css; charset=utf-8"),
     "/demo/womby.glb": (DEMO / "womby.glb", "model/gltf-binary"),
     "/setup": (DEMO / "setup.html", "text/html; charset=utf-8"),
+    "/demo/inbox": (DEMO / "inbox.html", "text/html; charset=utf-8"),
     "/dashboard.css": (DEMO.parent / "dashboard.css", "text/css; charset=utf-8"),
     "/dashboard.js": (DEMO.parent / "dashboard.js", "text/javascript; charset=utf-8"),
     "/demo/botfather-qr.svg": (DEMO / "botfather-qr.svg", "image/svg+xml"),
@@ -267,7 +268,7 @@ class DemoHandler(BaseHTTPRequestHandler):
         try:
             host = self._check_host()
             route = urlsplit(self.path).path
-            if route not in ("/demo/api/session", "/demo/api/intake", "/demo/api/correct"):
+            if route not in ("/demo/api/session", "/demo/api/intake", "/demo/api/correct", "/demo/api/inbox-scan"):
                 raise DemoError(404, "Demo action not found.")
             if self.headers.get("Origin") != (self.server.public_origin or f"http://{host}"):
                 raise DemoError(403, "Open the demo page before sending receipts.")
@@ -283,7 +284,11 @@ class DemoHandler(BaseHTTPRequestHandler):
             else:
                 token = self._token()
                 self.server.runtime.session(token)
-                if route == "/demo/api/correct":
+                if route == "/demo/api/inbox-scan":
+                    if self.headers.get("Transfer-Encoding") or self.headers.get_all("Content-Length", []) not in ([], ["0"]):
+                        raise DemoError(400, "Scanning takes no data.")
+                    self._json(200, self.server.runtime.scan_inbox(token))
+                elif route == "/demo/api/correct":
                     self._json(200, self.server.runtime.correct(token, self._json_body(correction=True)))
                 else:
                     self._json(202, self.server.runtime.submit(token, self._json_body()))

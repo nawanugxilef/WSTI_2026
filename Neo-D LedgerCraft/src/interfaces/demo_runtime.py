@@ -361,6 +361,7 @@ class Session:
     xp: int = 0
     job: Job | None = None
     photo_drafts: dict[str, PhotoDraft] = field(default_factory=dict)
+    scanning: bool = False
 
     @property
     def database(self) -> Path:
@@ -777,6 +778,54 @@ class DemoRuntime:
         with self._lock:
             database = self._require(token, self._clock()).database
         return build_dashboard_payload(str(database), fy_start_year, month)
+
+    def scan_inbox(self, token: str | None) -> dict:
+        """Run Inbox Scout over the fictional demo inbox into this visitor's temporary ledger."""
+        from src.email_scout.scout import EmailScout
+        from src.email_scout.sources import demo_inbox
+
+        with self._lock:
+            session = self._require(token, self._clock())
+            if session.scanning:
+                raise DemoError(409, "Neo is still scanning. Give it a moment.")
+            session.scanning = True
+        finance = None
+        try:
+            finance = self.finance_factory()
+            with closing(get_connection(session.database)) as connection:
+                init_db(connection)
+                seed_accounts(connection)
+                orchestrator = DemoOrchestrator(connection, finance)
+                scout = EmailScout(orchestrator)
+                if not connection.execute("SELECT 1 FROM email_scout_seen LIMIT 1").fetchone():
+                    # The owner already sent this receipt to the bot, so its email copy must become a repeat.
+                    orchestrator.km.record_receipt(
+                        data=ParsedReceipt(
+                            vendor="Fictional Filament Co", date="2026-11-10", total_amount=54.0, tax_amount=4.91,
+                            gst_status="explicit", category="materials_3d_printing",
+                            notes="[FICTIONAL DEMO] Sent to the bot as a photo",
+                        ).model_dump(),
+                        file_hash=None, local_path=None, gdrive_file_id=None, gdrive_status="not_applicable",
+                    )
+                emails = demo_inbox()
+                results = scout.scan(emails)
+        except Exception:
+            logger.warning("Inbox Scout demo scan failed")
+            raise DemoError(503, "Neo could not scan the inbox just now. Try again in a minute.") from None
+        finally:
+            close = getattr(getattr(finance, "_client", None), "close", None)
+            if close:
+                close()
+            with self._lock:
+                session.scanning = False
+        return {
+            "mode": self.mode,
+            "emails": [
+                {"from": e.sender.split(" <")[0], "subject": e.subject, "date": e.date.isoformat(),
+                 "status": r.status, "detail": r.detail}
+                for e, r in zip(emails, results)
+            ],
+        }
 
     def _result(self, summary: IntakeSummary, upload: Upload | None) -> dict:
         if upload:

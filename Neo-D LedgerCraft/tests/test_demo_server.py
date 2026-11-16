@@ -765,3 +765,18 @@ def test_seeded_sessions_start_with_the_fictional_receipts():
         worker.join()
         server.server_close()
         runtime.close()
+
+
+def test_inbox_scout_scan_marks_repeat_records_new_and_is_idempotent(demo_server):
+    client = DemoClient(demo_server)
+    assert client.request("POST", "/demo/api/inbox-scan")[0] == 401
+    status, _, page = client.request("GET", "/demo/inbox")
+    assert status == 200 and b"Scan this inbox" in page
+    client.open()
+    status, _, data = client.request("POST", "/demo/api/inbox-scan")
+    assert status == 200, data
+    assert [e["status"] for e in data["emails"]] == ["repeat", "recorded", "recorded", "not_receipt"]
+    assert "Fictional Filament Co" in data["emails"][0]["detail"]
+    status, _, again = client.request("POST", "/demo/api/inbox-scan")
+    assert status == 200 and {e["status"] for e in again["emails"]} == {"already_scanned"}
+    assert client.request("POST", "/demo/api/inbox-scan", origin="https://example.org")[0] == 403

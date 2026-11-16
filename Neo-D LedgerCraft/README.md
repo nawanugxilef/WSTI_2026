@@ -114,7 +114,7 @@ To install the dashboard, open it in Safari on iPhone or Chrome on Android. In S
 
 ## 📬 Inbox Scout (email receipts)
 
-A separate module in `src/email_scout/`. Gemini reads receipt emails from Gmail (read-only) and files them in the same Neo ledger. A receipt that is already in the ledger, for example because you sent the photo to the bot, is marked **repeat** and not booked twice. Try it with fictional emails: `python -m src.email_scout --demo`. Setup: [docs/inbox_scout.md](docs/inbox_scout.md).
+A separate module in `src/email_scout/`. Gemini reads receipt emails from Gmail (read-only) and files them in the same Neo ledger. A receipt that is already in the ledger, for example because you sent the photo to the bot, is marked **repeat** and not booked twice. Try it in the browser with fictional emails: [neo-wsti-demo.madewithfelix.app/demo/inbox](https://neo-wsti-demo.madewithfelix.app/demo/inbox), or run `python -m src.email_scout --demo`. Setup: [docs/inbox_scout.md](docs/inbox_scout.md).
 
 ---
 

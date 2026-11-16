@@ -15,6 +15,8 @@ Each email is scanned once. Running the scout again skips emails it has already 
 
 ## Try it with the fictional inbox
 
+In the browser, no install: <https://neo-wsti-demo.madewithfelix.app/demo/inbox>. Or from the command line:
+
 ```bash
 python -m src.email_scout --demo
 ```

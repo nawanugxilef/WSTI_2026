@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neo-D Inbox Scout</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root { --ink: #1d3029; --muted: #465e52; --line: #d3e1d7; --accent: #286347; --wash: #edf5ed; --paper: #fff; --repeat: #b4530a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--wash); color: var(--ink); font: 17px/1.5 "DM Sans", system-ui, sans-serif; }
+  main { max-width: 36rem; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.6rem; line-height: 1.2; margin: 0 0 4px; }
+  h2 { font-size: 1rem; margin: 22px 0 8px; color: var(--muted); font-weight: 600; }
+  .lead { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .from { font-weight: 600; }
+  .subject, .detail, .hint { font-size: .9rem; color: var(--muted); }
+  .top { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+  .date { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+  .chip { display: inline-block; margin-top: 8px; padding: 3px 12px; border-radius: 999px; font-size: .85rem; font-weight: 700; color: #fff; background: var(--accent); }
+  .chip.repeat { background: var(--repeat); }
+  .chip.not_receipt, .chip.already_scanned { background: var(--line); color: var(--ink); }
+  .chip.needs_review { background: #8a6d00; }
+  .detail { margin: 4px 0 0; color: var(--ink); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; width: 100%; margin-top: 16px; padding: 12px 16px; border-radius: 12px; border: 0; background: var(--accent); color: #fff; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
+  .btn[disabled] { opacity: .6; cursor: wait; }
+  .btn.soft { background: var(--paper); color: var(--accent); border: 1px solid var(--accent); }
+  #status { margin: 14px 0 0; font-weight: 600; }
+  .note { margin: 18px 0 0; padding: 12px 14px; border-radius: 14px; background: #fff7e0; border: 1px solid #f0d58a; font-size: .9rem; }
+  :focus-visible { outline: 3px solid #f2b84b; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Neo-D Inbox Scout</h1>
+  <p class="lead">Neo looks through an inbox for receipts and files them in your ledger. One button. This inbox is fictional.</p>
+
+  <h2>Already in your Neo ledger</h2>
+  <div class="card"><div class="from">Fictional Filament Co · $54.00 · 10 Nov 2026</div><div class="subject">You sent this receipt to the bot as a photo earlier.</div></div>
+
+  <h2>The inbox (4 emails)</h2>
+  <ul id="inbox"></ul>
+
+  <button class="btn" id="scan">Scan this inbox</button>
+  <p id="status" aria-live="polite"></p>
+  <a class="btn soft" id="ledger" href="/demo/dashboard" hidden>See them in your dashboard →</a>
+
+  <p class="note">Fictional emails only. Nothing here reads a real mailbox. With your own Gmail, access is read-only: Neo cannot send, delete or change email. Results are suggestions for you to check, not tax advice. <a href="/">Back to start</a></p>
+</main>
+<script>
+  // Same four emails as demo/sample_emails.json, shown before the scan.
+  const EMAILS = [
+    ["Fictional Filament Co", "[FICTIONAL DEMO] Tax invoice #FF-1042", "10 Nov"],
+    ["Fictional Demo Cafe", "[FICTIONAL DEMO] Your receipt from Fictional Demo Cafe", "12 Nov"],
+    ["Fictional Pet Supplies", "[FICTIONAL DEMO] Order confirmation - dog walking leads", "13 Nov"],
+    ["Fictional News Weekly", "[FICTIONAL DEMO] This week's top stories", "14 Nov"],
+  ];
+  const LABEL = { recorded: "✅ Recorded", repeat: "🔁 Repeat", not_receipt: "Not a receipt", needs_review: "✋ To check", already_scanned: "↩ Scanned before" };
+  const list = document.getElementById("inbox"), status = document.getElementById("status"), button = document.getElementById("scan");
+
+  function row(from, subject, date, result) {
+    const li = document.createElement("li");
+    li.className = "card";
+    const top = document.createElement("div"); top.className = "top";
+    const who = document.createElement("span"); who.className = "from"; who.textContent = from;
+    const when = document.createElement("span"); when.className = "date"; when.textContent = date;
+    top.append(who, when);
+    const what = document.createElement("div"); what.className = "subject"; what.textContent = subject;
+    li.append(top, what);
+    if (result) {
+      const chip = document.createElement("span"); chip.className = "chip " + result.status; chip.textContent = LABEL[result.status] || result.status;
+      const detail = document.createElement("p"); detail.className = "detail"; detail.textContent = result.detail;
+      li.append(chip, detail);
+    }
+    return li;
+  }
+  function show(results) {
+    list.replaceChildren(...EMAILS.map((e, i) => row(e[0], e[1], e[2], results && results[i])));
+  }
+  async function post(path) {
+    const response = await fetch("/demo/api/" + path, { method: "POST", credentials: "same-origin", cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Something went wrong. Try again.");
+    return data;
+  }
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    status.textContent = "Neo is reading the emails… about 20 seconds.";
+    try {
+      await post("session");
+      const data = await post("inbox-scan");
+      show(data.emails);
+      const count = (s) => data.emails.filter((e) => e.status === s).length;
+      status.textContent = count("already_scanned") === data.emails.length
+        ? "Nothing new. Every email was scanned before, so nothing was booked twice."
+        : "Done. " + count("recorded") + " new, " + count("repeat") + " repeat, " + count("not_receipt") + " not a receipt.";
+      document.getElementById("ledger").hidden = false;
+      button.textContent = "Scan again";
+    } catch (error) {
+      status.textContent = error.message;
+    }
+    button.disabled = false;
+  });
+  show(null);
+</script>
+</body>
+</html>

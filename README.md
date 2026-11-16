@@ -33,7 +33,7 @@ The public demo runs the same Gemini pipeline as the bot: Corgi reads any typed 
 | 3D office with live agent activity and task board | Live |
 | Owner dashboard (installable on a phone): Receipts, myTax, Books, CSV export | Live, owner only |
 | Telegram commands: `/recent`, `/mytax`, `/pnl`, `/spending`, `/balance`, `/dashboard`, `/reward`, `/companion`, `/backup` and more | Live, owner only |
-| Inbox Scout: Gemini reads receipt emails (Gmail, read-only), records new ones and marks ones already in the ledger as repeat | Built 17 Nov: command line; tested with fictional emails, not yet with a real Gmail account |
+| Inbox Scout: Gemini reads receipt emails (Gmail, read-only), records new ones and marks ones already in the ledger as repeat | Live in the web demo with fictional emails (`/demo/inbox`) and on the command line; not yet run against a real Gmail account |
 | Physical desk companion (ESP32-C3, about $6.10 AUD in parts) | Design: bill of materials and 3D assembly guide, not yet built |
 
 Automated tests: **249 tests and 28 subtests pass** (17 November 2026).
