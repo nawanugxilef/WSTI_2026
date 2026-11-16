@@ -4846,7 +4846,8 @@ window.OFFICE_PERSONALITIES = {
       agent.pokeCount = (agent.pokeCount || 0) + 1;
       const say = renderBubble(agent, 5000, true);
 
-      if (agent.pokeCount === 1 || receiptMode) {
+      const pokedLines = agent.personality.poked && agent.personality.poked.length;
+      if (agent.pokeCount === 1 || (receiptMode && !pokedLines)) {
         say.textContent = receiptMode && live && agent.state !== 'idle' && agent.activity
           ? agent.activity
           : agent.personality.intro || 'Good to see you.';
