@@ -31,6 +31,7 @@
   legend { font-weight: 600; margin-bottom: 4px; padding: 0; }
   form label.pet { display: inline-flex; align-items: center; gap: 8px; margin: 0; min-height: 46px; padding: 6px 16px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
   form label.pet input { width: auto; min-height: 0; }
+  label.pet img { image-rendering: pixelated; }
   label.pet:has(input:checked) { border-color: var(--accent); background: var(--wash); }
   form input, form select { width: 100%; min-height: 46px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; font: inherit; color: inherit; background: #fff; }
   .btn { width: 100%; min-height: 48px; margin-top: 16px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
@@ -63,8 +64,14 @@
     <input id="name" maxlength="20" autocomplete="given-name" placeholder="e.g. Sam">
     <fieldset>
       <legend>Pick your character</legend>
-      <label class="pet"><input type="radio" name="pet" value="lion" checked> 🦁 Lion</label>
-      <label class="pet"><input type="radio" name="pet" value="fox"> 🦊 Fox</label>
+      <label class="pet"><input type="radio" name="pet" value="lion" checked><img src="/demo/pets/animal-lion.png" alt="" width="32" height="32"> Lion</label>
+      <label class="pet"><input type="radio" name="pet" value="fox"><img src="/demo/pets/animal-fox.png" alt="" width="32" height="32"> Fox</label>
+      <label class="pet"><input type="radio" name="pet" value="koala"><img src="/demo/pets/animal-koala.png" alt="" width="32" height="32"> Koala</label>
+      <label class="pet"><input type="radio" name="pet" value="cat"><img src="/demo/pets/animal-cat.png" alt="" width="32" height="32"> Cat</label>
+      <label class="pet"><input type="radio" name="pet" value="panda"><img src="/demo/pets/animal-panda.png" alt="" width="32" height="32"> Panda</label>
+      <label class="pet"><input type="radio" name="pet" value="tiger"><img src="/demo/pets/animal-tiger.png" alt="" width="32" height="32"> Tiger</label>
+      <label class="pet"><input type="radio" name="pet" value="bunny"><img src="/demo/pets/animal-bunny.png" alt="" width="32" height="32"> Bunny</label>
+      <label class="pet"><input type="radio" name="pet" value="penguin"><img src="/demo/pets/animal-penguin.png" alt="" width="32" height="32"> Penguin</label>
     </fieldset>
     <label for="work">What do you do?</label>
     <select id="work">
@@ -96,7 +103,8 @@
   document.getElementById("name").value = read("neo-demo-name");
   if (read("neo-demo-business")) work.value = read("neo-demo-business");
   document.getElementById("other").value = read("neo-demo-other");
-  if (read("neo-demo-pet") === "fox") form.querySelector('input[name=pet][value=fox]').checked = true;
+  const pet = form.querySelector('input[name=pet][value="' + read("neo-demo-pet").replace(/[^a-z]/g, "") + '"]');
+  if (pet) pet.checked = true;
   const showOther = () => { document.getElementById("other-wrap").hidden = work.value !== "other"; };
   work.addEventListener("change", showOther);
   showOther();

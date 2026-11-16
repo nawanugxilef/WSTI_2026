@@ -82,13 +82,21 @@ def _demo_dashboard_page() -> bytes:
             .encode("utf-8"))
 
 
+# Characters a visitor can pick for the owner. Lion and fox are built into the office page; the rest are files.
+OWNER_PETS = ("lion", "fox", "koala", "cat", "panda", "tiger", "bunny", "penguin")
+for _pet in OWNER_PETS:
+    _STATIC[f"/demo/pets/animal-{_pet}.png"] = (DEMO / "pets" / f"animal-{_pet}.png", "image/png")
+    if _pet not in ("lion", "fox"):
+        _STATIC[f"/Asset/office/pets/animal-{_pet}.glb"] = (DEMO / "pets" / f"animal-{_pet}.glb", "model/gltf-binary")
+
 _OFFICE_SCRIPT = "<script>\n// Agentic AI Office: a small Three.js office"
 # The owner character takes the first name and animal the visitor chose on the start page (kept in their browser).
 _OWNER_NAME_SCRIPT = (
     '<script>try{const n=(localStorage.getItem("neo-demo-name")||"").trim().slice(0,20);'
     'if(n)window.OFFICE_PERSONALITIES.boss.name=n;'
     'const p=localStorage.getItem("neo-demo-pet");'
-    'if(p==="fox"||p==="lion")window.NEO_OWNER_PET="animal-"+p+".glb";}catch(e){}</script>\n'
+    'if(' + json.dumps(list(OWNER_PETS)) + '.includes(p)){window.NEO_OWNER_PET="animal-"+p+".glb";'
+    'window.NEO_OWNER_PHOTO="/demo/pets/animal-"+p+".png";}}catch(e){}</script>\n'
 )
 
 
