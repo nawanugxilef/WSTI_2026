@@ -26,11 +26,13 @@ def main(argv=None) -> int:
     mode.add_argument("--demo", action="store_true", help="Scan the fictional demo inbox into a throwaway ledger")
     mode.add_argument("--gmail", action="store_true", help="Scan your Gmail (read-only) into your Neo ledger")
     parser.add_argument("--limit", type=int, default=25, help="Most emails to read from Gmail")
+    parser.add_argument("--db", help="Demo only: keep the throwaway ledger at this path to scan again")
     args = parser.parse_args(argv)
 
     cfg = load_config()
     if args.demo:
-        db_path = os.path.join(tempfile.mkdtemp(prefix="neo-scout-"), "demo.db")
+        db_path = args.db or os.path.join(tempfile.mkdtemp(prefix="neo-scout-"), "demo.db")
+        fresh = not os.path.exists(db_path)
     else:
         db_path = cfg.get("storage", {}).get("db_path", "./data/ledger.db")
     conn = get_connection(db_path)
@@ -41,7 +43,8 @@ def main(argv=None) -> int:
 
     if args.demo:
         # The owner already snapped this receipt in Telegram, so the email copy must become a repeat.
-        cos.process_note("[FICTIONAL DEMO] Fictional Filament Co PLA filament spools 54.00 on 2026-11-10")
+        if fresh:
+            cos.process_note("[FICTIONAL DEMO] Fictional Filament Co PLA filament spools 54.00 on 2026-11-10")
         emails = demo_inbox()
     else:
         token = os.environ.get("GMAIL_TOKEN_FILE")
@@ -53,10 +56,10 @@ def main(argv=None) -> int:
     results = scout.scan(emails)
     for r in results:
         print(f"{ICON.get(r.status, '?')} {r.subject[:60]}\n    {r.detail}")
-    counts = {s: sum(r.status == s for r in results) for s in ("recorded", "repeat", "needs_review", "not_receipt")}
+    counts = {s: sum(r.status == s for r in results) for s in ("recorded", "repeat", "needs_review", "not_receipt", "already_scanned")}
     print(
         f"\nDone. {counts['recorded']} new, {counts['repeat']} repeat, "
-        f"{counts['needs_review']} to check, {counts['not_receipt']} not receipts."
+        f"{counts['needs_review']} to check, {counts['not_receipt']} not receipts, {counts['already_scanned']} scanned before."
     )
     return 0
 
