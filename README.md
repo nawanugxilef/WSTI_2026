@@ -90,3 +90,11 @@ cd "Neo-D LedgerCraft"
 # 4. Test suite
 .venv/bin/python -m unittest discover tests
 ```
+
+---
+
+## Third-party assets
+
+- **Office characters:** [Kenney Cube Pets 2.0](https://kenney.nl/assets/cube-pets), [Creative Commons Zero (CC0)](https://creativecommons.org/publicdomain/zero/1.0/). CC0 does not require credit; we give it anyway.
+- **Office furniture:** Kenney furniture models (`Asset/office/kenney/`), also from [kenney.nl](https://kenney.nl).
+- **3D engine:** [Three.js](https://threejs.org) r128, MIT licence.
