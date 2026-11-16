@@ -50,6 +50,19 @@
   .office-panel h2 { margin: 0; font-size: 17px; font-weight: 700; }
   .office-agent-list { list-style: none; margin: 8px 0 0; padding: 0; }
   .office-agent-list li { border-top: 1px solid var(--office-line); }
+  .office-agent-list li[hidden] { display: none; }
+  .office-id-card { padding: 12px 4px 4px; }
+  .office-id-head { display: flex; align-items: center; gap: 12px; }
+  .office-id-head > div:nth-child(2) { flex: 1; min-width: 0; }
+  .office-id-head strong { font-size: 18px; }
+  .office-id-photo { flex: none; width: 64px; height: 64px; border-radius: 16px; display: grid; place-items: center; font-size: 38px; background: #e8efed; border: 1px solid var(--office-line); }
+  .office-id-card dl { margin: 12px 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 14px; line-height: 1.4; }
+  .office-id-card dt { color: var(--office-muted); font-weight: 600; }
+  .office-id-card dd { margin: 0; }
+  .office-agent-list button.office-id-hello { display: block; text-align: center; min-height: 44px; font-weight: 600; }
+  .office-card-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--office-line); }
+  .office-card-pager button { min-height: 44px; padding-inline: 14px; }
+  .office-card-pager span { color: var(--office-muted); font-size: 13px; }
   .office-agent-list button { display: flex; align-items: flex-start; justify-content: space-between; text-align: left; width: 100%; min-height: 50px; padding: 9px 8px; gap: 10px; }
   .office-agent-identity { min-width: 0; }
   .office-agent-list strong, .office-agent-list small { display: block; }
@@ -75,7 +88,7 @@
 <div id="office"></div>
 <dialog id="office-agents" class="office-panel" aria-labelledby="office-agents-title">
   <div class="office-panel-heading">
-    <h2 id="office-agents-title">Agents</h2>
+    <h2 id="office-agents-title">Meet the team</h2>
     <button id="office-agents-close" type="button">Close</button>
   </div>
   <ul id="office-agent-list" class="office-agent-list"></ul>
@@ -3741,27 +3754,42 @@ window.OFFICE_PERSONALITIES = {
   chief_of_staff: {
     name: 'Neo',
     role: 'Chief of Finance',
-    intro: 'I take in receipts and notes, save originals to Google Drive, and coordinate the team.'
+    intro: 'I take in receipts and notes, save originals to Google Drive, and coordinate the team.',
+    emoji: '🤖',
+    personality: 'Calm and organised. Never rushes you and never judges.',
+    hobby: 'Colour-coding folders.'
   },
   finance: {
     name: 'Corgi',
     role: 'Finance',
-    intro: 'I read receipts, pull out totals and GST, and suggest expense categories and myTax labels.'
+    intro: 'I read receipts, pull out totals and GST, and suggest expense categories and myTax labels.',
+    emoji: '🐶',
+    personality: 'Eager and quick. Happiest with a clear receipt.',
+    hobby: 'Fetching totals and chasing GST.'
   },
   qa: {
     name: 'Bear',
     role: 'QA',
-    intro: 'I check dates, totals, and GST, and flag possible duplicates or missing details.'
+    intro: 'I check dates, totals, and GST, and flag possible duplicates or missing details.',
+    emoji: '🐻‍❄️',
+    personality: "Careful and patient. Double-checks so you don't have to.",
+    hobby: 'Spot-the-difference puzzles.'
   },
   knowledge_manager: {
     name: 'Girraffe',
     role: 'Knowledge Manager',
-    intro: 'I post balanced ledger entries and remember confirmed vendor categories for next time.'
+    intro: 'I post balanced ledger entries and remember confirmed vendor categories for next time.',
+    emoji: '🦒',
+    personality: 'Quiet, with a very long memory.',
+    hobby: 'Keeping the bookshelf tidy.'
   },
   boss: {
     name: 'Felix',
     role: 'Owner',
-    intro: 'I review flagged receipts and confirm or correct their details.'
+    intro: 'I review flagged receipts and confirm or correct their details.',
+    emoji: '🦁',
+    personality: 'The one in charge. Decides what is work and what is personal.',
+    hobby: 'Running the business. The team does the filing.'
   }
 };
 
@@ -4308,38 +4336,69 @@ window.OFFICE_PERSONALITIES = {
     const showAgents = () => agentPanel.showModal();
     const hideAgents = () => agentPanel.close();
     if (agentPanel && openAgents && closeAgents && agentList) {
-      for (const agent of Object.values(agents)) {
+      // One staff ID card at a time, with Back and Next.
+      const staff = Object.values(agents);
+      const pager = document.createElement('div');
+      pager.className = 'office-card-pager';
+      const back = document.createElement('button'), next = document.createElement('button'), count = document.createElement('span');
+      back.type = next.type = 'button';
+      back.textContent = '← Back';
+      next.textContent = 'Next →';
+      count.setAttribute('aria-live', 'polite');
+      pager.append(back, count, next);
+      let shown = 0;
+      const showCard = (index) => {
+        shown = (index + staff.length) % staff.length;
+        [...agentList.children].forEach((row, i) => { row.hidden = i !== shown; });
+        count.textContent = (shown + 1) + ' of ' + staff.length;
+      };
+      back.addEventListener('click', () => showCard(shown - 1));
+      next.addEventListener('click', () => showCard(shown + 1));
+      for (const agent of staff) {
+        const who = agent.personality;
         const row = document.createElement('li');
-        const button = document.createElement('button');
-        button.type = 'button';
-        const identity = document.createElement('span');
-        identity.className = 'office-agent-identity';
+        row.className = 'office-id-card';
+        const photo = document.createElement('div');
+        photo.className = 'office-id-photo';
+        photo.setAttribute('aria-hidden', 'true');
+        photo.textContent = agent.id === 'boss' && window.NEO_OWNER_PET === 'animal-fox.glb' ? '🦊' : (who.emoji || '🙂');
         const name = document.createElement('strong');
-        name.textContent = agent.personality.name;
+        name.textContent = who.name;
         const role = document.createElement('small');
-        role.textContent = agent.personality.role || '';
-        identity.append(name, role);
-        if (agent.personality.intro) {
-          const duty = document.createElement('span');
-          duty.className = 'office-agent-duty';
-          duty.textContent = agent.personality.intro;
-          identity.append(duty);
-        }
-        button.append(identity);
+        role.textContent = who.role || '';
+        const head = document.createElement('div');
+        head.className = 'office-id-head';
+        const title = document.createElement('div');
+        title.append(name, role);
+        head.append(photo, title);
         if (agent.id !== 'boss') {
           const state = document.createElement('span');
           state.className = 'office-agent-state';
           state.textContent = 'Idle';
-          button.append(state);
+          head.append(state);
           agentStates.set(agent.id, state);
         }
-        button.addEventListener('click', () => {
+        const facts = document.createElement('dl');
+        for (const [label, text] of [['Job', who.intro], ['Personality', who.personality], ['Hobby', who.hobby]]) {
+          if (!text) continue;
+          const dt = document.createElement('dt'), dd = document.createElement('dd');
+          dt.textContent = label;
+          dd.textContent = label === 'Job' ? text.replace(/^I /, '').replace(/^./, (c) => c.toUpperCase()) : text;
+          facts.append(dt, dd);
+        }
+        const hello = document.createElement('button');
+        hello.type = 'button';
+        hello.className = 'office-id-hello';
+        hello.textContent = 'Say hi to ' + who.name;
+        hello.addEventListener('click', () => {
           hideAgents();
           speak(agent);
         });
-        row.append(button);
+        row.append(head, facts, hello);
         agentList.append(row);
       }
+      agentList.after(pager);
+      showCard(0);
       openAgents.hidden = false;
       openAgents.addEventListener('click', showAgents);
       closeAgents.addEventListener('click', hideAgents);

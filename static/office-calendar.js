@@ -214,7 +214,7 @@
     dialog.addEventListener('close', () => launch.focus({ preventScroll: true }));
 
     const top = element('div', { class: 'neo-calendar-top' });
-    const title = element('h2', { id: 'neo-calendar-title' }, 'Calendar');
+    const title = element('h2', { id: 'neo-calendar-title' }, 'Calendar · Beta');
     const status = element('p', { class: 'neo-calendar-status', role: 'status' });
     const heading = element('div');
     heading.append(title, status);
