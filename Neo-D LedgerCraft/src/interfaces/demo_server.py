@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from src.interfaces.demo_photo_ocr import read_photo_text
 from src.interfaces.demo_runtime import (
+    demo_profile,
     DemoError,
     DemoRuntime,
     FixtureFinance,
@@ -81,9 +82,20 @@ def _demo_dashboard_page() -> bytes:
             .encode("utf-8"))
 
 
+_OFFICE_SCRIPT = "<script>\n// Agentic AI Office: a small Three.js office"
+# The owner character takes the first name and animal the visitor chose on the start page (kept in their browser).
+_OWNER_NAME_SCRIPT = (
+    '<script>try{const n=(localStorage.getItem("neo-demo-name")||"").trim().slice(0,20);'
+    'if(n)window.OFFICE_PERSONALITIES.boss.name=n;'
+    'const p=localStorage.getItem("neo-demo-pet");'
+    'if(p==="fox"||p==="lion")window.NEO_OWNER_PET="animal-"+p+".glb";}catch(e){}</script>\n'
+)
+
+
 def _landing_page() -> bytes:
     html = (OFFICE / "index.html").read_text(encoding="utf-8")
     return (html.replace('<a href="/dashboard">Dashboard</a>', "", 1)
+            .replace(_OFFICE_SCRIPT, _OWNER_NAME_SCRIPT + _OFFICE_SCRIPT, 1)
             .replace("</head>", '<link rel="stylesheet" href="/demo/chat.css">\n'
                      '<script type="module" src="/demo/app.js"></script>\n</head>', 1)
             .encode("utf-8"))
@@ -275,7 +287,10 @@ class DemoHandler(BaseHTTPRequestHandler):
             if route == "/demo/api/session":
                 if self.headers.get("Transfer-Encoding") or self.headers.get_all("Content-Length", []) not in ([], ["0"]):
                     raise DemoError(400, "Starting a session takes no receipt data.")
-                token, snapshot = self.server.runtime.open_session(self._token())
+                query = parse_qs(urlsplit(self.path).query)
+                profile = demo_profile(query.get("business", [None])[0], query.get("other", [None])[0])
+                chosen = "business" in query or "other" in query
+                token, snapshot = self.server.runtime.open_session(self._token(), profile, chosen)
                 ttl = snapshot["session"]["expires_in"]
                 cookie = f"{self.server.cookie_name}={token}; Path=/; Max-Age={ttl}; HttpOnly; SameSite=Strict"
                 if not self.server.tailnet_ip:

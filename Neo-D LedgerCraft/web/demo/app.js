@@ -287,9 +287,9 @@ function requiredSelect(label, choices, current) {
 function receiptSettings(container, result, stream, opener) {
   const form = node("form");
   const current = result.claim_stream === stream ? result : null;
-  const activity = stream === "abn" ? requiredSelect("Activity", [
-    ["dog_walking", "Dog Walking"], ["printing_3d", "3D Printing"],
-  ], current?.business_activity) : null;
+  const businesses = session?.businesses?.length ? session.businesses.map((b) => [b.key, b.name])
+    : [["dog_walking", "Dog Walking"], ["printing_3d", "3D Printing"]];
+  const activity = stream === "abn" ? requiredSelect("Activity", businesses, current?.business_activity) : null;
   const shares = [100, 80, 50, 30];
   if (current?.business_pct > 0 && !shares.includes(current.business_pct)) {
     shares.push(current.business_pct);
@@ -538,6 +538,27 @@ function photoConfirmationForm(result) {
   return container;
 }
 
+// What the visitor told the start page: their first name (kept in this browser) and their kind of work.
+function stored(key) {
+  try { return (localStorage.getItem(key) || "").trim(); } catch { return ""; }
+}
+function profileQuery() {
+  const business = stored("neo-demo-business"), other = stored("neo-demo-other");
+  if (business === "other") return other ? "?other=" + encodeURIComponent(other) : "";
+  return business ? "?business=" + encodeURIComponent(business) : "";
+}
+function profileMatches(current) {
+  const business = stored("neo-demo-business"), keys = (current.businesses || []).map((b) => b.key);
+  if (!profileQuery() || !keys.length) return true;
+  if (business === "other") return keys[0].startsWith("custom_");
+  if (business === "example") return keys.length === 2;
+  return keys.length === 1 && keys[0] === business;
+}
+function welcome() {
+  const name = stored("neo-demo-name").slice(0, 20);
+  return name ? WELCOME.replace("Hi, I'm Neo!", "Hi " + name + ", I'm Neo!") : WELCOME;
+}
+
 async function api(path, method = "GET", payload) {
   const options = { method, credentials: "same-origin", cache: "no-store" };
   if (payload) {
@@ -638,9 +659,10 @@ async function connect() {
     let snapshot;
     try {
       snapshot = await api("session");
+      if (!profileMatches(snapshot.session)) throw Object.assign(new Error("profile"), { status: 401 });
     } catch (error) {
       if (error.status !== 401) throw error;
-      snapshot = await api("session", "POST");
+      snapshot = await api("session" + profileQuery(), "POST");
       seenJob = null;
       intakeContext = null;
       submittedNote = null;
@@ -650,7 +672,7 @@ async function connect() {
     }
     updateSession(snapshot.session);
     updateJob(snapshot.job, false);
-    if (!log.children.length) addMessage("neo", WELCOME);
+    if (!log.children.length) addMessage("neo", welcome());
   })();
   try {
     await connecting;

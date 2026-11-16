@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import functools
 import binascii
 import hashlib
 import json
@@ -362,10 +363,33 @@ class Session:
     job: Job | None = None
     photo_drafts: dict[str, PhotoDraft] = field(default_factory=dict)
     scanning: bool = False
+    profile: dict | None = None  # the visitor's own business choice; None is the built-in example
 
     @property
     def database(self) -> Path:
         return Path(self.files.name) / "ledger.db"
+
+
+def demo_profile(business: str | None, other: str | None) -> dict | None:
+    """A visitor's business choice as a profile: a preset key, or their own words for "Other"."""
+    if business in biz.PRESETS:
+        return {"businesses": [business], "has_payg": True}
+    name = re.sub(r"[^A-Za-z0-9 &'/-]", "", other or "").strip()[:40]
+    if name:
+        return {"businesses": [{"key": biz.custom_key(name), "name": name}], "has_payg": True}
+    return None
+
+
+def _in_session_profile(method):
+    """Run a request with the business profile this visitor chose."""
+    @functools.wraps(method)
+    def wrapper(self, token, *args, **kwargs):
+        with self._lock:
+            session = self._sessions.get(token)
+            profile = session.profile if session else None
+        with biz.use_profile(profile):
+            return method(self, token, *args, **kwargs)
+    return wrapper
 
 
 class DemoRuntime:
@@ -384,7 +408,6 @@ class DemoRuntime:
         self.session_seconds = session_seconds
         self._clock = clock
         self._lock = threading.Lock()
-        self._category_catalog = load_category_catalog()
         self._sessions: dict[str, Session] = {}
         self._hourly: deque[tuple[float, int]] = deque()
         self._hourly_units = 0
@@ -395,6 +418,10 @@ class DemoRuntime:
         self._stopping = threading.Event()
         self._sweeper = threading.Thread(target=self._reap, daemon=True, name="neo-demo-expiry")
         self._sweeper.start()
+
+    @property
+    def _category_catalog(self):
+        return load_category_catalog()  # cached per set of active businesses
 
     def close(self) -> None:
         self._stopping.set()
@@ -444,6 +471,7 @@ class DemoRuntime:
                 "remaining": SESSION_UNITS - session.used,
                 "mode": self.mode,
                 "expires_in": max(0, math.ceil(session.expires - now)),
+                "businesses": self._businesses(session),
             },
             "job": None if job is None else {
                 "id": job.id, "state": job.state, "stage": job.stage, "run_ids": list(job.run_ids),
@@ -452,19 +480,30 @@ class DemoRuntime:
             },
         }
 
-    def open_session(self, token: str | None) -> tuple[str, dict]:
+    @staticmethod
+    def _businesses(session: Session) -> list[dict]:
+        with biz.use_profile(session.profile):
+            return [{"key": b.key, "name": b.name, "icon": b.icon} for b in biz.active_businesses()]
+
+    def open_session(self, token: str | None, profile: dict | None = None, chosen: bool = False) -> tuple[str, dict]:
         with self._lock:
             now = self._clock()
             self._sweep(now)
             session = self._find(token, now)
+            if session and chosen and session.profile != profile and not (
+                session.job and session.job.state in _ACTIVE
+            ):
+                # A different kind of work starts a fresh ledger.
+                self._clean_session(self._sessions.pop(token))
+                session = None
             if session is None:
                 if len(self._sessions) >= MAX_SESSIONS:
                     raise DemoError(429, "The demo is busy. Try again later.")
                 token = secrets.token_urlsafe(32)
                 files = tempfile.TemporaryDirectory(prefix="session-", dir=self._root.name)
-                session = Session(files=files, expires=now + self.session_seconds)
+                session = Session(files=files, expires=now + self.session_seconds, profile=profile)
                 self._sessions[token] = session
-                seed = self.seed_samples
+                seed = self.seed_samples and profile is None  # the samples are 3D printing and dog walking
             else:
                 seed = False
             snapshot = self._snapshot(session, now)
@@ -497,6 +536,7 @@ class DemoRuntime:
             session = self._find(token, now)
             return read_receipt_progress(session.database) if session else {"version": 1, "events": []}
 
+    @_in_session_profile
     def submit(self, token: str | None, payload: object) -> dict:
         self.session(token)
         confirmation = None
@@ -527,7 +567,7 @@ class DemoRuntime:
             if self._hourly_units + units > GLOBAL_HOURLY_UNITS or self._active >= MAX_JOBS:
                 raise DemoError(429, "The demo is busy. Try again later.")
             job = Job(id=secrets.token_hex(12), total=units, run_ids=[secrets.token_hex(16) for _ in range(units)])
-            self._executor.submit(self._run, session, job, note, uploads, confirmation, capture_date)
+            self._executor.submit(self._run_in_profile, session, job, note, uploads, confirmation, capture_date)
             session.job = job
             session.used += units
             self._hourly.append((now, units))
@@ -535,6 +575,7 @@ class DemoRuntime:
             self._active += 1
             return self._snapshot(session, now)
 
+    @_in_session_profile
     def correct(self, token: str | None, payload: object) -> dict:
         if not isinstance(payload, dict) or payload.keys() - {
             "receipt_id", "claim_stream", "business_activity", "business_pct", "category",
@@ -646,6 +687,10 @@ class DemoRuntime:
                            else "I couldn’t read this photo clearly. Enter the details from the receipt.",
                 **suggest_photo_receipt(text),
             }
+
+    def _run_in_profile(self, session: Session, *args) -> None:
+        with biz.use_profile(session.profile):
+            self._run(session, *args)
 
     def _run(
         self, session: Session, job: Job, note: str, uploads: list[Upload],
@@ -771,6 +816,7 @@ class DemoRuntime:
                 raise DemoError(404, "This receipt file was not found in your demo session.")
             return match.name.split("__", 1)[1], match.read_bytes()
 
+    @_in_session_profile
     def dashboard(self, token: str | None, fy_start_year: int | None = None, month: str | None = None) -> dict:
         """The owner dashboard payload, built from this visitor's temporary demo ledger."""
         from src.interfaces.web_server import build_dashboard_payload
@@ -779,6 +825,7 @@ class DemoRuntime:
             database = self._require(token, self._clock()).database
         return build_dashboard_payload(str(database), fy_start_year, month)
 
+    @_in_session_profile
     def scan_inbox(self, token: str | None) -> dict:
         """Run Inbox Scout over the fictional demo inbox into this visitor's temporary ledger."""
         from src.email_scout.scout import EmailScout

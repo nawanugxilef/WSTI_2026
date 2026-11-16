@@ -8,9 +8,11 @@ business_profile.json. With no profile the owner's two default businesses
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -57,6 +59,8 @@ DEFAULT_KEYS: Tuple[str, ...] = ("printing_3d", "dog_walking")
 CUSTOM_REVENUE_ACCOUNT = "4850"
 
 _profile_path: Optional[Path] = None
+# The web demo gives each visitor their own profile for the length of a request or job.
+_override: contextvars.ContextVar[Optional[dict]] = contextvars.ContextVar("neo_business_profile", default=None)
 _cache: Tuple[Optional[float], Optional[dict]] = (None, None)
 
 
@@ -69,6 +73,9 @@ def configure(db_path: str | os.PathLike | None) -> None:
 
 def _load() -> dict:
     global _cache
+    override = _override.get()
+    if override is not None:
+        return override
     if _profile_path is None or not _profile_path.exists():
         return {}
     mtime = _profile_path.stat().st_mtime
@@ -78,6 +85,16 @@ def _load() -> dict:
         except (OSError, ValueError):
             _cache = (mtime, {})
     return _cache[1] or {}
+
+
+@contextmanager
+def use_profile(profile: Optional[dict]):
+    """Use this profile instead of the saved one inside the block (None keeps the saved one)."""
+    token = _override.set(profile)
+    try:
+        yield
+    finally:
+        _override.reset(token)
 
 
 def _custom(entry: dict) -> Optional[Business]:

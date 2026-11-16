@@ -23,6 +23,18 @@
   .go { margin-top: auto; padding-top: 10px; font-weight: 700; color: var(--accent); }
   .main .go { color: var(--sun); }
   .note { text-align: center; color: var(--muted); font-size: .9rem; margin: 22px 0 0; }
+  [hidden] { display: none !important; }
+  form { margin-top: 16px; padding: 20px 22px; border-radius: 18px; background: var(--paper); border: 2px solid var(--accent); }
+  form h2 { margin: 0 0 4px; font-size: 1.2rem; }
+  form label { display: block; margin: 12px 0 4px; font-weight: 600; }
+  fieldset { border: 0; padding: 0; margin: 12px 0 0; display: flex; gap: 10px; flex-wrap: wrap; }
+  legend { font-weight: 600; margin-bottom: 4px; padding: 0; }
+  form label.pet { display: inline-flex; align-items: center; gap: 8px; margin: 0; min-height: 46px; padding: 6px 16px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+  form label.pet input { width: auto; min-height: 0; }
+  label.pet:has(input:checked) { border-color: var(--accent); background: var(--wash); }
+  form input, form select { width: 100%; min-height: 46px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; font: inherit; color: inherit; background: #fff; }
+  .btn { width: 100%; min-height: 48px; margin-top: 16px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+  .hint { color: var(--muted); font-size: .9rem; margin: 10px 0 0; }
   :focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
   @media (prefers-reduced-motion: reduce) { a.choice { transition: none; } }
 </style>
@@ -45,8 +57,63 @@
       <span class="go">Start the checklist →</span>
     </a>
   </div>
+  <form id="about" hidden>
+    <h2>Three quick things first</h2>
+    <label for="name">Your first name</label>
+    <input id="name" maxlength="20" autocomplete="given-name" placeholder="e.g. Sam">
+    <fieldset>
+      <legend>Pick your character</legend>
+      <label class="pet"><input type="radio" name="pet" value="lion" checked> 🦁 Lion</label>
+      <label class="pet"><input type="radio" name="pet" value="fox"> 🦊 Fox</label>
+    </fieldset>
+    <label for="work">What do you do?</label>
+    <select id="work">
+      <option value="example">Show me the example (3D printing and dog walking)</option>
+      <option value="cleaning">🧹 Cleaning</option>
+      <option value="trades">🔨 Trades</option>
+      <option value="photography">📷 Photography</option>
+      <option value="hair_beauty">💇 Hair &amp; Beauty</option>
+      <option value="rideshare">🚗 Rideshare &amp; Delivery</option>
+      <option value="online_shop">🛍️ Online Shop</option>
+      <option value="consulting">💼 Consulting</option>
+      <option value="other">Something else…</option>
+    </select>
+    <div id="other-wrap" hidden>
+      <label for="other">In a few words, what is your work?</label>
+      <input id="other" maxlength="40" placeholder="e.g. Mobile coffee cart">
+    </div>
+    <button class="btn" type="submit">Open my office →</button>
+    <p class="hint">All optional. Your name and character stay in this browser and become the owner in your office. <a href="/demo" id="skip">Skip</a></p>
+  </form>
   <p class="note"><b>New:</b> <a href="/demo/inbox">Inbox Scout: find receipts in email →</a></p>
   <p class="note">The browser demo uses fictional data only. Files are deleted after 30 minutes.</p>
 </main>
+<script>
+  // Without JavaScript the main card still opens the demo with the example businesses.
+  const form = document.getElementById("about"), work = document.getElementById("work");
+  const read = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
+  const save = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} };
+  document.getElementById("name").value = read("neo-demo-name");
+  if (read("neo-demo-business")) work.value = read("neo-demo-business");
+  document.getElementById("other").value = read("neo-demo-other");
+  if (read("neo-demo-pet") === "fox") form.querySelector('input[name=pet][value=fox]').checked = true;
+  const showOther = () => { document.getElementById("other-wrap").hidden = work.value !== "other"; };
+  work.addEventListener("change", showOther);
+  showOther();
+  document.querySelector("a.choice.main").addEventListener("click", (event) => {
+    event.preventDefault();
+    form.hidden = false;
+    document.getElementById("name").focus();
+  });
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const other = document.getElementById("other").value.trim();
+    save("neo-demo-name", document.getElementById("name").value.trim());
+    save("neo-demo-pet", form.querySelector("input[name=pet]:checked").value);
+    save("neo-demo-business", work.value === "other" && !other ? "example" : work.value);
+    save("neo-demo-other", work.value === "other" ? other : "");
+    location.href = "/demo";
+  });
+</script>
 </body>
 </html>

@@ -780,3 +780,21 @@ def test_inbox_scout_scan_marks_repeat_records_new_and_is_idempotent(demo_server
     status, _, again = client.request("POST", "/demo/api/inbox-scan")
     assert status == 200 and {e["status"] for e in again["emails"]} == {"already_scanned"}
     assert client.request("POST", "/demo/api/inbox-scan", origin="https://example.org")[0] == 403
+
+
+def test_visitor_business_choice_gives_its_own_profile_and_fresh_ledger(demo_server):
+    client = DemoClient(demo_server)
+    status, headers, body = client.request("POST", "/demo/api/session?business=cleaning")
+    assert status == 200 and [b["key"] for b in body["session"]["businesses"]] == ["cleaning"]
+    client.cookie = headers["Set-Cookie"].split(";", 1)[0]
+    done = client.intake({"text": "[FICTIONAL DEMO] Clean Supply Co mop $24.00 on 2024-05-01"})
+    assert done["job"]["results"][0]["receipt_id"] == 1  # no example receipts were seeded
+    # Same choice keeps the session; "Other" in the visitor's own words starts a new one.
+    assert client.request("POST", "/demo/api/session?business=cleaning")[1].get("Set-Cookie", "").split(";", 1)[0] == client.cookie
+    status, headers, other = client.request("POST", "/demo/api/session?other=Mobile%20coffee%20cart%3Cb%3E")
+    assert other["session"]["businesses"][0]["name"] == "Mobile coffee cartb"
+    assert headers["Set-Cookie"].split(";", 1)[0] != client.cookie
+    # No choice: the built-in example with both businesses.
+    assert [b["key"] for b in DemoClient(demo_server).open()["session"]["businesses"]] == ["printing_3d", "dog_walking"]
+    status, _, page = client.request("GET", "/demo")
+    assert b"neo-demo-name" in page and b"NEO_OWNER_PET" in page
