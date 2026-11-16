@@ -88,7 +88,7 @@
     </fieldset>
     <label for="work">What do you do?</label>
     <select id="work">
-      <option value="example">Show me the example (3D printing and dog walking)</option>
+      <option value="">Choose your work…</option>
       <option value="cleaning">🧹 Cleaning</option>
       <option value="trades">🔨 Trades</option>
       <option value="photography">📷 Photography</option>
@@ -97,6 +97,7 @@
       <option value="online_shop">🛍️ Online Shop</option>
       <option value="consulting">💼 Consulting</option>
       <option value="other">Something else…</option>
+      <option value="example">Not sure: show me a sample business</option>
     </select>
     <div id="other-wrap" hidden>
       <label for="other">In a few words, what is your work?</label>
@@ -114,7 +115,7 @@
   const read = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
   const save = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} };
   document.getElementById("name").value = read("neo-demo-name");
-  if (read("neo-demo-business")) work.value = read("neo-demo-business");
+  if (read("neo-demo-business") && read("neo-demo-business") !== "example") work.value = read("neo-demo-business");
   document.getElementById("other").value = read("neo-demo-other");
   const pet = form.querySelector('input[name=pet][value="' + read("neo-demo-pet").replace(/[^a-z]/g, "") + '"]');
   if (pet) pet.checked = true;
@@ -136,7 +137,7 @@
     const other = document.getElementById("other").value.trim();
     save("neo-demo-name", document.getElementById("name").value.trim());
     save("neo-demo-pet", form.querySelector("input[name=pet]:checked").value);
-    save("neo-demo-business", work.value === "other" && !other ? "example" : work.value);
+    save("neo-demo-business", !work.value || (work.value === "other" && !other) ? "example" : work.value);
     save("neo-demo-other", work.value === "other" ? other : "");
     save("neo-demo-intro", "1");
     location.href = "/demo";

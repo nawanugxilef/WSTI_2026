@@ -822,8 +822,14 @@ class DemoRuntime:
         from src.interfaces.web_server import build_dashboard_payload
 
         with self._lock:
-            database = self._require(token, self._clock()).database
-        return build_dashboard_payload(str(database), fy_start_year, month)
+            session = self._require(token, self._clock())
+            database, chosen = session.database, session.profile is not None
+        payload = build_dashboard_payload(str(database), fy_start_year, month)
+        if chosen:
+            # The starting chart of accounts names the example businesses; show only accounts this visitor used.
+            books = payload["books"]
+            books["trial_balance"] = [r for r in books["trial_balance"] if r["total_debit"] or r["total_credit"]]
+        return payload
 
     @_in_session_profile
     def scan_inbox(self, token: str | None) -> dict:

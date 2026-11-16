@@ -789,6 +789,8 @@ def test_visitor_business_choice_gives_its_own_profile_and_fresh_ledger(demo_ser
     client.cookie = headers["Set-Cookie"].split(";", 1)[0]
     done = client.intake({"text": "[FICTIONAL DEMO] Clean Supply Co mop $24.00 on 2024-05-01"})
     assert done["job"]["results"][0]["receipt_id"] == 1  # no example receipts were seeded
+    dashboard = json.dumps(client.request("GET", "/demo/api/dashboard")[2])
+    assert "Cleaning" in dashboard and "Dog Walking" not in dashboard and "3D Printing" not in dashboard
     # Same choice keeps the session; "Other" in the visitor's own words starts a new one.
     assert client.request("POST", "/demo/api/session?business=cleaning")[1].get("Set-Cookie", "").split(";", 1)[0] == client.cookie
     status, headers, other = client.request("POST", "/demo/api/session?other=Mobile%20coffee%20cart%3Cb%3E")
