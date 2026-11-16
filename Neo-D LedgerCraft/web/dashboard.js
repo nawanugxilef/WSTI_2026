@@ -161,6 +161,7 @@ function showReceipt(receipt) {
   original.hidden = !url;
   if (url) original.href = url;
   else original.removeAttribute("href");
+  receiptEditor(receipt);
   byId("receipt-dialog").showModal();
 }
 
@@ -255,6 +256,87 @@ function requireSignIn(message = "Use /dashboard in Neo’s Telegram chat to get
     return;
   }
   gate("Open your ledger", message, true);
+}
+
+// Demo only: edit or delete a receipt from its details. The owner dashboard has no element with this id.
+function receiptEditor(receipt) {
+  const holder = byId("receipt-edit");
+  if (!holder) return;
+  const status = element("p", "", "form-status");
+  status.setAttribute("role", "status");
+  status.hidden = true;
+  const say = (text) => { status.textContent = text; status.hidden = !text; };
+  const send = async (path, payload, done) => {
+    say("Saving…");
+    try {
+      const response = await fetch("/demo/api/" + path, requestOptions("POST", payload));
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Neo couldn’t save that. Try again.");
+      byId("receipt-dialog").close();
+      await loadDashboard();
+      done?.();
+    } catch (error) {
+      say(error.message);
+    }
+  };
+  const actions = element("div", "", "edit-actions");
+  const edit = element("button", "✏️ Edit", "quiet-button");
+  const remove = element("button", "🗑️ Delete", "quiet-button");
+  edit.type = remove.type = "button";
+  actions.append(edit, remove);
+  holder.replaceChildren(actions, status);
+
+  edit.addEventListener("click", () => {
+    const form = element("form", "", "edit-form");
+    const field = (label, control) => {
+      const wrap = element("label", label);
+      wrap.append(control);
+      form.append(wrap);
+      return control;
+    };
+    const name = field("Name", element("input"));
+    name.type = "text"; name.required = true; name.maxLength = 80; name.value = receipt.vendor;
+    const day = field("Date", element("input"));
+    day.type = "date"; day.required = true; day.value = receipt.date; day.max = new Date().toISOString().slice(0, 10);
+    const type = field("Type", element("select"));
+    for (const [value, text] of Object.entries(streamNames)) type.add(new Option(text, value));
+    type.value = receipt.claim_stream;
+    const share = field("Business or work use %", element("input"));
+    share.type = "number"; share.min = "1"; share.max = "100"; share.step = "1";
+    share.value = receipt.claim_stream === "personal" ? 100 : Math.round(receipt.business_pct) || 100;
+    const category = field("Category", element("select"));
+    const fill = () => {
+      const options = (data.edit_options || {})[type.value] || [];
+      category.replaceChildren(...options.map((option) => new Option(option.label, option.id)));
+      if (options.some((option) => option.id === receipt.category)) category.value = receipt.category;
+      share.parentElement.hidden = type.value === "personal";
+    };
+    type.addEventListener("change", fill);
+    fill();
+    const save = element("button", "Save changes", "primary-button");
+    save.type = "submit";
+    form.append(save);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      send("receipt-edit", {
+        receipt_id: receipt.id, vendor: name.value.trim(), date: day.value, claim_stream: type.value,
+        business_pct: type.value === "personal" ? 0 : Number(share.value), category: category.value,
+      });
+    });
+    holder.replaceChildren(form, status);
+    name.focus();
+  });
+
+  remove.addEventListener("click", () => {
+    const sure = element("div", "", "edit-actions");
+    const yes = element("button", "Yes, delete it", "primary-button");
+    const no = element("button", "Keep it", "quiet-button");
+    yes.type = no.type = "button";
+    yes.addEventListener("click", () => send("receipt-delete", { receipt_id: receipt.id }));
+    no.addEventListener("click", () => receiptEditor(receipt));
+    sure.append(yes, no);
+    holder.replaceChildren(element("p", "Delete " + receipt.vendor + " (" + money(receipt.amount) + ") from your demo ledger?"), sure, status);
+  });
 }
 
 function requestOptions(method, payload) {

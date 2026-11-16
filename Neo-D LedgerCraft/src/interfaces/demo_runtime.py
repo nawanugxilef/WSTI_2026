@@ -874,6 +874,91 @@ class DemoRuntime:
                 raise DemoError(404, "This receipt file was not found in your demo session.")
             return match.name.split("__", 1)[1], match.read_bytes()
 
+    def _editable_session(self, token: str | None) -> Session:
+        """Call with the lock held: the session, if it can take one more edit right now."""
+        now = self._clock()
+        self._sweep(now)
+        session = self._require(token, now)
+        if session.job and session.job.state in _ACTIVE:
+            raise DemoError(409, "Wait for this session's current receipt job to finish.")
+        if session.corrections >= MAX_SESSION_CORRECTIONS:
+            raise DemoError(429, "This session has reached its receipt edit limit.")
+        if not session.database.is_file():
+            raise DemoError(404, "This receipt was not found in your demo session.")
+        session.corrections += 1
+        return session
+
+    @_in_session_profile
+    def edit_receipt(self, token: str | None, payload: object) -> dict:
+        """Dashboard edit: name, date, work or personal, share and category in one go."""
+        if not isinstance(payload, dict) or payload.keys() != {
+            "receipt_id", "vendor", "date", "claim_stream", "business_pct", "category",
+        }:
+            raise DemoError(400, "Send the receipt with its name, date, type, share and category.")
+        receipt_id, vendor, day = payload["receipt_id"], payload["vendor"], payload["date"]
+        stream, pct, category = payload["claim_stream"], payload["business_pct"], payload["category"]
+        if type(receipt_id) is not int or not 0 < receipt_id < 2**63:
+            raise DemoError(400, "Choose a valid demo receipt.")
+        if not isinstance(vendor, str) or not 0 < len(re.sub(r"\s+", " ", vendor).strip()) <= 80:
+            raise DemoError(400, "Use a name of 1 to 80 characters.")
+        vendor = re.sub(r"\s+", " ", vendor).strip()
+        try:
+            if not isinstance(day, str) or date.fromisoformat(day) > _sydney_today():
+                raise ValueError
+        except ValueError:
+            raise DemoError(400, "Choose a date that is today or earlier.") from None
+        if stream not in ("abn", "payg", "personal"):
+            raise DemoError(400, "Choose ABN, PAYG or Personal.")
+        if stream == "personal":
+            pct = 0
+        if type(pct) not in (int, float) or not (0 <= pct <= 100) or (stream != "personal" and pct < 1):
+            raise DemoError(400, "Enter a percentage between 1 and 100.")
+        with self._lock:
+            session = self._editable_session(token)
+            with closing(get_connection(session.database)) as connection:
+                orchestrator = DemoOrchestrator(connection, FinanceAgent(api_key=""))
+                current = orchestrator.km.get_receipt(receipt_id)
+                if not current:
+                    raise DemoError(404, "This receipt was not found in your demo session.")
+                if stream == "abn":
+                    keys = biz.abn_activity_keys()
+                    activity = current["business_activity"] if current["business_activity"] in keys else keys[0]
+                else:
+                    activity = "payg_work" if stream == "payg" else "none"
+                spec = self._category_catalog.get(category) if isinstance(category, str) else None
+                if not spec or spec.stream != stream or not is_category_activity_compatible(
+                    category, activity, self._category_catalog,
+                ):
+                    raise DemoError(400, "Choose a category that fits this type.")
+                try:
+                    orchestrator.correct_receipt(
+                        receipt_id, vendor=vendor, date=day, claim_stream=stream, business_activity=activity,
+                        business_pct=float(pct), category=category, remember_vendor=False,
+                    )
+                except ValueError:
+                    raise DemoError(400, "Neo could not save that change. Check the details and try again.") from None
+        return {"ok": True}
+
+    def delete_receipt(self, token: str | None, payload: object) -> dict:
+        """Dashboard delete: remove the receipt and its journal entry from this visitor's temporary ledger."""
+        receipt_id = payload.get("receipt_id") if isinstance(payload, dict) and payload.keys() == {"receipt_id"} else None
+        if type(receipt_id) is not int or not 0 < receipt_id < 2**63:
+            raise DemoError(400, "Choose a valid demo receipt.")
+        from src.storage.journal import JournalManager
+
+        with self._lock:
+            session = self._editable_session(token)
+            with closing(get_connection(session.database)) as connection:
+                if not connection.execute("SELECT 1 FROM receipts WHERE id = ?", (receipt_id,)).fetchone():
+                    raise DemoError(404, "This receipt was not found in your demo session.")
+                JournalManager(connection).delete_by_reference(f"receipt:{receipt_id}")
+                with connection:
+                    connection.execute("DELETE FROM receipts WHERE id = ?", (receipt_id,))
+            original = self._originals_dir(session)
+            for file in original.glob(f"{receipt_id}.*") if original.is_dir() else ():
+                file.unlink(missing_ok=True)
+        return {"ok": True}
+
     @_in_session_profile
     def dashboard(self, token: str | None, fy_start_year: int | None = None, month: str | None = None) -> dict:
         """The owner dashboard payload, built from this visitor's temporary demo ledger."""
@@ -887,6 +972,16 @@ class DemoRuntime:
             # The starting chart of accounts names the example businesses; show only accounts this visitor used.
             books = payload["books"]
             books["trial_balance"] = [r for r in books["trial_balance"] if r["total_debit"] or r["total_credit"]]
+        # Categories the dashboard's edit form may offer for each type of receipt.
+        activity = {"abn": biz.abn_activity_keys()[0], "payg": "payg_work", "personal": "none"}
+        payload["edit_options"] = {
+            stream: [
+                {"id": spec.key, "label": category_label(spec.key, None)}
+                for spec in self._category_catalog.values()
+                if spec.stream == stream and is_category_activity_compatible(spec.key, activity[stream], self._category_catalog)
+            ]
+            for stream in activity
+        }
         return payload
 
     @_in_session_profile

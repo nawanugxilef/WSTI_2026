@@ -815,3 +815,24 @@ def test_demo_fixes_a_typed_name_and_downloads_the_csv(demo_server):
     assert b"Coffee" in body and b"cofww" not in body
     assert b'href="/demo/dashboard">Dashboard</a>' in client.request("GET", "/demo")[2]
     assert DemoClient(demo_server).request("GET", "/demo/api/export.csv")[0] == 401
+
+
+def test_demo_dashboard_edits_and_deletes_a_receipt(demo_server):
+    client = DemoClient(demo_server)
+    client.open()
+    client.intake({"text": "[FICTIONAL DEMO] cofww $5.00 on 2024-05-01"})
+    options = client.request("GET", "/demo/api/dashboard?fy=2023")[2]["edit_options"]
+    assert {"abn", "payg", "personal"} == set(options) and any(o["id"] == "office_supplies" for o in options["abn"])
+    edit = {"receipt_id": 1, "vendor": "Coffee Cart", "date": "2024-05-02", "claim_stream": "abn",
+            "business_pct": 65, "category": "office_supplies"}
+    assert client.request("POST", "/demo/api/receipt-edit", edit)[0] == 200
+    row = client.request("GET", "/demo/api/dashboard?fy=2023")[2]["receipts"][0]
+    assert (row["vendor"], row["date"], row["claim_stream"], row["business_pct"], row["category"]) == (
+        "Coffee Cart", "2024-05-02", "abn", 65, "office_supplies")
+    assert row["claim"] == 3.25
+    assert client.request("POST", "/demo/api/receipt-edit", {**edit, "category": "groceries"})[0] == 400
+    assert client.request("POST", "/demo/api/receipt-edit", {**edit, "date": "2999-01-01"})[0] == 400
+    assert client.request("POST", "/demo/api/receipt-delete", {"receipt_id": 1})[0] == 200
+    after = client.request("GET", "/demo/api/dashboard?fy=2023")[2]
+    assert after["receipts"] == [] and not any(r["total_debit"] or r["total_credit"] for r in after["books"]["trial_balance"])
+    assert client.request("POST", "/demo/api/receipt-delete", {"receipt_id": 1})[0] == 404

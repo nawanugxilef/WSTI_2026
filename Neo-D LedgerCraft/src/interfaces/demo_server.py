@@ -71,7 +71,7 @@ def _demo_dashboard_page() -> bytes:
     """The owner dashboard, pointed at the visitor's demo session and without owner-only tools."""
     html = (DEMO.parent / "index.html").read_text(encoding="utf-8")
     hide = "details.utility, #sign-out, #install-entry, #open-companion, .sign-in-code { display: none !important; }"
-    banner = ('<p class="notice" style="margin:12px 0">Demo dashboard: 12 fictional sample receipts for your kind of work, plus the ones you send in the chat. '
+    banner = ('<p class="notice" style="margin:12px 0">Demo dashboard: 12 fictional sample receipts for your kind of work, plus the ones you send in the chat. Tap a receipt to edit or delete it. '
               '<a href="/demo">Back to the chat</a></p>')
     return (html.replace('<script src="/dashboard.js" defer></script>',
                          f'<style>{hide}</style><script>window.NEO_DASHBOARD_API = "/demo/api/dashboard";</script>'
@@ -79,6 +79,8 @@ def _demo_dashboard_page() -> bytes:
             .replace('<h1>Neo Dashboard</h1>', '<h1>Neo Dashboard · Demo</h1>', 1)
             .replace('<a class="quiet-button" href="/">Office</a>', '<a class="quiet-button" href="/demo">← Back to chat</a>', 1)
             .replace('<main class="frame">', '<main class="frame">' + banner, 1)
+            .replace('<a class="quiet-button drive-link" id="receipt-original"',
+                     '<div id="receipt-edit"></div>\n    <a class="quiet-button drive-link" id="receipt-original"', 1)
             .encode("utf-8"))
 
 
@@ -300,7 +302,10 @@ class DemoHandler(BaseHTTPRequestHandler):
         try:
             host = self._check_host()
             route = urlsplit(self.path).path
-            if route not in ("/demo/api/session", "/demo/api/intake", "/demo/api/correct", "/demo/api/inbox-scan"):
+            if route not in (
+                "/demo/api/session", "/demo/api/intake", "/demo/api/correct", "/demo/api/inbox-scan",
+                "/demo/api/receipt-edit", "/demo/api/receipt-delete",
+            ):
                 raise DemoError(404, "Demo action not found.")
             if self.headers.get("Origin") != (self.server.public_origin or f"http://{host}"):
                 raise DemoError(403, "Open the demo page before sending receipts.")
@@ -323,6 +328,10 @@ class DemoHandler(BaseHTTPRequestHandler):
                     if self.headers.get("Transfer-Encoding") or self.headers.get_all("Content-Length", []) not in ([], ["0"]):
                         raise DemoError(400, "Scanning takes no data.")
                     self._json(200, self.server.runtime.scan_inbox(token))
+                elif route == "/demo/api/receipt-edit":
+                    self._json(200, self.server.runtime.edit_receipt(token, self._json_body(correction=True)))
+                elif route == "/demo/api/receipt-delete":
+                    self._json(200, self.server.runtime.delete_receipt(token, self._json_body(correction=True)))
                 elif route == "/demo/api/correct":
                     self._json(200, self.server.runtime.correct(token, self._json_body(correction=True)))
                 else:
