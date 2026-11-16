@@ -13,7 +13,7 @@ An ADHD-friendly receipt catch-up assistant for sole traders in Sydney, Australi
 **[neo.madewithfelix.app](https://neo.madewithfelix.app/)**: open the 3D office, then choose **Try Neo**.
 
 - No login. Each visitor gets a private session that expires after 30 minutes.
-- Type a note such as `Bunnings hammer $45.90`, or upload the fictional sample receipts offered in the chat (up to 10 photos in one send, or one PDF).
+- Type a note such as `coffee 5` or `panipuri 5` (no $ sign needed; other languages such as `咖啡 5` work too), or upload the fictional sample receipts offered in the chat (up to 10 photos in one send, or one PDF).
 - Watch the agents work in the office: Neo receives, Corgi reads, Bear checks, Girraffe files. The task board moves each card from Inbox to Done.
 - Fix any receipt with one tap: **Category**, **ABN**, **PAYG** or **Personal**.
 - Send the same file twice and Neo finds the duplicate. No second entry, no extra XP.

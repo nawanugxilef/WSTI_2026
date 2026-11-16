@@ -6,7 +6,7 @@ Autonomous multi-agent financial assistant for sole traders in Australia (`$ AUD
 
 ## Try it two ways
 
-1. **Web demo (no install):** open the chat at the demo site and send a fictional receipt photo or a note like `Bunnings hammer $45.90`. Files are deleted after 30 minutes.
+1. **Web demo (no install):** open the chat at the demo site and send a fictional receipt photo or a quick note like `coffee 5` (no $ sign needed; other languages such as `咖啡 5` work too). Files are deleted after 30 minutes.
 2. **Run it yourself:** your own Telegram bot on your own computer, with the setup wizard below.
 
 ## Run it yourself (about 10 minutes)
