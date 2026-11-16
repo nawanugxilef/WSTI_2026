@@ -930,11 +930,6 @@ async function sendIntake(text, chosen, confirmation = null) {
 }
 
 launcher.addEventListener("click", openChat);
-office?.addEventListener("neo-office:agent-select", (event) => {
-  if (event.detail?.id !== "chief_of_staff") return;
-  event.preventDefault();
-  openChat();
-});
 dialog.querySelector(".neo-demo-close").addEventListener("click", () => dialog.close());
 dialog.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented) dialog.close();
