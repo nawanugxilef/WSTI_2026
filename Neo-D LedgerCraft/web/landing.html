@@ -93,6 +93,16 @@
     </div>
   </section>
 
+  <section id="inbox-scout">
+    <h2>Inbox Scout: receipts from your email</h2>
+    <p class="sub">Many receipts never get printed. They arrive by email and get buried. Inbox Scout is a separate module that lets Gemini go through your Gmail for you.</p>
+    <div class="grid">
+      <div class="card step"><span class="num">1</span><div><h3>Gemini reads your Gmail</h3><p>Read-only access. Only emails that look like receipts, invoices or order confirmations from the last 30 days. Newsletters are skipped before Gemini sees them.</p></div></div>
+      <div class="card step"><span class="num">2</span><div><h3>Already logged? Marked repeat</h3><p>If the same shop and amount is already in your Neo ledger within 3 days, for example because you sent the photo to the bot, it is marked 🔁 repeat. Nothing is booked twice.</p></div></div>
+      <div class="card step"><span class="num">3</span><div><h3>New? Recorded</h3><p>New receipts go into the same Neo ledger with a suggested ATO myTax label, ready for one-tap fixes. Each email is scanned once.</p></div></div>
+    </div>
+  </section>
+
   <section>
     <h2>What gets better, and how we'd measure it</h2>
     <div class="grid">
@@ -123,7 +133,7 @@
     <div class="grid">
       <div class="card"><h3>AI we used</h3><ul><li><b>Gemini</b>, inside the app, reads receipt photos and notes</li><li><b>Google Antigravity, Claude and ChatGPT</b> helped write and review the code</li></ul></div>
       <div class="card"><h3>Where a person checks</h3><ul><li>The owner confirms or changes every suggestion with one tap</li><li>A QA agent re-checks maths, GST and duplicates; unsure receipts are marked "needs review", never posted silently</li><li>The owner reviews the tax summary before lodging</li></ul></div>
-      <div class="card"><h3>Known risks</h3><ul><li>AI can misread a shop name or amount: the details stay visible and editable</li><li>Wrong category: the label is shown on every receipt and is one tap to change</li><li>Demo photos are sent to Gemini to be read: fictional data only</li></ul></div>
+      <div class="card"><h3>Known risks</h3><ul><li>AI can misread a shop name or amount: the details stay visible and editable</li><li>Wrong category: the label is shown on every receipt and is one tap to change</li><li>Demo photos are sent to Gemini to be read: fictional data only</li><li>Inbox Scout sends only the first 4,000 characters of likely receipt emails to Gemini, with read-only Gmail access</li></ul></div>
     </div>
   </section>
 
