@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Neo-D Inbox Scout</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap">
 <style>
   :root { --ink: #1d3029; --muted: #465e52; --line: #d3e1d7; --accent: #286347; --wash: #edf5ed; --paper: #fff; --repeat: #b4530a; }
   * { box-sizing: border-box; }
@@ -17,25 +17,32 @@
   .from { font-weight: 600; }
   .subject { font-size: .9rem; color: var(--muted); }
 
-  /* The inbox: laid out like a mail app, so it reads as email at a glance. */
-  .mail { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-  .mailbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f3f6f4; border-bottom: 1px solid var(--line); font-size: .9rem; color: var(--muted); }
-  .mailbar .search { flex: 1; padding: 6px 14px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); }
-  .mailbar b { color: var(--ink); }
-  ul { list-style: none; margin: 0; padding: 0; }
-  .row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #e8efea; }
+  /* The inbox: laid out like Gmail, so it is clear where Neo reads the receipts from. */
+  .mail { background: #f6f8fc; border: 1px solid #dadce0; border-radius: 16px; overflow: hidden; font-family: Roboto, Arial, sans-serif; color: #202124; }
+  .mailbar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+  .mailbar .menu { font-size: 1.2rem; color: #5f6368; }
+  .mailbar .brand { font-size: 1.35rem; color: #5f6368; letter-spacing: -.01em; }
+  .mailbar .search { flex: 1; min-width: 0; padding: 9px 16px; border-radius: 999px; background: #eaf1fb; color: #5f6368; font-size: .9rem; white-space: nowrap; overflow: hidden; }
+  .mailbar .me { width: 32px; height: 32px; border-radius: 50%; background: #1a73e8; color: #fff; display: grid; place-items: center; font-weight: 500; font-size: .9rem; flex: none; }
+  .tabs { display: flex; background: #fff; border-radius: 16px 16px 0 0; margin: 0 8px; border-bottom: 1px solid #e0e3e7; font-size: .85rem; font-weight: 500; }
+  .tabs span { padding: 12px 18px; color: #5f6368; }
+  .tabs .on { color: #0b57d0; box-shadow: inset 0 -3px 0 #0b57d0; }
+  ul { list-style: none; margin: 0 8px 8px; padding: 0; background: #fff; border-radius: 0 0 16px 16px; overflow: hidden; }
+  .row { display: grid; grid-template-columns: 18px 18px minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 9px 14px; border-bottom: 1px solid #f1f3f4; }
   .row:last-child { border-bottom: 0; }
-  .row.read { background: #f7f9f8; }
-  .row.read .who, .row.read .what b { font-weight: 500; }
-  .star { color: #b9c7be; font-size: 1.1rem; }
-  .who { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .date { font-size: .85rem; color: var(--muted); white-space: nowrap; }
-  .what { grid-column: 2 / 4; font-size: .9rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .what b { color: var(--ink); font-weight: 600; }
-  .tag { display: inline-block; margin-right: 8px; padding: 1px 9px; border-radius: 4px; font-size: .78rem; font-weight: 700; color: #fff; background: var(--accent); vertical-align: 1px; }
-  .tag.repeat { background: var(--repeat); }
-  .tag.not_receipt, .tag.already_scanned { background: #dfe7e2; color: var(--ink); }
-  .tag.needs_review { background: #8a6d00; }
+  .row.read { background: #f2f6fc; }
+  .row.read .who, .row.read .what b, .row.read .date { font-weight: 400; }
+  .box { width: 15px; height: 15px; border: 2px solid #c4c7c5; border-radius: 2px; }
+  .star { color: #c4c7c5; font-size: 1.05rem; line-height: 1; }
+  .who { font-weight: 700; font-size: .92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .date { font-size: .78rem; font-weight: 700; white-space: nowrap; }
+  .what { grid-column: 3 / 5; font-size: .88rem; color: #5f6368; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .what b { color: #202124; font-weight: 700; }
+  .tag { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 4px; font-size: .75rem; font-weight: 500; line-height: 1.5; color: #fff; background: #16a765; vertical-align: 1px; }
+  .tag.repeat { background: #e66550; }
+  .tag.not_receipt, .tag.already_scanned { background: #e7e7e7; color: #444; }
+  .tag.needs_review { background: #f2a600; color: #202124; }
+  .tm { margin: 6px 0 0; font-size: .78rem; color: var(--muted); }
 
   /* Neo's report: a chat message that lists everything it found. */
   .chat { margin-top: 8px; padding: 14px; border-radius: 14px; background: #dfeee4; border: 1px solid var(--line); }
@@ -61,16 +68,18 @@
 <body>
 <main>
   <h1>Neo-D Inbox Scout</h1>
-  <p class="lead">Gemini reads an inbox, finds the receipts and files them in your ledger. One button. This inbox is fictional.</p>
+  <p class="lead">Gemini reads your Gmail inbox, finds the receipts and files them in your ledger. One button. This inbox is fictional.</p>
 
   <h2>Already in your Neo ledger</h2>
   <div class="card"><div class="from">Fictional Filament Co · $54.00 · 10 Nov 2026</div><div class="subject">You sent this receipt to the bot as a photo earlier.</div></div>
 
-  <h2>The inbox</h2>
-  <div class="mail">
-    <div class="mailbar"><span class="search">🔍 Search mail</span><span><b>Inbox</b> · 4</span></div>
+  <h2>Your Gmail inbox (fictional preview)</h2>
+  <div class="mail" aria-label="Preview of a Gmail inbox">
+    <div class="mailbar"><span class="menu" aria-hidden="true">☰</span><span class="brand">Gmail</span><span class="search">🔍 Search mail</span><span class="me" aria-hidden="true">S</span></div>
+    <div class="tabs" aria-hidden="true"><span class="on">Primary</span><span>Promotions</span><span>Updates</span></div>
     <ul id="inbox"></ul>
   </div>
+  <p class="tm">A fictional preview, not the real Gmail app. Gmail is a trademark of Google LLC.</p>
 
   <button class="btn" id="scan">Scan this inbox</button>
   <p id="status" aria-live="polite"></p>
@@ -107,7 +116,7 @@
     const what = el("div", "what");
     if (result) what.append(el("span", "tag " + result.status, LABEL[result.status] || result.status));
     what.append(el("b", "", subject), " - " + snippet);
-    li.append(el("span", "star", "☆"), el("span", "who", from), el("span", "date", date), what);
+    li.append(el("span", "box"), el("span", "star", "☆"), el("span", "who", from), el("span", "date", date), what);
     return li;
   }
   function show(results) {
@@ -116,7 +125,7 @@
   function report(results) {
     const count = (s) => results.filter((r) => r.status === s).length;
     const nothingNew = count("already_scanned") === results.length;
-    $("report-head").textContent = "📬 I read " + results.length + " emails. Here is what I found:";
+    $("report-head").textContent = "📬 I read " + results.length + " emails in your Gmail. Here is what I found:";
     $("report-list").replaceChildren(...results.map((r, i) => {
       const li = el("li", r.status);
       li.append(el("b", "", (LABEL[r.status] || r.status) + " · " + EMAILS[i][0]), r.detail);
@@ -138,7 +147,7 @@
   }
   button.addEventListener("click", async () => {
     button.disabled = true;
-    status.textContent = "Neo is reading the emails… about 20 seconds.";
+    status.textContent = "Gemini is reading your Gmail… about 20 seconds.";
     try {
       await post("session");
       const data = await post("inbox-scan");
