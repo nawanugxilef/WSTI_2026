@@ -9,21 +9,46 @@
   :root { --ink: #1d3029; --muted: #465e52; --line: #d3e1d7; --accent: #286347; --wash: #edf5ed; --paper: #fff; --repeat: #b4530a; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--wash); color: var(--ink); font: 17px/1.5 "DM Sans", system-ui, sans-serif; }
-  main { max-width: 36rem; margin: 0 auto; padding: 24px 16px 48px; }
+  main { max-width: 44rem; margin: 0 auto; padding: 24px 16px 48px; }
   h1 { font-size: 1.6rem; line-height: 1.2; margin: 0 0 4px; }
   h2 { font-size: 1rem; margin: 22px 0 8px; color: var(--muted); font-weight: 600; }
   .lead { color: var(--muted); margin: 0 0 16px; }
   .card { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
-  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
   .from { font-weight: 600; }
-  .subject, .detail, .hint { font-size: .9rem; color: var(--muted); }
-  .top { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+  .subject { font-size: .9rem; color: var(--muted); }
+
+  /* The inbox: laid out like a mail app, so it reads as email at a glance. */
+  .mail { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .mailbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f3f6f4; border-bottom: 1px solid var(--line); font-size: .9rem; color: var(--muted); }
+  .mailbar .search { flex: 1; padding: 6px 14px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); }
+  .mailbar b { color: var(--ink); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  .row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #e8efea; }
+  .row:last-child { border-bottom: 0; }
+  .row.read { background: #f7f9f8; }
+  .row.read .who, .row.read .what b { font-weight: 500; }
+  .star { color: #b9c7be; font-size: 1.1rem; }
+  .who { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .date { font-size: .85rem; color: var(--muted); white-space: nowrap; }
-  .chip { display: inline-block; margin-top: 8px; padding: 3px 12px; border-radius: 999px; font-size: .85rem; font-weight: 700; color: #fff; background: var(--accent); }
-  .chip.repeat { background: var(--repeat); }
-  .chip.not_receipt, .chip.already_scanned { background: var(--line); color: var(--ink); }
-  .chip.needs_review { background: #8a6d00; }
-  .detail { margin: 4px 0 0; color: var(--ink); }
+  .what { grid-column: 2 / 4; font-size: .9rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .what b { color: var(--ink); font-weight: 600; }
+  .tag { display: inline-block; margin-right: 8px; padding: 1px 9px; border-radius: 4px; font-size: .78rem; font-weight: 700; color: #fff; background: var(--accent); vertical-align: 1px; }
+  .tag.repeat { background: var(--repeat); }
+  .tag.not_receipt, .tag.already_scanned { background: #dfe7e2; color: var(--ink); }
+  .tag.needs_review { background: #8a6d00; }
+
+  /* Neo's report: a chat message that lists everything it found. */
+  .chat { margin-top: 8px; padding: 14px; border-radius: 14px; background: #dfeee4; border: 1px solid var(--line); }
+  .bubble { max-width: 34rem; padding: 12px 14px; border-radius: 4px 16px 16px 16px; background: var(--paper); box-shadow: 0 1px 2px rgba(29, 48, 41, .15); }
+  .bubble .name { font-weight: 700; color: var(--accent); font-size: .9rem; }
+  .bubble p { margin: 6px 0 0; }
+  .bubble ol { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+  .bubble li { font-size: .95rem; }
+  .bubble li b { display: block; }
+  .bubble li.repeat b { color: var(--repeat); }
+  .bubble .sum { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-weight: 600; }
+  .bubble time { display: block; text-align: right; font-size: .75rem; color: var(--muted); }
+
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; width: 100%; margin-top: 16px; padding: 12px 16px; border-radius: 12px; border: 0; background: var(--accent); color: #fff; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
   .btn[disabled] { opacity: .6; cursor: wait; }
   .btn.soft { background: var(--paper); color: var(--accent); border: 1px solid var(--accent); }
@@ -36,49 +61,74 @@
 <body>
 <main>
   <h1>Neo-D Inbox Scout</h1>
-  <p class="lead">Neo looks through an inbox for receipts and files them in your ledger. One button. This inbox is fictional.</p>
+  <p class="lead">Gemini reads an inbox, finds the receipts and files them in your ledger. One button. This inbox is fictional.</p>
 
   <h2>Already in your Neo ledger</h2>
   <div class="card"><div class="from">Fictional Filament Co · $54.00 · 10 Nov 2026</div><div class="subject">You sent this receipt to the bot as a photo earlier.</div></div>
 
-  <h2>The inbox (4 emails)</h2>
-  <ul id="inbox"></ul>
+  <h2>The inbox</h2>
+  <div class="mail">
+    <div class="mailbar"><span class="search">🔍 Search mail</span><span><b>Inbox</b> · 4</span></div>
+    <ul id="inbox"></ul>
+  </div>
 
   <button class="btn" id="scan">Scan this inbox</button>
   <p id="status" aria-live="polite"></p>
+
+  <div id="report" hidden>
+    <h2>Neo's report</h2>
+    <div class="chat"><div class="bubble">
+      <div class="name">Neo</div>
+      <p id="report-head"></p>
+      <ol id="report-list"></ol>
+      <p class="sum" id="report-sum"></p>
+      <time id="report-time"></time>
+    </div></div>
+  </div>
   <a class="btn soft" id="ledger" href="/demo/dashboard" hidden>See them in your dashboard →</a>
 
   <p class="note">Fictional emails only. Nothing here reads a real mailbox. With your own Gmail, access is read-only: Neo cannot send, delete or change email. Results are suggestions for you to check, not tax advice. <a href="/">Back to start</a></p>
 </main>
 <script>
-  // Same four emails as demo/sample_emails.json, shown before the scan.
+  // Same four emails as demo/sample_emails.json, shown before the scan: sender, subject, first words, date.
   const EMAILS = [
-    ["Fictional Filament Co", "[FICTIONAL DEMO] Tax invoice #FF-1042", "10 Nov"],
-    ["Fictional Demo Cafe", "[FICTIONAL DEMO] Your receipt from Fictional Demo Cafe", "12 Nov"],
-    ["Fictional Pet Supplies", "[FICTIONAL DEMO] Order confirmation - dog walking leads", "13 Nov"],
-    ["Fictional News Weekly", "[FICTIONAL DEMO] This week's top stories", "14 Nov"],
+    ["Fictional Filament Co", "[FICTIONAL DEMO] Tax invoice #FF-1042", "Thanks for your order. 2 x PLA filament 1kg spool. Total $54.00", "10 Nov"],
+    ["Fictional Demo Cafe", "[FICTIONAL DEMO] Your receipt from Fictional Demo Cafe", "Flat white and banana bread. Total $11.50", "12 Nov"],
+    ["Fictional Pet Supplies", "[FICTIONAL DEMO] Order confirmation - dog walking leads", "Your order is confirmed. 3 x dog leads. Total $36.00", "13 Nov"],
+    ["Fictional News Weekly", "[FICTIONAL DEMO] This week's top stories", "Five stories you missed this week.", "14 Nov"],
   ];
-  const LABEL = { recorded: "✅ Recorded", repeat: "🔁 Repeat", not_receipt: "Not a receipt", needs_review: "✋ To check", already_scanned: "↩ Scanned before" };
-  const list = document.getElementById("inbox"), status = document.getElementById("status"), button = document.getElementById("scan");
+  const LABEL = { recorded: "✅ Recorded", repeat: "🔁 Repeat", not_receipt: "➖ Not a receipt", needs_review: "✋ To check", already_scanned: "↩ Scanned before" };
+  const $ = (id) => document.getElementById(id);
+  const list = $("inbox"), status = $("status"), button = $("scan");
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
 
-  function row(from, subject, date, result) {
-    const li = document.createElement("li");
-    li.className = "card";
-    const top = document.createElement("div"); top.className = "top";
-    const who = document.createElement("span"); who.className = "from"; who.textContent = from;
-    const when = document.createElement("span"); when.className = "date"; when.textContent = date;
-    top.append(who, when);
-    const what = document.createElement("div"); what.className = "subject"; what.textContent = subject;
-    li.append(top, what);
-    if (result) {
-      const chip = document.createElement("span"); chip.className = "chip " + result.status; chip.textContent = LABEL[result.status] || result.status;
-      const detail = document.createElement("p"); detail.className = "detail"; detail.textContent = result.detail;
-      li.append(chip, detail);
-    }
+  function row([from, subject, snippet, date], result) {
+    const li = el("li", "row" + (result ? " read" : ""));
+    const what = el("div", "what");
+    if (result) what.append(el("span", "tag " + result.status, LABEL[result.status] || result.status));
+    what.append(el("b", "", subject), " - " + snippet);
+    li.append(el("span", "star", "☆"), el("span", "who", from), el("span", "date", date), what);
     return li;
   }
   function show(results) {
-    list.replaceChildren(...EMAILS.map((e, i) => row(e[0], e[1], e[2], results && results[i])));
+    list.replaceChildren(...EMAILS.map((e, i) => row(e, results && results[i])));
+  }
+  function report(results) {
+    const count = (s) => results.filter((r) => r.status === s).length;
+    const nothingNew = count("already_scanned") === results.length;
+    $("report-head").textContent = "📬 I read " + results.length + " emails. Here is what I found:";
+    $("report-list").replaceChildren(...results.map((r, i) => {
+      const li = el("li", r.status);
+      li.append(el("b", "", (LABEL[r.status] || r.status) + " · " + EMAILS[i][0]), r.detail);
+      return li;
+    }));
+    const sum = nothingNew
+      ? "Nothing new. Every email was scanned before, so nothing was booked twice."
+      : count("recorded") + " new · " + count("repeat") + " repeat · " + count("not_receipt") + " not a receipt. Nothing was booked twice.";
+    $("report-sum").textContent = sum;
+    $("report-time").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    $("report").hidden = false;
+    return sum;
   }
   async function post(path) {
     const response = await fetch("/demo/api/" + path, { method: "POST", credentials: "same-origin", cache: "no-store" });
@@ -93,12 +143,10 @@
       await post("session");
       const data = await post("inbox-scan");
       show(data.emails);
-      const count = (s) => data.emails.filter((e) => e.status === s).length;
-      status.textContent = count("already_scanned") === data.emails.length
-        ? "Nothing new. Every email was scanned before, so nothing was booked twice."
-        : "Done. " + count("recorded") + " new, " + count("repeat") + " repeat, " + count("not_receipt") + " not a receipt.";
-      document.getElementById("ledger").hidden = false;
+      status.textContent = "Done. " + report(data.emails);
+      $("ledger").hidden = false;
       button.textContent = "Scan again";
+      $("report").scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (error) {
       status.textContent = error.message;
     }
