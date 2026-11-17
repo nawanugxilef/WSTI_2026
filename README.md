@@ -96,5 +96,5 @@ cd "Neo-D LedgerCraft"
 ## Third-party assets
 
 - **Office characters:** [Kenney Cube Pets 2.0](https://kenney.nl/assets/cube-pets), [Creative Commons Zero (CC0)](https://creativecommons.org/publicdomain/zero/1.0/). CC0 does not require credit; we give it anyway.
-- **Office furniture:** Kenney furniture models (`Asset/office/kenney/`), also from [kenney.nl](https://kenney.nl).
+- **Office furniture and food:** [Kenney Furniture Kit 2.0](https://kenney.nl/assets/furniture-kit) and [Kenney Food Kit 2.0](https://kenney.nl/assets/food-kit), both CC0.
 - **3D engine:** [Three.js](https://threejs.org) r128, MIT licence.
