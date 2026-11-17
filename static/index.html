@@ -52,6 +52,12 @@
   .office-agent-list li { border-top: 1px solid var(--office-line); }
   .office-agent-list li[hidden] { display: none; }
   .office-id-card { padding: 12px 4px 4px; }
+  .office-id-stage { display: block; width: 100%; height: min(240px, 34vh); margin-top: 8px; border-radius: 16px; touch-action: none; cursor: grab;
+    background: radial-gradient(circle at 50% 78%, #ffffff 0, #e8efed 46%, #d5e2ee 100%); }
+  .office-id-stage:active { cursor: grabbing; }
+  .office-id-hint { margin: 4px 0 0; text-align: center; font-size: 12px; color: var(--office-muted); }
+  .office-has-stage .office-id-photo { display: none; }
+  .office-has-stage .office-id-card { border-top: 0; text-align: left; }
   .office-id-head { display: flex; align-items: center; gap: 12px; }
   .office-id-head > div:nth-child(2) { flex: 1; min-width: 0; }
   .office-id-head strong { font-size: 18px; }
@@ -3760,6 +3766,7 @@ window.OFFICE_PERSONALITIES = {
     personality: 'Calm and organised. Never rushes you and never judges.',
     hobby: 'Colour-coding folders.',
     breakGo: ["Recharging. Back in one minute.", "A short break. The folders can wait."],
+    breakBack: ["Receipt incoming. Break over, on my way.", "Coming. I left my coffee, but I'm coming."],
     breakThere: ["One coffee. Filed under Essentials.", "Battery at 100%. Back to the desk."],
     poked: [
       "Hello again. Need anything?",
@@ -3784,6 +3791,7 @@ window.OFFICE_PERSONALITIES = {
     personality: 'Grumpy but reliable. Complains first, then does the job properly.',
     hobby: 'Dreaming of a holiday with no receipts.',
     breakGo: ["I'm hungry. Nobody touch my receipts.", "Coffee. Now."],
+    breakBack: ["Seriously? I just got my coffee. Coming…", "Ugh. Hold on, I'm running."],
     breakThere: ["Finally. A break.", "Is there a biscuit? There had better be a biscuit."],
     poked: [
       "What? I'm busy.",
@@ -3809,6 +3817,7 @@ window.OFFICE_PERSONALITIES = {
     personality: "Careful and patient. Double-checks so you don't have to.",
     hobby: 'Spot-the-difference puzzles.',
     breakGo: ["Ugh, I'm hungry. Snack check.", "Tea first. Then I check everything again."],
+    breakBack: ["Oh! Hold on, I'm coming. Don't start without me.", "Wait for me, I'll check it properly."],
     breakThere: ["Counting the biscuits. Still seven.", "Good tea. Checked twice."],
     poked: [
       "Yes? I was in the middle of counting.",
@@ -3834,6 +3843,7 @@ window.OFFICE_PERSONALITIES = {
     personality: 'Quiet, with a very long memory.',
     hobby: 'Keeping the bookshelf tidy.',
     breakGo: ["Tea time. I never forget tea time.", "My tummy is rumbling all the way up here."],
+    breakBack: ["One moment. Long legs, short break.", "On my way. Keep that receipt warm."],
     breakThere: ["The good biscuits are on the top shelf.", "Mmm. Now, where was I?"],
     poked: [
       "Oh. Hello down there.",
@@ -4393,7 +4403,8 @@ window.OFFICE_PERSONALITIES = {
     for (const id of [...AGENT_IDS, 'boss']) {
       agents[id] = makeAgent(id, scene, people[id] || { name: id, color: '#999', lines: {} });
       const custom = (opts.models || {})[id];
-      loadModel(agents[id], custom || (DEFAULT_MODELS[id] && { url: petsPath + DEFAULT_MODELS[id] }));
+      agents[id].modelCfg = custom || (DEFAULT_MODELS[id] && { url: petsPath + DEFAULT_MODELS[id] }) || null;
+      loadModel(agents[id], agents[id].modelCfg);
     }
 
     // HUD + speech bubble (plain HTML on top of the canvas)
@@ -4416,7 +4427,8 @@ window.OFFICE_PERSONALITIES = {
     const closeAgents = document.getElementById('office-agents-close');
     const agentList = document.getElementById('office-agent-list');
     const agentStates = new Map();
-    const showAgents = () => agentPanel.showModal();
+    let startViewer = () => {};
+    const showAgents = () => { agentPanel.showModal(); startViewer(); };
     const hideAgents = () => agentPanel.close();
     if (agentPanel && openAgents && closeAgents && agentList) {
       // One staff ID card at a time, with Back and Next.
@@ -4434,6 +4446,7 @@ window.OFFICE_PERSONALITIES = {
         shown = (index + staff.length) % staff.length;
         [...agentList.children].forEach((row, i) => { row.hidden = i !== shown; });
         count.textContent = (shown + 1) + ' of ' + staff.length;
+        if (agentPanel.open) showModel(staff[shown]);
       };
       back.addEventListener('click', () => showCard(shown - 1));
       next.addEventListener('click', () => showCard(shown + 1));
@@ -4488,6 +4501,112 @@ window.OFFICE_PERSONALITIES = {
         row.append(head, facts, hello);
         agentList.append(row);
       }
+      // Character select: the current card's 3D model, large, on a turntable. Drag to spin it all the way round.
+      const stage = document.createElement('canvas');
+      stage.className = 'office-id-stage';
+      stage.setAttribute('role', 'img');
+      const stageHint = document.createElement('p');
+      stageHint.className = 'office-id-hint';
+      stageHint.textContent = 'Drag to turn';
+      let viewer = null, viewerFailed = false;
+      const ensureViewer = () => {
+        if (viewer || viewerFailed) return viewer;
+        try {
+          const view = new THREE.WebGLRenderer({ canvas: stage, antialias: true, alpha: true });
+          view.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+          view.outputEncoding = THREE.sRGBEncoding;
+          view.toneMapping = THREE.ACESFilmicToneMapping;
+          view.toneMappingExposure = 0.9;
+          const world = new THREE.Scene();
+          world.add(new THREE.HemisphereLight('#ffffff', '#a597e0', 0.75));
+          const key = new THREE.DirectionalLight('#ffffff', 0.9);
+          key.position.set(2.5, 4, 3.5);
+          world.add(key);
+          const lens = new THREE.PerspectiveCamera(30, 1.6, 0.1, 50);
+          lens.position.set(0, 1.15, 4.6);
+          lens.lookAt(0, 0.72, 0);
+          const turntable = new THREE.Group();
+          world.add(turntable);
+          viewer = { view, world, lens, turntable, mixer: null, dragging: false, lastX: 0, frame: 0, clock: new THREE.Clock(), agent: null };
+          stage.addEventListener('pointerdown', (ev) => {
+            viewer.dragging = true;
+            viewer.lastX = ev.clientX;
+            stage.setPointerCapture(ev.pointerId);
+          });
+          stage.addEventListener('pointermove', (ev) => {
+            if (!viewer.dragging) return;
+            turntable.rotation.y += (ev.clientX - viewer.lastX) * 0.012;
+            viewer.lastX = ev.clientX;
+          });
+          const release = () => { viewer.dragging = false; };
+          stage.addEventListener('pointerup', release);
+          stage.addEventListener('pointercancel', release);
+        } catch (error) {
+          viewerFailed = true;       // no WebGL: the card keeps its small picture
+          stage.remove();
+          stageHint.remove();
+          agentPanel.classList.remove('office-has-stage');
+        }
+        return viewer;
+      };
+      const showModel = (agent) => {
+        const v = ensureViewer();
+        if (!v) return;
+        v.agent = agent;
+        stage.setAttribute('aria-label', agent.personality.name + ', 3D character. Drag to turn.');
+        const place = (model, animations) => {
+          if (v.agent !== agent) return;                 // the visitor already moved to another card
+          const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+          model.scale.multiplyScalar(1.45 / (size.y || 1));
+          const box = new THREE.Box3().setFromObject(model);
+          const centre = box.getCenter(new THREE.Vector3());
+          model.position.x -= centre.x;
+          model.position.z -= centre.z;
+          model.position.y -= box.min.y;
+          v.turntable.clear();
+          v.turntable.rotation.y = 0.45;
+          v.turntable.add(model);
+          v.mixer = null;
+          const clip = animations && animations.length && THREE.AnimationClip.findByName(animations, 'idle');
+          if (clip) {
+            v.mixer = new THREE.AnimationMixer(model);
+            v.mixer.clipAction(clip).play();
+          }
+        };
+        const copy = () => {
+          const model = agent.bodyHolder.clone(true);
+          model.scale.set(1, 1, 1);
+          model.position.set(0, 0, 0);
+          place(model, null);
+        };
+        const cfg = agent.modelCfg;
+        if (cfg && cfg.url && THREE.GLTFLoader) new THREE.GLTFLoader().load(cfg.url, (gltf) => place(gltf.scene, gltf.animations), undefined, copy);
+        else copy();
+      };
+      const drawViewer = () => {
+        if (!viewer) return;
+        if (!agentPanel.open) { viewer.frame = 0; return; }
+        const width = stage.clientWidth, height = stage.clientHeight;
+        if (width && height && (stage.width !== Math.round(width * viewer.view.getPixelRatio()))) {
+          viewer.view.setSize(width, height, false);
+          viewer.lens.aspect = width / height;
+          viewer.lens.updateProjectionMatrix();
+        }
+        const dt = Math.min(viewer.clock.getDelta(), 0.05);
+        if (!viewer.dragging) viewer.turntable.rotation.y += dt * 0.5;
+        if (viewer.mixer) viewer.mixer.update(dt);
+        viewer.view.render(viewer.world, viewer.lens);
+        viewer.frame = requestAnimationFrame(drawViewer);
+      };
+      startViewer = () => {
+        showModel(staff[shown]);
+        if (viewer && !viewer.frame) {
+          viewer.clock.getDelta();
+          viewer.frame = requestAnimationFrame(drawViewer);
+        }
+      };
+      agentPanel.classList.add('office-has-stage');
+      agentList.before(stage, stageHint);
       agentList.after(pager);
       showCard(0);
       openAgents.hidden = false;
@@ -5025,8 +5144,17 @@ window.OFFICE_PERSONALITIES = {
           const near = (x, z) => Math.hypot(p.x - x, p.z - z) < 0.12;
           const lineFrom = (lines) => lines && lines.length ? lines[agent.breakCount % lines.length] : '';
           const sayIfQuiet = (text) => { if (text && !bubbleAgent) renderBubble(agent, 3200).textContent = text; };
-          if (agent.state !== 'idle') {
-            if (pause) { agent.onBreak = null; agent.target.copy(agent.home); }
+          const teamBusy = Object.values(agents).some((other) => other.id !== 'boss' && other.state !== 'idle');
+          if (agent.state !== 'idle' || teamBusy) {
+            if (pause) {
+              // Work just arrived: drop the break and hurry back to the desk.
+              agent.onBreak = null;
+              agent.hurry = true;
+              agent.breakCount += 1;
+              agent.target.copy(agent.home);
+              const sorry = lineFrom(agent.personality.breakBack);
+              if (sorry) renderBubble(agent, 3000).textContent = sorry;
+            }
             agent.nextBreak = Math.max(agent.nextBreak, nowMs + 15000);
           } else if (!pause && nowMs > agent.nextBreak && !Object.values(agents).some((other) => other.onBreak)) {
             const [bx, bz] = PANTRY[agent.id];
@@ -5063,10 +5191,10 @@ window.OFFICE_PERSONALITIES = {
         const dist = tmp.length();
         const wasWalking = agent.walking;
         agent.walking = dist > 0.05;
-        if (wasWalking && !agent.walking) agent.landedAt = t;
+        if (wasWalking && !agent.walking) { agent.landedAt = t; agent.hurry = false; }
         let facing;
         if (agent.walking) {
-          p.addScaledVector(tmp.normalize(), Math.min(dist, WALK_SPEED * dt));
+          p.addScaledVector(tmp.normalize(), Math.min(dist, WALK_SPEED * (agent.hurry ? 2 : 1) * dt));
           facing = Math.atan2(tmp.x, tmp.z);
         } else if (performance.now() < agent.turnAwayUntil) {
           facing = Math.atan2(camera.position.x - p.x, camera.position.z - p.z) + Math.PI;  // grumpy: back to the visitor
