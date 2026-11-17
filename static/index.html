@@ -3940,7 +3940,10 @@ window.OFFICE_PERSONALITIES = {
   const BOSS = [[-1.2, -4.2], [0, -4.4], [1.2, -4.2], [0.6, -3.6]];
   const BOSS_SEAT = [2.0, -6.1];  // the lion (Felix), beside the big desk so the desk doesn't hide him
   // Felix does rounds out of his office, past the desks, and back to his seat.
-  const BOSS_PATROL = [BOSS_SEAT, [2.0, -3.0], [-1.5, -1.0], [5.5, -0.8]];
+  // Each stop is reached in a straight line that misses the desks, plants and meeting table.
+  const BOSS_PATROL = [BOSS_SEAT, [2.0, -3.4], [-1.5, -1.5], [4.4, -1.5], [2.0, -3.4]];
+  const AISLE_Z = 3.4;                // open strip between the desks and the lounge
+  const PANTRY_DOOR = [-8.3, AISLE_Z]; // where the aisle meets the kitchen
 
   // Idle agents sit at their own desk and take a short coffee break in the pantry now and then
   // (Felix's call, 2026-11-17).
@@ -4128,16 +4131,16 @@ window.OFFICE_PERSONALITIES = {
     L.push(['chairModernCushion', 6.1, -3.4, 90]);
     L.push(['chairModernCushion', 8.3, -3.4, -90]);
     L.push(['pizza-box', 7.2, -3.4, 15, ROUND_TOP, 0.24]);
-    // Coffee bar in front of the kitchen
-    L.push(['kitchenBar', -7.0, 2.6, 90, 0, 1.2]);
-    L.push(['stoolBar', -6.2, 2.1, 0]);
-    L.push(['stoolBar', -6.2, 3.1, 0]);
-    L.push(['donut-sprinkles', -7.0, 2.25, 0, BAR_TOP * 1.2, FOOD]);
-    L.push(['croissant', -7.0, 2.65, 40, BAR_TOP * 1.2, FOOD]);
-    L.push(['burger', -7.0, 3.05, 0, BAR_TOP * 1.2, FOOD]);
+    // Coffee bar beside the kitchen, clear of the aisle the agents walk along
+    L.push(['kitchenBar', -7.4, -0.9, 90, 0, 1.2]);
+    L.push(['stoolBar', -6.6, -1.4, 0]);
+    L.push(['stoolBar', -6.6, -0.4, 0]);
+    L.push(['donut-sprinkles', -7.4, -1.25, 0, BAR_TOP * 1.2, FOOD]);
+    L.push(['croissant', -7.4, -0.85, 40, BAR_TOP * 1.2, FOOD]);
+    L.push(['burger', -7.4, -0.45, 0, BAR_TOP * 1.2, FOOD]);
     // Lounge: armchairs round the coffee table, a bench by the front edge
-    L.push(['loungeDesignChair', -5.9, 5.1, 90]);
-    L.push(['loungeDesignChair', -1.3, 5.1, -90]);
+    L.push(['loungeDesignChair', -5.8, 5.6, 90]);
+    L.push(['loungeDesignChair', -1.4, 5.6, -90]);
     L.push(['mug', -3.9, 5.0, 0, COFFEE_TOP, FOOD]);
     L.push(['apple', -3.3, 5.05, 0, COFFEE_TOP, FOOD]);
     L.push(['benchCushion', 5.2, 6.4, 180, 0, 1.2]);
@@ -4757,9 +4760,9 @@ window.OFFICE_PERSONALITIES = {
         }
         const [x, z] = targetFor(id, a.state);
         agent.home.set(x, 0, z);
-        if (agent.onBreak && a.state === 'idle') {
-          if (agent.onBreak.phase === 'back') agent.target.copy(agent.home);
-        } else {
+        if (agent.path && agent.path.length) {
+          // Walking a route (to or from the pantry): it already ends at the desk.
+        } else if (!(agent.onBreak && a.state === 'idle')) {
           agent.onBreak = null;
           agent.target.copy(agent.home);
         }
@@ -5175,7 +5178,20 @@ window.OFFICE_PERSONALITIES = {
         const p = agent.root.position;
         // Idle agents shift in their seat now and then — a small fidget, not a walk
         // away from the desk (idle still means "at the desk", just not typing).
+        if (agent.path && agent.path.length && Math.hypot(p.x - agent.target.x, p.z - agent.target.z) < 0.12) {
+          agent.path.shift();                              // reached this point; head for the next one
+          if (agent.path.length) agent.target.set(agent.path[0][0], 0, agent.path[0][1]);
+        }
         if (agent.id !== 'boss' && PANTRY[agent.id]) {
+          const route = (points) => {
+            agent.path = points;
+            agent.target.set(points[0][0], 0, points[0][1]);
+          };
+          // Back to the desk along the aisle, from wherever the agent is now.
+          const routeHome = () => route([
+            ...(p.x < PANTRY_DOOR[0] + 0.3 ? [PANTRY_DOOR] : []),
+            [agent.home.x, AISLE_Z], [agent.home.x, agent.home.z],
+          ]);
           const pause = agent.onBreak;
           const near = (x, z) => Math.hypot(p.x - x, p.z - z) < 0.12;
           const lineFrom = (lines) => lines && lines.length ? lines[agent.breakCount % lines.length] : '';
@@ -5187,7 +5203,7 @@ window.OFFICE_PERSONALITIES = {
               agent.onBreak = null;
               agent.hurry = true;
               agent.breakCount += 1;
-              agent.target.copy(agent.home);
+              routeHome();
               const sorry = lineFrom(agent.personality.breakBack);
               if (sorry) renderBubble(agent, 3000).textContent = sorry;
             }
@@ -5195,7 +5211,7 @@ window.OFFICE_PERSONALITIES = {
           } else if (!pause && nowMs > agent.nextBreak && !Object.values(agents).some((other) => other.onBreak)) {
             const [bx, bz] = PANTRY[agent.id];
             agent.onBreak = { phase: 'going', x: bx, z: bz, until: 0 };
-            agent.target.set(bx, 0, bz);
+            route([[agent.home.x, AISLE_Z], PANTRY_DOOR, [bx, bz]]);
             sayIfQuiet(lineFrom(agent.personality.breakGo));
           } else if (pause && pause.phase === 'going' && near(pause.x, pause.z)) {
             pause.phase = 'there';
@@ -5203,14 +5219,16 @@ window.OFFICE_PERSONALITIES = {
             sayIfQuiet(lineFrom(agent.personality.breakThere));
           } else if (pause && pause.phase === 'there' && nowMs > pause.until) {
             pause.phase = 'back';
-            agent.target.copy(agent.home);
+            routeHome();
           } else if (pause && pause.phase === 'back' && near(agent.home.x, agent.home.z)) {
             agent.onBreak = null;
+            agent.path = [];
             agent.breakCount += 1;
             agent.nextBreak = nowMs + 30000 + Math.random() * 35000;
           }
         }
-        if (agent.id !== 'boss' && agent.state === 'idle' && !agent.onBreak && !agent.walking && nowMs > agent.nextWander) {
+        if (agent.id !== 'boss' && agent.state === 'idle' && !agent.onBreak && !(agent.path && agent.path.length)
+            && !agent.walking && nowMs > agent.nextWander) {
           agent.target.set(agent.home.x + (Math.random() - 0.5) * 0.3, 0, agent.home.z + (Math.random() - 0.5) * 0.25);
           agent.nextWander = nowMs + 5000 + Math.random() * 7000;
         }
