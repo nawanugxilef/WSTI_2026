@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional
 
 from src.agents.chief_of_staff import ChiefOfStaff
+from src.storage import businesses as biz
 
 RECEIPT_WORDS = re.compile(
     r"\b(receipt|tax invoice|invoice|order confirm\w*|your order|payment received|"
@@ -50,6 +51,23 @@ def _vendor_key(name: str) -> str:
 def same_vendor(a: str, b: str) -> bool:
     ka, kb = _vendor_key(a), _vendor_key(b)
     return bool(ka and kb) and (ka in kb or kb in ka)
+
+
+def fit_to_owner(parsed):
+    """Book a business receipt to a business this owner actually runs."""
+    if parsed.claim_stream != "abn":
+        return parsed
+    keys = biz.abn_activity_keys()
+    owner = biz.exclusive_category_map().get((parsed.category or "").strip().lower())
+    update = {}
+    if owner is not None and owner not in keys:
+        # The category belongs to a kind of work this owner does not do: use their own supplies or income category.
+        other, mine = biz.get_business(owner), biz.active_businesses()[0]
+        update["category"] = mine.income_category if other and parsed.category == other.income_category else mine.supplies_category
+        update["business_activity"] = mine.key
+    elif parsed.business_activity not in keys:
+        update["business_activity"] = owner if owner in keys else keys[0]
+    return parsed.model_copy(update=update) if update else parsed
 
 
 class EmailScout:
@@ -121,16 +139,22 @@ class EmailScout:
                 repeat_of,
             )
 
+        parsed = fit_to_owner(parsed)
         qa = self.cos.qa.inspect_receipt(parsed.model_dump(), retry_count=self.cos.qa.max_retries)
-        receipt_id = self.cos.km.record_receipt(
-            data=parsed.model_dump(),
-            file_hash=None,
-            local_path=None,
-            gdrive_file_id=None,
-            gdrive_status="not_applicable",
-            flagged=qa.flagged,
-            flag_reason=qa.flag_reason,
-        )
+        try:
+            receipt_id = self.cos.km.record_receipt(
+                data=parsed.model_dump(),
+                file_hash=None,
+                local_path=None,
+                gdrive_file_id=None,
+                gdrive_status="not_applicable",
+                flagged=qa.flagged,
+                flag_reason=qa.flag_reason,
+            )
+        except ValueError:
+            # One email the ledger will not take must not stop the rest of the scan.
+            self._remember(email, "needs_review", None)
+            return ScanResult(email.message_id, email.subject, "needs_review", "Neo could not file this one. Please check it.")
         self._remember(email, "recorded", receipt_id)
         return ScanResult(
             email.message_id, email.subject, "recorded",

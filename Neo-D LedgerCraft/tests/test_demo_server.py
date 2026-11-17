@@ -782,6 +782,17 @@ def test_inbox_scout_scan_marks_repeat_records_new_and_is_idempotent(demo_server
     assert client.request("POST", "/demo/api/inbox-scan", origin="https://example.org")[0] == 403
 
 
+@pytest.mark.parametrize("query", ["business=cleaning", "other=My%20business"])
+def test_inbox_scout_scan_works_for_a_visitor_with_their_own_business(demo_server, query):
+    client = DemoClient(demo_server)
+    _, headers, _ = client.request("POST", "/demo/api/session?" + query)
+    client.cookie = headers["Set-Cookie"].split(";", 1)[0]
+    client.intake({"text": "[FICTIONAL DEMO] Cafe coffee $6.50 on 2024-05-01"})
+    status, _, data = client.request("POST", "/demo/api/inbox-scan")
+    assert status == 200, data
+    assert [e["status"] for e in data["emails"]] == ["repeat", "recorded", "recorded", "not_receipt"]
+
+
 def test_visitor_business_choice_gives_its_own_profile_and_fresh_ledger(demo_server):
     client = DemoClient(demo_server)
     status, headers, body = client.request("POST", "/demo/api/session?business=cleaning")

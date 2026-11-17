@@ -1005,10 +1005,12 @@ class DemoRuntime:
                 scout = EmailScout(orchestrator)
                 if not connection.execute("SELECT 1 FROM email_scout_seen LIMIT 1").fetchone():
                     # The owner already sent this receipt to the bot, so its email copy must become a repeat.
+                    mine = biz.active_businesses()[0]
                     orchestrator.km.record_receipt(
                         data=ParsedReceipt(
                             vendor="Fictional Filament Co", date="2026-11-10", total_amount=54.0, tax_amount=4.91,
-                            gst_status="explicit", category="materials_3d_printing",
+                            gst_status="explicit", category=mine.supplies_category, purpose="business",
+                            claim_stream="abn", business_activity=mine.key, business_pct=100,
                             notes="[FICTIONAL DEMO] Sent to the bot as a photo",
                         ).model_dump(),
                         file_hash=None, local_path=None, gdrive_file_id=None, gdrive_status="not_applicable",
