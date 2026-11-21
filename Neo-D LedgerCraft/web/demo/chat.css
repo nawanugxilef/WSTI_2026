@@ -356,9 +356,9 @@ body[data-neo-demo-open]:has(.neo-demo[data-keyboard]) .office-status { display:
 .neo-demo-archive ul { margin: .35em 0 0; padding-left: 1.1em; display: grid; gap: .2em; }
 .neo-demo-original { display: inline-block; margin-block: .2em; color: var(--demo-accent); font-weight: 600; text-underline-offset: 2px; }
 /* Phones: the chat is the main thing and the office is a short strip above it. */
-@media (max-width: 600px) {
+@media (max-width: 600px), (max-device-width: 600px) {
   body[data-neo-demo-open] > .office-header { display: none; }
-  .neo-demo { height: min(44em, 70%); }
+  .neo-demo { height: 70%; }
   .neo-demo-info { display: flex; flex-wrap: wrap; align-items: center; gap: .1em .9em; padding-block: .35em; font-size: .8em; }
   .neo-demo-info > p { flex: 1 0 100%; margin: 0; }
   .neo-demo-info a[href="/setup"] { display: none; }
