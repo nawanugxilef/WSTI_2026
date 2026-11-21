@@ -363,3 +363,5 @@ body[data-neo-demo-open]:has(.neo-demo[data-keyboard]) .office-status { display:
   .neo-demo-info > p { flex: 1 0 100%; margin: 0; }
   .neo-demo-info a[href="/setup"] { display: none; }
 }
+/* The chat keeps to the essentials: the dashboard is in the office header, and running your own Neo is on the start page. */
+.neo-demo-info a[href="/demo/dashboard"], .neo-demo-info a[href="/setup"] { display: none; }
